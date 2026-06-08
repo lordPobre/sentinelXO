@@ -1,6 +1,6 @@
-# Perseus MSP — Plataforma de Monitoreo
+# Sentinel XO — Plataforma de Monitoreo
 
-**Perseus Technology** · plataforma SaaS B2B para Managed Service Providers
+**Sentinel** · plataforma SaaS B2B para Managed Service Providers
 
 ---
 
@@ -11,7 +11,7 @@
 - **Frontend**: Django Templates + HTMX + Tailwind CSS CDN
 - **Tareas en segundo plano**: Celery + Redis
 - **API**: Django REST Framework (para el agente)
-- **Reportes PDF**: ReportLab
+- **Reportes PDF**: WeasyPrint + Django Templates
 
 ---
 
@@ -21,10 +21,10 @@
 
 ```bash
 git clone <repo>
-cd perseus_msp
+cd sentinelXO
 python3 -m venv venv
 source venv/bin/activate        # Linux/macOS
-# venv\Scripts\activate         # Windows
+# venv\Scriptsctivate         # Windows
 
 pip install -r requirements.txt
 ```
@@ -87,14 +87,14 @@ El agente se instala en los equipos de los clientes.
 cd agent/
 pip install psutil requests
 cp .env.example .env
-# Completar PERSEUS_TOKEN con el token del dispositivo (del panel)
+# Completar SENTINEL_TOKEN con el token del dispositivo (del panel)
 python agent.py
 ```
 
 **Programar ejecución automática:**
 
 - **Windows**: Task Scheduler → repetir cada 15 min
-- **Linux**: `*/15 * * * * /usr/bin/python3 /opt/perseus/agent.py`
+- **Linux**: `*/15 * * * * /usr/bin/python3 /opt/sentinel/agent.py`
 
 ---
 
@@ -103,7 +103,7 @@ python agent.py
 | URL                              | Descripción                        |
 |----------------------------------|------------------------------------|
 | `/dashboard/`                    | Redirige según rol del usuario     |
-| `/dashboard/admin/overview/`     | Panel administrador Perseus        |
+| `/dashboard/admin/overview/`     | Panel administrador Sentinel       |
 | `/dashboard/admin/clients/`      | Listado de todos los clientes      |
 | `/dashboard/portal/<uuid>/`      | Dashboard del cliente final        |
 | `/monitoring/domains/`           | Estado de dominios                 |
@@ -128,8 +128,8 @@ python agent.py
 
 ## Estructura del proyecto
 
-```
-perseus_msp/
+```text
+sentinelXO/
 ├── config/             # Configuración Django (settings, urls, celery)
 ├── core/               # Modelos principales + API REST
 │   ├── models.py       # Client, HardwareDevice, TelemetrySnapshot, Domain, M365License, etc.
@@ -139,7 +139,7 @@ perseus_msp/
 │   ├── services.py     # check_domain_whois(), sync_m365_client()
 │   └── tasks.py        # Tareas Celery de monitoreo
 ├── reports/            # Generación y envío de PDFs
-│   ├── generator.py    # build_report_pdf() con ReportLab
+│   ├── generator.py    # build_report_pdf() con WeasyPrint
 │   └── tasks.py        # generate_monthly_reports_all()
 ├── dashboard/          # Vistas y URLs del dashboard
 │   └── views.py        # Panel admin + portal cliente + HTMX fragments
