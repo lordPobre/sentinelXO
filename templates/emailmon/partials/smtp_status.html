@@ -1,0 +1,25 @@
+{% if check %}
+<div class="kpi-label">Último check SMTP</div>
+<div style="display:flex;align-items:center;gap:8px;margin-top:8px;margin-bottom:6px;">
+  <span class="dot {% if check.status == 'ok' %}dot-on{% elif check.status == 'timeout' %}dot-warn{% else %}dot-off{% endif %}
+    {% if check.status == 'ok' %}dot-pulse{% endif %}"></span>
+  <span class="mono" style="font-size:18px;font-weight:700;
+    {% if check.status == 'ok' %}color:var(--green);{% elif check.status == 'timeout' %}color:var(--amber);{% else %}color:var(--red);{% endif %}">
+    {{ check.get_status_display }}
+  </span>
+</div>
+{% if check.response_ms %}
+<div style="font-size:11px;color:var(--text-4);">
+  <span class="mono" style="{% if check.response_ms < 500 %}color:var(--green);{% elif check.response_ms < 2000 %}color:var(--amber);{% else %}color:var(--red);{% endif %}">{{ check.response_ms }}ms</span>
+  · {{ check.smtp_host }}:{{ check.smtp_port }}
+</div>
+{% endif %}
+<div class="mono" style="font-size:10px;color:var(--text-4);margin-top:4px;">{{ check.checked_at|date:"d/m H:i" }}</div>
+{% if check.error_msg %}
+<div style="font-size:10px;color:var(--red);margin-top:4px;font-family:'JetBrains Mono',monospace;">{{ check.error_msg|truncatechars:60 }}</div>
+{% endif %}
+{% else %}
+<div class="kpi-label">Último check SMTP</div>
+<div style="font-size:13px;color:var(--text-4);margin-top:12px;">Sin verificaciones aún.</div>
+<div style="font-size:11px;color:var(--text-4);margin-top:4px;">Usa el botón "Verificar SMTP ahora"</div>
+{% endif %}

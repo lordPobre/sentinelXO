@@ -1,0 +1,493 @@
+{% extends "base/layout.html" %}
+{% block title %}Monitor en vivo — {{ client.company_name }}{% endblock %}
+{% block page_title %}Monitor en tiempo real{% endblock %}
+{% block page_subtitle %}
+<div class="mono" style="font-size:10px;color:var(--text-3);margin-top:1px;display:flex;align-items:center;gap:8px;">
+  <span>{{ client.company_name }}</span>
+  <span style="color:var(--text-4);">·</span>
+  <span id="rt-status" style="display:flex;align-items:center;gap:5px;">
+    <span class="dot dot-on dot-pulse"></span>
+    <span style="color:var(--green);">Conectando…</span>
+  </span>
+  <span style="color:var(--text-4);">·</span>
+  <span id="rt-last-update" style="color:var(--text-4);">—</span>
+</div>
+{% endblock %}
+
+{% block header_actions %}
+<a href="{% url 'dashboard:client-portal' client.id %}" class="btn-ghost">← Volver</a>
+<div style="display:flex;align-items:center;gap:8px;padding:5px 12px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.15);border-radius:7px;">
+  <span class="mono" style="font-size:10px;color:var(--text-3);">Intervalo:</span>
+  <select id="poll-interval" class="mono" style="background:transparent;border:none;color:#60a5fa;font-size:11px;cursor:pointer;outline:none;">
+    <option value="3000">3s</option>
+    <option value="5000" selected>5s</option>
+    <option value="10000">10s</option>
+    <option value="30000">30s</option>
+  </select>
+</div>
+{% endblock %}
+
+{% block extra_head %}
+<style>
+  .rt-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    gap: 12px;
+  }
+  .device-card {
+    background: #0d1117;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    overflow: hidden;
+    position: relative;
+    transition: border-color 0.3s;
+  }
+  .device-card.online  { border-color: rgba(16,185,129,0.2); }
+  .device-card.warning { border-color: rgba(245,158,11,0.2); }
+  .device-card.offline { border-color: rgba(239,68,68,0.15); }
+  .device-card::before {
+    content: '';
+    position: absolute; top:0; left:0; right:0; height:1px;
+    transition: background 0.3s;
+  }
+  .device-card.online::before  { background: linear-gradient(90deg,transparent,rgba(16,185,129,0.5),transparent); }
+  .device-card.warning::before { background: linear-gradient(90deg,transparent,rgba(245,158,11,0.4),transparent); }
+  .device-card.offline::before { background: linear-gradient(90deg,transparent,rgba(239,68,68,0.3),transparent); }
+
+  .dc-header {
+    padding: 14px 16px 10px;
+    display: flex; align-items: center; justify-content: space-between;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+  }
+  .dc-name { font-size:13px; font-weight:600; color:#cbd5e1; }
+  .dc-meta { font-size:10px; color:var(--text-4); font-family:'JetBrains Mono',monospace; margin-top:2px; }
+
+  .dc-metrics {
+    padding: 14px 16px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+  .metric-block {}
+  .metric-label {
+    font-size: 9px; font-weight:600; letter-spacing:0.08em;
+    text-transform:uppercase; color:var(--text-4); margin-bottom:6px;
+  }
+  .metric-value {
+    font-size: 22px; font-weight:700; line-height:1;
+    font-family:'JetBrains Mono',monospace; margin-bottom:6px;
+    transition: color 0.4s;
+  }
+  .bar-track { height:4px; background:rgba(255,255,255,0.05); border-radius:2px; overflow:hidden; }
+  .bar-fill  { height:4px; border-radius:2px; transition: width 0.8s ease, background 0.4s; }
+
+  .dc-chart-wrap {
+    padding: 0 16px 14px;
+    min-height: 80px;
+  }
+  .chart-label {
+    font-size:9px; font-weight:600; letter-spacing:0.08em;
+    text-transform:uppercase; color:var(--text-4); margin-bottom:6px;
+  }
+
+  .dc-disks {
+    padding: 0 16px 14px;
+    display: flex; flex-direction:column; gap:8px;
+  }
+  .disk-row {}
+  .disk-top {
+    display:flex; justify-content:space-between; margin-bottom:4px;
+  }
+  .disk-name { font-size:10px; color:var(--text-3); font-family:'JetBrains Mono',monospace; }
+  .disk-pct  { font-size:10px; color:var(--text-3); font-family:'JetBrains Mono',monospace; }
+
+  .dc-footer {
+    padding: 8px 16px;
+    border-top: 1px solid rgba(255,255,255,0.03);
+    background: rgba(255,255,255,0.01);
+    display:flex; align-items:center; justify-content:space-between;
+  }
+  .uptime-val { font-size:11px; color:var(--text-3); font-family:'JetBrains Mono',monospace; }
+  .last-seen  { font-size:10px; color:var(--text-4); font-family:'JetBrains Mono',monospace; }
+
+  .offline-overlay {
+    position:absolute; inset:0;
+    background:rgba(8,11,16,0.7);
+    display:flex; flex-direction:column;
+    align-items:center; justify-content:center;
+    gap:8px; z-index:2;
+    backdrop-filter:blur(2px);
+  }
+  .offline-overlay .dot-off { width:10px;height:10px; }
+  .offline-overlay span { font-size:12px; color:var(--red); font-weight:600; }
+  .offline-overlay small { font-size:10px; color:var(--text-4); font-family:'JetBrains Mono',monospace; }
+
+  @keyframes shimmer {
+    0%   { opacity:0.4; }
+    50%  { opacity:0.7; }
+    100% { opacity:0.4; }
+  }
+  .loading { animation: shimmer 1.5s ease-in-out infinite; }
+
+  .summary-bar {
+    display:grid;
+    grid-template-columns:repeat(4,1fr);
+    gap:10px;
+    margin-bottom:16px;
+  }
+  .summary-stat {
+    background:linear-gradient(135deg,#0d1117,#0f1520);
+    border:1px solid var(--border);
+    border-radius:12px;
+    padding:14px 16px;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- Barra de resumen global -->
+<div class="summary-bar">
+  <div class="summary-stat">
+    <div style="font-size:9px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-4);margin-bottom:8px;">Equipos totales</div>
+    <div id="sum-total" class="mono" style="font-size:24px;font-weight:700;color:#f1f5f9;">{{ devices|length }}</div>
+  </div>
+  <div class="summary-stat">
+    <div style="font-size:9px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-4);margin-bottom:8px;">En línea</div>
+    <div id="sum-online" class="mono" style="font-size:24px;font-weight:700;color:var(--green);">—</div>
+  </div>
+  <div class="summary-stat">
+    <div style="font-size:9px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-4);margin-bottom:8px;">CPU promedio</div>
+    <div id="sum-cpu" class="mono" style="font-size:24px;font-weight:700;color:#f1f5f9;">—</div>
+  </div>
+  <div class="summary-stat">
+    <div style="font-size:9px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-4);margin-bottom:8px;">RAM promedio</div>
+    <div id="sum-ram" class="mono" style="font-size:24px;font-weight:700;color:#f1f5f9;">—</div>
+  </div>
+</div>
+
+<!-- Grid de tarjetas de dispositivos -->
+<div class="rt-grid" id="rt-grid">
+  {% for device in devices %}
+  <div class="device-card loading" id="dc-{{ device.id }}" data-device-id="{{ device.id }}" data-href="{% url 'dashboard:device-live' device.id %}" style="cursor:pointer;">
+    <div class="dc-header">
+      <div>
+        <div class="dc-name">{{ device.display_name }}</div>
+        <div class="dc-meta">{{ device.os|default:"—" }} · {{ device.get_device_type_display }}</div>
+      </div>
+      <span class="badge badge-gray" id="dc-badge-{{ device.id }}">Cargando…</span>
+    </div>
+
+    <div class="dc-metrics">
+      <!-- CPU -->
+      <div class="metric-block">
+        <div class="metric-label">CPU</div>
+        <div class="metric-value" id="dc-cpu-val-{{ device.id }}" style="color:var(--text-3);">—</div>
+        <div class="bar-track">
+          <div class="bar-fill bar-blue" id="dc-cpu-bar-{{ device.id }}" style="width:0%;"></div>
+        </div>
+      </div>
+      <!-- RAM -->
+      <div class="metric-block">
+        <div class="metric-label">RAM</div>
+        <div class="metric-value" id="dc-ram-val-{{ device.id }}" style="color:var(--text-3);">—</div>
+        <div class="bar-track">
+          <div class="bar-fill bar-green" id="dc-ram-bar-{{ device.id }}" style="width:0%;"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Mini gráfico histórico CPU + RAM -->
+    <div class="dc-chart-wrap">
+      <div class="chart-label">Historial (últimas lecturas)</div>
+      <div style="position:relative;height:60px;"><canvas id="dc-chart-{{ device.id }}"></canvas></div>
+    </div>
+
+    <!-- Discos -->
+    <div class="dc-disks" id="dc-disks-{{ device.id }}">
+      <div class="disk-row">
+        <div class="bar-track"><div class="bar-fill bar-blue loading" style="width:60%;"></div></div>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="dc-footer">
+      <span class="uptime-val" id="dc-uptime-{{ device.id }}">—</span>
+      <span class="last-seen"  id="dc-ts-{{ device.id }}">—</span>
+    </div>
+
+    <!-- Overlay offline (hidden by default) -->
+    <div class="offline-overlay" id="dc-overlay-{{ device.id }}" style="display:none;">
+      <span class="dot dot-off" style="width:12px;height:12px;"></span>
+      <span>Sin contacto</span>
+      <small id="dc-overlay-ts-{{ device.id }}">—</small>
+    </div>
+  </div>
+  {% empty %}
+  <div class="card" style="padding:48px;text-align:center;color:var(--text-4);grid-column:1/-1;">
+    No hay dispositivos con el agente instalado.
+  </div>
+  {% endfor %}
+</div>
+
+<script>
+const CLIENT_ID = "{{ client.id }}";
+const API_URL   = "/api/v1/clients/" + CLIENT_ID + "/live/";
+
+// Historial de datos por dispositivo (para el mini gráfico)
+const history = {};
+const charts  = {};
+const MAX_HISTORY = 20;
+
+// Colores
+const C_CPU  = "rgba(37,99,235,0.8)";
+const C_RAM  = "rgba(16,185,129,0.8)";
+const C_CPU_BG = "rgba(37,99,235,0.08)";
+const C_RAM_BG = "rgba(16,185,129,0.06)";
+
+function pctColor(v) {
+  if (v >= 90) return "var(--red)";
+  if (v >= 75) return "var(--amber)";
+  return "var(--green)";
+}
+function barClass(v) {
+  if (v >= 90) return "bar-red";
+  if (v >= 75) return "bar-amber";
+  return "";  // usa el default
+}
+function timeAgo(isoStr) {
+  if (!isoStr) return "—";
+  const diff = Math.floor((Date.now() - new Date(isoStr).getTime()) / 1000);
+  if (diff < 5)  return "ahora mismo";
+  if (diff < 60) return diff + "s atrás";
+  if (diff < 3600) return Math.floor(diff/60) + "m atrás";
+  return Math.floor(diff/3600) + "h atrás";
+}
+
+function initChart(deviceId) {
+  const canvas = document.getElementById("dc-chart-" + deviceId);
+  if (!canvas || charts[deviceId]) return;
+  history[deviceId] = { cpu: [], ram: [], labels: [] };
+  charts[deviceId] = new Chart(canvas, {
+    type: "line",
+    data: {
+      labels: [],
+      datasets: [
+        {
+          label: "CPU", data: [],
+          borderColor: C_CPU, backgroundColor: C_CPU_BG,
+          borderWidth: 1.5, pointRadius: 0, fill: true, tension: 0.4,
+        },
+        {
+          label: "RAM", data: [],
+          borderColor: C_RAM, backgroundColor: C_RAM_BG,
+          borderWidth: 1.5, pointRadius: 0, fill: true, tension: 0.4,
+        },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      animation: { duration: 400 },
+      scales: {
+        x: { display: false },
+        y: {
+          display: true, min: 0, max: 100,
+          grid: { color: "rgba(255,255,255,0.03)", drawTicks: false },
+          ticks: {
+            color: "#475569", font: { size: 9, family: "'JetBrains Mono', monospace" },
+            callback: v => v + "%", maxTicksLimit: 3, padding: 4,
+          },
+          border: { display: false },
+        },
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: "#0d1117",
+          borderColor: "rgba(255,255,255,0.08)",
+          borderWidth: 1,
+          titleFont: { size: 10, family: "'JetBrains Mono', monospace" },
+          bodyFont:  { size: 10, family: "'JetBrains Mono', monospace" },
+          titleColor: "#94a3b8", bodyColor: "#e2e8f0",
+          callbacks: { label: ctx => " " + ctx.dataset.label + ": " + ctx.raw.toFixed(1) + "%" },
+        },
+      },
+    },
+  });
+}
+
+function pushHistory(deviceId, cpu, ram) {
+  const h = history[deviceId];
+  if (!h) return;
+  const now = new Date().toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  h.cpu.push(cpu);
+  h.ram.push(ram);
+  h.labels.push(now);
+  if (h.cpu.length > MAX_HISTORY) {
+    h.cpu.shift(); h.ram.shift(); h.labels.shift();
+  }
+  const chart = charts[deviceId];
+  if (!chart) return;
+  chart.data.labels                = [...h.labels];
+  chart.data.datasets[0].data      = [...h.cpu];
+  chart.data.datasets[1].data      = [...h.ram];
+  chart.update("none");  // sin animación en update continuo
+}
+
+function updateCard(d) {
+  const card    = document.getElementById("dc-" + d.id);
+  const badge   = document.getElementById("dc-badge-" + d.id);
+  const overlay = document.getElementById("dc-overlay-" + d.id);
+  if (!card) return;
+
+  card.classList.remove("loading");
+
+  // Estado de la card
+  card.classList.remove("online", "warning", "offline");
+  if (d.status === "online") {
+    card.classList.add("online");
+    badge.className = "badge badge-ok";
+    badge.textContent = "● En línea";
+    overlay.style.display = "none";
+  } else if (d.status === "warning") {
+    card.classList.add("warning");
+    badge.className = "badge badge-warn";
+    badge.textContent = "⚠ Alerta";
+    overlay.style.display = "none";
+  } else if (d.status === "offline" || !d.is_online) {
+    card.classList.add("offline");
+    badge.className = "badge badge-crit";
+    badge.textContent = "● Offline";
+    overlay.style.display = "flex";
+    const ts = document.getElementById("dc-overlay-ts-" + d.id);
+    if (ts) ts.textContent = "Último contacto: " + timeAgo(d.last_seen);
+    return;  // no actualizar métricas si está offline
+  } else {
+    badge.className = "badge badge-gray";
+    badge.textContent = "Sin datos";
+  }
+
+  if (!d.cpu && !d.ram) return;
+
+  const cpu = d.cpu ?? 0;
+  const ram = d.ram ?? 0;
+
+  // Valores numéricos
+  const cpuEl = document.getElementById("dc-cpu-val-" + d.id);
+  const ramEl = document.getElementById("dc-ram-val-" + d.id);
+  if (cpuEl) { cpuEl.textContent = cpu.toFixed(1) + "%"; cpuEl.style.color = pctColor(cpu); }
+  if (ramEl) { ramEl.textContent = ram.toFixed(1) + "%"; ramEl.style.color = pctColor(ram); }
+
+  // Barras
+  const cpuBar = document.getElementById("dc-cpu-bar-" + d.id);
+  const ramBar = document.getElementById("dc-ram-bar-" + d.id);
+  if (cpuBar) {
+    cpuBar.style.width = cpu + "%";
+    cpuBar.className = "bar-fill " + (cpu >= 90 ? "bar-red" : cpu >= 75 ? "bar-amber" : "bar-blue");
+  }
+  if (ramBar) {
+    ramBar.style.width = ram + "%";
+    ramBar.className = "bar-fill " + (ram >= 90 ? "bar-red" : ram >= 75 ? "bar-amber" : "bar-green");
+  }
+
+  // Gráfico histórico
+  initChart(d.id);
+  pushHistory(d.id, cpu, ram);
+
+  // Discos
+  const disksEl = document.getElementById("dc-disks-" + d.id);
+  if (disksEl && d.disk_usage && d.disk_usage.length) {
+    disksEl.innerHTML = d.disk_usage.map(disk => `
+      <div class="disk-row">
+        <div class="disk-top">
+          <span class="disk-name">${disk.mountpoint}</span>
+          <span class="disk-pct">${disk.used_percent.toFixed(0)}%</span>
+        </div>
+        <div class="bar-track">
+          <div class="bar-fill ${disk.used_percent >= 90 ? "bar-red" : disk.used_percent >= 75 ? "bar-amber" : "bar-blue"}"
+               style="width:${disk.used_percent}%;"></div>
+        </div>
+      </div>
+    `).join("");
+  }
+
+  // Uptime y timestamp
+  const uptimeEl = document.getElementById("dc-uptime-" + d.id);
+  const tsEl     = document.getElementById("dc-ts-" + d.id);
+  if (uptimeEl) uptimeEl.textContent = "↑ " + (d.uptime_human || "—");
+  if (tsEl)     tsEl.textContent     = timeAgo(d.last_seen);
+}
+
+function updateSummary(data) {
+  document.getElementById("sum-online").textContent = data.online;
+
+  const onlineDevices = data.devices.filter(d => d.is_online && d.cpu != null);
+  if (onlineDevices.length > 0) {
+    const avgCPU = onlineDevices.reduce((s, d) => s + d.cpu, 0) / onlineDevices.length;
+    const avgRAM = onlineDevices.reduce((s, d) => s + d.ram, 0) / onlineDevices.length;
+    const cpuEl = document.getElementById("sum-cpu");
+    const ramEl = document.getElementById("sum-ram");
+    cpuEl.textContent = avgCPU.toFixed(1) + "%";
+    cpuEl.style.color = pctColor(avgCPU);
+    ramEl.textContent = avgRAM.toFixed(1) + "%";
+    ramEl.style.color = pctColor(avgRAM);
+  } else {
+    document.getElementById("sum-cpu").textContent = "—";
+    document.getElementById("sum-ram").textContent = "—";
+  }
+
+  // Status bar
+  const statusEl = document.getElementById("rt-status");
+  const lastEl   = document.getElementById("rt-last-update");
+  if (data.online === data.total) {
+    statusEl.innerHTML = `<span class="dot dot-on dot-pulse"></span><span style="color:var(--green);font-weight:500;">Todos en línea</span>`;
+  } else if (data.online === 0) {
+    statusEl.innerHTML = `<span class="dot dot-off"></span><span style="color:var(--red);font-weight:500;">Sin conexión</span>`;
+  } else {
+    statusEl.innerHTML = `<span class="dot dot-warn dot-pulse"></span><span style="color:var(--amber);font-weight:500;">${data.online}/${data.total} en línea</span>`;
+  }
+  lastEl.textContent = "Actualizado " + new Date().toLocaleTimeString("es-CL");
+}
+
+async function poll() {
+  try {
+    const res = await fetch(API_URL, { credentials: "same-origin" });
+    if (!res.ok) return;
+    const data = await res.json();
+    data.devices.forEach(updateCard);
+    updateSummary(data);
+  } catch (e) {
+    console.warn("Sentinel XO poll error:", e);
+  }
+}
+
+// Polling loop
+let pollTimer = null;
+function startPolling(interval) {
+  clearInterval(pollTimer);
+  poll();  // ejecutar inmediatamente
+  pollTimer = setInterval(poll, interval);
+}
+
+document.getElementById("poll-interval").addEventListener("change", function() {
+  startPolling(parseInt(this.value));
+});
+
+// Arrancar con 5s
+startPolling(5000);
+
+// Clic en card → ir al detalle del dispositivo
+document.querySelectorAll('.device-card[data-href]').forEach(card => {
+  card.addEventListener('click', () => {
+    window.location.href = card.dataset.href;
+  });
+});
+
+// Actualizar los "X minutos atrás" cada 10s sin hacer fetch
+setInterval(() => {
+  document.querySelectorAll("[id^='dc-ts-']").forEach(el => {
+    // El valor actual está como "Xm atrás" — solo lo refrescamos con el próximo poll
+  });
+}, 10000);
+</script>
+{% endblock %}

@@ -1,0 +1,19 @@
+<div id="domain-row-{{ domain.id }}" style="display:flex;align-items:center;justify-content:space-between;padding:12px 18px;border-bottom:1px solid rgba(255,255,255,0.03);" class="row-hover">
+  <div>
+    <div class="mono" style="font-size:12px;font-weight:500;color:#94a3b8;">{{ domain.fqdn }}</div>
+    <div style="font-size:10px;color:var(--text-4);margin-top:2px;">
+      {% if domain.registrar %}{{ domain.registrar }} · {% endif %}
+      {% if domain.expiry_date %}Vence {{ domain.expiry_date|date:"d/m/Y" }}{% else %}Sin fecha{% endif %}
+      · Revisado {{ domain.last_checked|date:"d/m H:i"|default:"nunca" }}
+    </div>
+  </div>
+  <div style="display:flex;align-items:center;gap:8px;">
+    {% if not domain.resolves_dns %}<span class="badge badge-crit">DNS falla</span>{% endif %}
+    <span class="badge {% if domain.status == 'critical' or domain.status == 'expired' %}badge-crit{% elif domain.status == 'warning' %}badge-warn{% elif domain.status == 'ok' %}badge-ok{% else %}badge-gray{% endif %}">
+      {% if domain.days_until_expiry is not None %}{% if domain.days_until_expiry < 0 %}Vencido{% else %}{{ domain.days_until_expiry }}d{% endif %}{% else %}—{% endif %}
+    </span>
+    <button class="btn-ghost" style="padding:4px 10px;font-size:11px;"
+            hx-post="{% url 'monitoring:domain-refresh' domain.id %}"
+            hx-target="#domain-row-{{ domain.id }}" hx-swap="outerHTML">↻</button>
+  </div>
+</div>

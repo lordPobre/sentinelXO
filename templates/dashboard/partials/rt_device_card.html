@@ -1,0 +1,147 @@
+<div style="background:#0d1117;border:1px solid rgba(255,255,255,0.06);border-radius:14px;overflow:hidden;position:relative;">
+  {% if snap %}
+  <div style="position:absolute;top:0;left:0;right:0;height:1px;
+    background:linear-gradient(90deg,transparent,
+    {% if snap.cpu_percent > 90 %}rgba(239,68,68,0.6){% elif snap.cpu_percent > 70 %}rgba(245,158,11,0.5){% else %}rgba(37,99,235,0.4){% endif %},transparent);">
+  </div>
+  {% endif %}
+
+  <!-- Header -->
+  <div style="padding:14px 16px 10px;display:flex;align-items:center;justify-content:space-between;">
+    <div style="display:flex;align-items:center;gap:9px;min-width:0;">
+      <span class="dot {% if device.is_online %}dot-on{% elif device.status == 'warning' %}dot-warn{% else %}dot-off{% endif %}"></span>
+      <div style="min-width:0;">
+        <div style="font-size:13px;font-weight:600;color:#cbd5e1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ device.display_name }}</div>
+        <div class="mono" style="font-size:9px;color:var(--text-4);margin-top:1px;">{{ device.os|default:"—" }}</div>
+      </div>
+    </div>
+    {% if snap %}
+    <div class="mono" style="font-size:9px;color:var(--text-4);text-align:right;flex-shrink:0;">
+      {{ snap.captured_at|date:"H:i:s" }}
+    </div>
+    {% endif %}
+  </div>
+
+  {% if snap %}
+  <!-- Métricas principales -->
+  <div style="padding:0 16px 12px;display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+
+    <!-- CPU -->
+    <div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px;">
+        <span style="font-size:9px;font-weight:600;letter-spacing:0.07em;text-transform:uppercase;color:var(--text-4);">CPU</span>
+        <span class="mono" style="font-size:16px;font-weight:700;
+          {% if snap.cpu_percent > 90 %}color:#ef4444;
+          {% elif snap.cpu_percent > 70 %}color:#f59e0b;
+          {% else %}color:#60a5fa;{% endif %}">
+          {{ snap.cpu_percent|floatformat:0 }}%
+        </span>
+      </div>
+      <div class="bar-track" style="height:4px;">
+        <div class="bar-fill {% if snap.cpu_percent > 90 %}bar-red{% elif snap.cpu_percent > 70 %}bar-amber{% else %}bar-blue{% endif %}"
+             style="width:{{ snap.cpu_percent }}%;transition:width 0.8s ease;"></div>
+      </div>
+      <!-- Sparkline CPU -->
+      <canvas id="cpu-{{ device.id }}" height="28" style="width:100%;margin-top:6px;display:block;"></canvas>
+    </div>
+
+    <!-- RAM -->
+    <div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px;">
+        <span style="font-size:9px;font-weight:600;letter-spacing:0.07em;text-transform:uppercase;color:var(--text-4);">RAM</span>
+        <span class="mono" style="font-size:16px;font-weight:700;
+          {% if snap.ram_used_percent > 90 %}color:#ef4444;
+          {% elif snap.ram_used_percent > 75 %}color:#f59e0b;
+          {% else %}color:#10b981;{% endif %}">
+          {{ snap.ram_used_percent|floatformat:0 }}%
+        </span>
+      </div>
+      <div class="bar-track" style="height:4px;">
+        <div class="bar-fill {% if snap.ram_used_percent > 90 %}bar-red{% elif snap.ram_used_percent > 75 %}bar-amber{% else %}bar-green{% endif %}"
+             style="width:{{ snap.ram_used_percent }}%;transition:width 0.8s ease;"></div>
+      </div>
+      <!-- Sparkline RAM -->
+      <canvas id="ram-{{ device.id }}" height="28" style="width:100%;margin-top:6px;display:block;"></canvas>
+    </div>
+  </div>
+
+  <!-- Discos -->
+  {% if snap.disk_usage %}
+  <div style="padding:0 16px 12px;border-top:1px solid rgba(255,255,255,0.03);padding-top:10px;">
+    {% for disk in snap.disk_usage %}
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:{% if not forloop.last %}6px{% else %}0{% endif %};">
+      <span class="mono" style="font-size:10px;color:var(--text-3);min-width:28px;">{{ disk.mountpoint|truncatechars:4 }}</span>
+      <div class="bar-track" style="flex:1;height:3px;">
+        <div class="bar-fill {% if disk.used_percent > 90 %}bar-red{% elif disk.used_percent > 75 %}bar-amber{% else %}bar-blue{% endif %}"
+             style="width:{{ disk.used_percent }}%;"></div>
+      </div>
+      <span class="mono" style="font-size:10px;color:var(--text-3);min-width:28px;text-align:right;">{{ disk.used_percent|floatformat:0 }}%</span>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <!-- Footer: uptime y ram total -->
+  <div style="padding:8px 16px;border-top:1px solid rgba(255,255,255,0.03);display:flex;justify-content:space-between;background:rgba(255,255,255,0.01);">
+    <span class="mono" style="font-size:10px;color:var(--text-4);">
+      Uptime <span style="color:var(--text-3);">{{ snap.uptime_human }}</span>
+    </span>
+    {% if uptime_today is not None %}
+    <span class="mono" style="font-size:10px;color:var(--text-4);">
+      Hoy <span style="color:{% if uptime_today >= 99 %}#10b981{% elif uptime_today >= 95 %}#f59e0b{% else %}#ef4444{% endif %};">{{ uptime_today }}%</span>
+    </span>
+    {% endif %}
+    <span class="mono" style="font-size:10px;color:var(--text-4);">
+      {{ snap.ram_total_gb|floatformat:1 }} GB
+    </span>
+  </div>
+
+  <!-- Script sparklines — se re-ejecuta en cada swap HTMX -->
+  <script>
+  (function(){
+    const cpuData = {{ cpu_history|safe }};
+    const ramData = {{ ram_history|safe }};
+    function spark(canvasId, data, color) {
+      const el = document.getElementById(canvasId);
+      if (!el || !data.length) return;
+      const ctx = el.getContext('2d');
+      const W = el.offsetWidth || el.parentElement.offsetWidth;
+      const H = 28;
+      el.width  = W * window.devicePixelRatio;
+      el.height = H * window.devicePixelRatio;
+      el.style.width  = W + 'px';
+      el.style.height = H + 'px';
+      ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+      ctx.clearRect(0, 0, W, H);
+      if (data.length < 2) return;
+      const step = W / (data.length - 1);
+      ctx.beginPath();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1.5;
+      ctx.lineJoin = 'round';
+      data.forEach((v, i) => {
+        const x = i * step;
+        const y = H - (v / 100) * H;
+        i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+      // Fill debajo
+      ctx.lineTo((data.length - 1) * step, H);
+      ctx.lineTo(0, H);
+      ctx.closePath();
+      ctx.fillStyle = color.replace(')', ', 0.08)').replace('rgb', 'rgba');
+      ctx.fill();
+    }
+    spark('cpu-{{ device.id }}', cpuData, '#3b82f6');
+    spark('ram-{{ device.id }}', ramData, '#10b981');
+  })();
+  </script>
+
+  {% else %}
+  <!-- Sin datos aún -->
+  <div style="padding:24px 16px;text-align:center;">
+    <div class="mono" style="font-size:11px;color:var(--text-4);">Esperando datos del agente…</div>
+    <div class="mono" style="font-size:10px;color:var(--text-4);margin-top:4px;">Token: {{ device.agent_token|slice:":14" }}…</div>
+  </div>
+  {% endif %}
+</div>

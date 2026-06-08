@@ -1,0 +1,50 @@
+{% if device %}
+<div style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;">
+  <div>
+    <div style="font-size:13px;font-weight:600;color:#cbd5e1;">{{ device.display_name }}</div>
+    <div class="mono" style="font-size:10px;color:var(--text-3);margin-top:1px;">{{ device.os }} · {{ device.get_device_type_display }}</div>
+  </div>
+  <span class="badge {% if device.is_online %}badge-ok{% else %}badge-crit{% endif %}">{% if device.is_online %}En línea{% else %}Offline{% endif %}</span>
+</div>
+{% with snap=device.snapshots.first %}
+{% if snap %}
+<div style="padding:16px 18px;display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+  <div>
+    <div style="font-size:9px;font-weight:600;letter-spacing:0.07em;text-transform:uppercase;color:var(--text-4);margin-bottom:7px;">CPU</div>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <div class="bar-track" style="flex:1;"><div class="bar-fill {% if snap.cpu_percent > 90 %}bar-red{% elif snap.cpu_percent > 70 %}bar-amber{% else %}bar-blue{% endif %}" style="width:{{ snap.cpu_percent }}%;"></div></div>
+      <span class="mono" style="font-size:11px;color:#94a3b8;min-width:30px;text-align:right;">{{ snap.cpu_percent|floatformat:0 }}%</span>
+    </div>
+  </div>
+  <div>
+    <div style="font-size:9px;font-weight:600;letter-spacing:0.07em;text-transform:uppercase;color:var(--text-4);margin-bottom:7px;">RAM</div>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <div class="bar-track" style="flex:1;"><div class="bar-fill {% if snap.ram_used_percent > 90 %}bar-red{% elif snap.ram_used_percent > 75 %}bar-amber{% else %}bar-green{% endif %}" style="width:{{ snap.ram_used_percent }}%;"></div></div>
+      <span class="mono" style="font-size:11px;color:#94a3b8;min-width:30px;text-align:right;">{{ snap.ram_used_percent|floatformat:0 }}%</span>
+    </div>
+  </div>
+</div>
+{% if snap.disk_usage %}
+<div style="padding:0 18px 16px;">
+  <div style="font-size:9px;font-weight:600;letter-spacing:0.07em;text-transform:uppercase;color:var(--text-4);margin-bottom:8px;">Almacenamiento</div>
+  {% for disk in snap.disk_usage %}
+  <div style="margin-bottom:10px;">
+    <div style="display:flex;justify-content:space-between;margin-bottom:5px;">
+      <span class="mono" style="font-size:10px;color:var(--text-3);">{{ disk.mountpoint }}</span>
+      <span class="mono" style="font-size:10px;color:var(--text-3);">{{ disk.used_percent|floatformat:0 }}%</span>
+    </div>
+    <div class="bar-track"><div class="bar-fill {% if disk.used_percent > 90 %}bar-red{% elif disk.used_percent > 75 %}bar-amber{% else %}bar-blue{% endif %}" style="width:{{ disk.used_percent }}%;"></div></div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+<div style="padding:10px 18px;border-top:1px solid var(--border);background:rgba(255,255,255,0.01);">
+  <span style="font-size:11px;color:var(--text-4);">Uptime: </span>
+  <span class="mono" style="font-size:11px;color:#94a3b8;">{{ snap.uptime_human }}</span>
+  <span class="mono" style="font-size:10px;color:var(--text-4);margin-left:10px;">· {{ snap.captured_at|date:"d/m H:i" }}</span>
+</div>
+{% else %}
+<div style="padding:32px;text-align:center;font-size:12px;color:var(--text-4);">Sin telemetría disponible.</div>
+{% endif %}
+{% endwith %}
+{% endif %}

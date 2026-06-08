@@ -1,0 +1,31 @@
+<!-- KPIs actualizados en tiempo real -->
+<div class="kpi-card {% if uptime_percent and uptime_percent >= 99 %}kpi-accent{% endif %}"
+     style="{% if uptime_percent and uptime_percent >= 99 %}border-color:rgba(16,185,129,0.25);{% endif %}">
+  <div class="kpi-label">Disponibilidad del mes</div>
+  {% if uptime_percent is not None %}
+  <div class="kpi-value" style="{% if uptime_percent >= 99 %}color:#10b981;{% elif uptime_percent >= 95 %}color:#f59e0b;{% else %}color:#ef4444;{% endif %}">{{ uptime_percent }}%</div>
+  <div class="bar-track" style="margin-bottom:4px;">
+    <div class="bar-fill {% if uptime_percent >= 99 %}bar-green{% elif uptime_percent >= 95 %}bar-amber{% else %}bar-red{% endif %}" style="width:{{ uptime_percent }}%;"></div>
+  </div>
+  {% else %}
+  <div class="kpi-value" style="color:var(--text-4);font-size:18px;padding-top:4px;">Sin datos</div>
+  {% endif %}
+  <div style="font-size:11px;color:var(--text-4);">Telemetría del mes actual</div>
+</div>
+
+<div class="kpi-card">
+  <div class="kpi-label">Incidentes resueltos</div>
+  <div class="kpi-value">{{ incidents_resolved }}</div>
+  <div style="font-size:11px;color:var(--text-4);">Últimos 30 días</div>
+</div>
+
+<div class="kpi-card">
+  <div class="kpi-label">Equipos en red</div>
+  <div class="kpi-value">{{ devices_total }}</div>
+  <div style="display:flex;align-items:center;gap:6px;margin-top:4px;flex-wrap:wrap;">
+    <span style="font-size:11px;color:#10b981;">{{ devices_online }} online</span>
+    {% if devices_total|add:"0" != devices_online|add:"0" %}
+    <span style="font-size:11px;color:#ef4444;">{{ devices_total|add:"-"|add:devices_online|default:"0" }} offline</span>
+    {% endif %}
+  </div>
+</div>

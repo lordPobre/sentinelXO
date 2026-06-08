@@ -1,0 +1,143 @@
+{% extends "base/layout.html" %}
+{% block title %}{{ client.company_name }}{% endblock %}
+{% block page_title %}{{ client.company_name }}{% endblock %}
+{% block page_subtitle %}<div class="mono" style="font-size:10px;color:var(--text-3);margin-top:1px;">{{ client.contact_email }} · {{ client.get_plan_display|lower }}{% if client.rut %} · {{ client.rut }}{% endif %}</div>{% endblock %}
+{% block header_actions %}
+<a href="{% url 'reports:generate-now' client.id %}" class="btn-primary">
+  <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+  Generar reporte
+</a>
+<a href="{% url 'dashboard:client-portal' client.id %}" class="btn-ghost">Vista cliente</a>
+<a href="{% url 'dashboard:realtime' client.id %}" class="btn-primary" style="background:rgba(16,185,129,0.15);color:var(--green);border:1px solid rgba(16,185,129,0.25);">
+  <span class="dot dot-on dot-pulse" style="width:6px;height:6px;flex-shrink:0;"></span>
+  Monitor en vivo
+</a>
+{% endblock %}
+
+{% block content %}
+<!-- Dispositivos -->
+<div class="card fu" style="overflow:hidden;margin-bottom:12px;">
+  <div class="card-header">
+    <span class="card-title">Dispositivos</span>
+    <span class="mono" style="font-size:10px;color:var(--text-4);">{{ devices|length }} registrado{{ devices|length|pluralize:"s" }}</span>
+  </div>
+  <table class="px-table">
+    <thead><tr><th>Equipo</th><th>Tipo</th><th>Sistema</th><th>Token</th><th>CPU</th><th>RAM</th><th>Estado</th></tr></thead>
+    <tbody>
+    {% for device in devices %}
+    <tr>
+      <td>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span class="dot {% if device.is_online %}dot-on{% elif device.status == 'warning' %}dot-warn{% else %}dot-off{% endif %}"></span>
+          <span style="font-weight:600;color:#cbd5e1;">{{ device.display_name }}</span>
+        </div>
+      </td>
+      <td><span class="badge badge-gray">{{ device.get_device_type_display }}</span></td>
+      <td><span style="font-size:11px;color:var(--text-3);">{{ device.os|default:"—" }}</span></td>
+      <td><span class="mono" style="font-size:10px;color:var(--text-4);">{{ device.agent_token|slice:":14" }}…</span></td>
+      <td>{% with snap=device.snapshots.first %}{% if snap %}
+        <div style="display:flex;align-items:center;gap:6px;">
+          <div class="bar-track" style="width:44px;"><div class="bar-fill {% if snap.cpu_percent > 90 %}bar-red{% elif snap.cpu_percent > 70 %}bar-amber{% else %}bar-blue{% endif %}" style="width:{{ snap.cpu_percent }}%;"></div></div>
+          <span class="mono" style="font-size:10px;color:var(--text-3);">{{ snap.cpu_percent|floatformat:0 }}%</span>
+        </div>
+        {% else %}<span style="color:var(--text-4);">—</span>{% endif %}{% endwith %}</td>
+      <td>{% with snap=device.snapshots.first %}{% if snap %}
+        <div style="display:flex;align-items:center;gap:6px;">
+          <div class="bar-track" style="width:44px;"><div class="bar-fill {% if snap.ram_used_percent > 90 %}bar-red{% elif snap.ram_used_percent > 75 %}bar-amber{% else %}bar-green{% endif %}" style="width:{{ snap.ram_used_percent }}%;"></div></div>
+          <span class="mono" style="font-size:10px;color:var(--text-3);">{{ snap.ram_used_percent|floatformat:0 }}%</span>
+        </div>
+        {% else %}<span style="color:var(--text-4);">—</span>{% endif %}{% endwith %}</td>
+      <td><span class="badge {% if device.status == 'online' %}badge-ok{% elif device.status == 'warning' %}badge-warn{% elif device.status == 'offline' %}badge-crit{% else %}badge-gray{% endif %}">
+        {% if device.status == 'online' %}En línea{% elif device.status == 'warning' %}Alerta{% elif device.status == 'offline' %}Offline{% else %}Sin datos{% endif %}
+      </span></td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="7" style="text-align:center;padding:32px;color:var(--text-4);">Sin dispositivos.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- Dominios + M365 -->
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
+  <div class="card fu-1" style="overflow:hidden;">
+    <div class="card-header"><span class="card-title">Dominios</span></div>
+    {% for domain in domains %}
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:11px 18px;border-bottom:1px solid rgba(255,255,255,0.03);">
+      <div>
+        <div class="mono" style="font-size:12px;color:#94a3b8;">{{ domain.fqdn }}</div>
+        <div style="font-size:10px;color:var(--text-4);margin-top:1px;">{{ domain.expiry_date|date:"d/m/Y"|default:"Sin fecha" }}</div>
+      </div>
+      <span class="badge {% if domain.status == 'critical' or domain.status == 'expired' %}badge-crit{% elif domain.status == 'warning' %}badge-warn{% elif domain.status == 'ok' %}badge-ok{% else %}badge-gray{% endif %}">
+        {% if domain.days_until_expiry is not None %}{{ domain.days_until_expiry }}d{% else %}—{% endif %}
+      </span>
+    </div>
+    {% empty %}
+    <div style="padding:28px;text-align:center;font-size:12px;color:var(--text-4);">Sin dominios.</div>
+    {% endfor %}
+  </div>
+
+  <div class="card fu-1" id="m365-panel-{{ client.id }}" style="overflow:hidden;">
+    <div class="card-header">
+      <span class="card-title">Licencias M365</span>
+      <button class="btn-ghost" style="padding:4px 10px;font-size:11px;"
+              hx-post="{% url 'monitoring:m365-sync' client.id %}"
+              hx-target="#m365-panel-{{ client.id }}"
+              hx-swap="outerHTML">↻ Sincronizar</button>
+    </div>
+    {% include "monitoring/partials/m365_licenses.html" with client=client licenses=licenses %}
+  </div>
+</div>
+
+<!-- Incidentes -->
+<div class="card fu-2" style="overflow:hidden;">
+  <div class="card-header"><span class="card-title">Incidentes</span></div>
+  <div id="incidents-list">
+    {% for incident in incidents %}{% include "dashboard/partials/incident_row.html" %}
+    {% empty %}<div style="padding:28px;text-align:center;font-size:12px;color:var(--text-4);">Sin incidentes.</div>{% endfor %}
+  </div>
+  <div style="padding:14px 18px;border-top:1px solid var(--border);background:rgba(255,255,255,0.01);">
+    <div style="font-size:9px;font-weight:600;letter-spacing:0.09em;text-transform:uppercase;color:var(--text-4);margin-bottom:10px;">Registrar incidente</div>
+    <div style="display:flex;gap:8px;margin-bottom:8px;">
+      <input type="text" id="new-incident-title" class="px-input" style="flex:1;" placeholder="Título del incidente…">
+      <select id="new-incident-category" class="px-input" style="width:150px;">
+        <option value="other">Auto-detectar</option>
+        <option value="hardware">Hardware / Equipo</option>
+        <option value="domain">Dominio</option>
+        <option value="email">Email / SMTP</option>
+        <option value="license">Licencia M365</option>
+        <option value="network">Red</option>
+      </select>
+      <select id="new-incident-severity" class="px-input" style="width:100px;">
+        <option value="low">Baja</option>
+        <option value="medium" selected>Media</option>
+        <option value="high">Alta</option>
+        <option value="critical">Crítica</option>
+      </select>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;">
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+        <input type="checkbox" id="new-incident-notify" checked
+               style="accent-color:#2563eb;width:14px;height:14px;">
+        <span style="font-size:11px;color:var(--text-3);">
+          Notificar por email a
+          <span style="color:#60a5fa;">{{ client.contact_email }}</span>
+        </span>
+      </label>
+      <button class="btn-primary"
+              hx-post="{% url 'dashboard:htmx-incident-create' client.id %}"
+              hx-vals="js:{
+                title: document.getElementById('new-incident-title').value,
+                severity: document.getElementById('new-incident-severity').value,
+                category: document.getElementById('new-incident-category').value,
+                notify: document.getElementById('new-incident-notify').checked ? 'true' : 'false'
+              }"
+              hx-target="#incidents-list" hx-swap="afterbegin"
+              onclick="setTimeout(()=>{document.getElementById('new-incident-title').value=''},100)">
+        <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v14M5 12h14"/></svg>
+        Registrar y notificar
+      </button>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,53 @@
+{% if result %}
+<div style="margin-top:8px;">
+  <!-- SMTP -->
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+    <span class="mono" style="font-size:10px;color:var(--text-4);">smtp.office365.com:587</span>
+    {% if result.smtp.status == 'ok' %}
+    <div style="display:flex;align-items:center;gap:6px;">
+      <span class="dot dot-on"></span>
+      <span class="mono" style="font-size:11px;color:var(--green);font-weight:600;">OK</span>
+      <span class="mono" style="font-size:10px;color:var(--text-4);">{{ result.smtp.ms }}ms</span>
+      {% if result.smtp.tls %}<span class="badge badge-ok" style="font-size:9px;padding:1px 5px;">TLS ✓</span>{% endif %}
+    </div>
+    {% elif result.smtp.status == 'timeout' %}
+    <div style="display:flex;align-items:center;gap:6px;">
+      <span class="dot dot-warn"></span>
+      <span class="mono" style="font-size:11px;color:var(--amber);font-weight:600;">TIMEOUT</span>
+    </div>
+    {% else %}
+    <div style="display:flex;align-items:center;gap:6px;">
+      <span class="dot dot-off"></span>
+      <span class="mono" style="font-size:11px;color:var(--red);font-weight:600;">ERROR</span>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Graph API -->
+  {% if result.graph and result.graph.status != 'not_configured' %}
+  <div style="display:flex;align-items:center;justify-content:space-between;">
+    <span class="mono" style="font-size:10px;color:var(--text-4);">graph.microsoft.com</span>
+    {% if result.graph.status == 'ok' %}
+    <div style="display:flex;align-items:center;gap:6px;">
+      <span class="dot dot-on"></span>
+      <span class="mono" style="font-size:11px;color:var(--green);font-weight:600;">OK</span>
+      <span class="mono" style="font-size:10px;color:var(--text-4);">{{ result.graph.ms }}ms</span>
+    </div>
+    {% else %}
+    <div style="display:flex;align-items:center;gap:6px;">
+      <span class="dot dot-off"></span>
+      <span class="mono" style="font-size:11px;color:var(--red);font-weight:600;">ERROR</span>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if result.errors %}
+  <div style="margin-top:6px;">
+    {% for err in result.errors %}
+    <div class="mono" style="font-size:10px;color:var(--red);">✗ {{ err }}</div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+{% endif %}

@@ -1,0 +1,154 @@
+<!-- KPIs en tiempo real -->
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px;">
+
+  <!-- Estado SMTP -->
+  <div class="kpi-card {% if latest_check and latest_check.status == 'ok' %}kpi-accent{% endif %}"
+       style="{% if latest_check and latest_check.status == 'ok' %}border-color:rgba(16,185,129,0.25);{% elif latest_check and latest_check.status != 'ok' %}border-color:rgba(239,68,68,0.2);{% endif %}">
+    {% if latest_check and latest_check.status == 'ok' %}
+    <div style="position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(16,185,129,0.5),transparent);"></div>
+    {% endif %}
+    <div class="kpi-label">Estado SMTP</div>
+    <div style="display:flex;align-items:center;gap:8px;margin:8px 0 6px;">
+      {% if latest_check %}
+        {% if latest_check.status == 'ok' %}
+        <span class="dot dot-on dot-pulse"></span>
+        <span class="mono" style="font-size:20px;font-weight:700;color:var(--green);">OK</span>
+        {% elif latest_check.status == 'timeout' %}
+        <span class="dot dot-warn"></span>
+        <span class="mono" style="font-size:20px;font-weight:700;color:var(--amber);">TIMEOUT</span>
+        {% else %}
+        <span class="dot dot-off"></span>
+        <span class="mono" style="font-size:20px;font-weight:700;color:var(--red);">ERROR</span>
+        {% endif %}
+      {% else %}
+      <span class="dot dot-idle"></span>
+      <span class="mono" style="font-size:16px;color:var(--text-4);">Sin datos</span>
+      {% endif %}
+    </div>
+    {% if latest_check %}
+    <div style="font-size:10px;color:var(--text-4);font-family:'JetBrains Mono',monospace;">
+      {% if latest_check.response_ms %}
+      <span style="{% if latest_check.response_ms < 500 %}color:var(--green);{% elif latest_check.response_ms < 2000 %}color:var(--amber);{% else %}color:var(--red);{% endif %}">{{ latest_check.response_ms }}ms</span>
+      · {% endif %}{{ latest_check.smtp_host }}
+    </div>
+    <div style="font-size:10px;color:var(--text-4);font-family:'JetBrains Mono',monospace;margin-top:2px;">{{ latest_check.checked_at|date:"d/m H:i:s" }}</div>
+    {% endif %}
+  </div>
+
+  <!-- Uptime SMTP -->
+  <div class="kpi-card">
+    <div class="kpi-label">Uptime SMTP (24h)</div>
+    {% if smtp_uptime is not None %}
+    <div class="kpi-value" style="{% if smtp_uptime >= 99 %}color:var(--green);{% elif smtp_uptime >= 90 %}color:var(--amber);{% else %}color:var(--red);{% endif %}">
+      {{ smtp_uptime }}%
+    </div>
+    <div class="bar-track" style="margin-top:8px;">
+      <div class="bar-fill {% if smtp_uptime >= 99 %}bar-green{% elif smtp_uptime >= 90 %}bar-amber{% else %}bar-red{% endif %}" style="width:{{ smtp_uptime }}%;"></div>
+    </div>
+    {% else %}
+    <div class="kpi-value" style="color:var(--text-4);font-size:18px;padding-top:4px;">—</div>
+    {% endif %}
+    <div style="font-size:11px;color:var(--text-4);margin-top:6px;">Verificaciones horarias</div>
+  </div>
+
+  <!-- Enviados 24h -->
+  <div class="kpi-card">
+    <div class="kpi-label">Enviados (24h)</div>
+    <div class="kpi-value" style="color:{% if failed_24h %}var(--amber){% else %}#f1f5f9{% endif %};">{{ sent_24h }}</div>
+    <div style="font-size:11px;margin-top:4px;">
+      {% if failed_24h %}
+      <span style="color:var(--red);font-weight:600;">{{ failed_24h }} fallido{{ failed_24h|pluralize:"s" }}</span>
+      {% else %}
+      <span style="color:var(--green);">Sin errores</span>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Timestamp de actualización -->
+  <div class="kpi-card" style="display:flex;flex-direction:column;justify-content:center;align-items:center;gap:6px;">
+    <div style="display:flex;align-items:center;gap:6px;">
+      <span class="dot dot-on dot-pulse"></span>
+      <span class="mono" style="font-size:10px;color:var(--green);font-weight:600;letter-spacing:0.04em;">LIVE</span>
+    </div>
+    <div class="mono" style="font-size:18px;font-weight:700;color:#f1f5f9;">{{ now|date:"H:i:s" }}</div>
+    <div style="font-size:10px;color:var(--text-4);">Actualiza cada 10s</div>
+  </div>
+</div>
+
+<!-- Tabla de checks SMTP + Logs en dos columnas -->
+<div style="display:grid;grid-template-columns:0.65fr 1.35fr;gap:12px;">
+
+  <!-- Checks SMTP recientes -->
+  <div class="card" style="overflow:hidden;">
+    <div class="card-header">
+      <span class="card-title">Verificaciones SMTP</span>
+      <span class="mono" style="font-size:10px;color:var(--text-4);">Últimas 12</span>
+    </div>
+    {% for check in recent_checks %}
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 18px;border-bottom:1px solid rgba(255,255,255,0.03);">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span class="dot {% if check.status == 'ok' %}dot-on{% elif check.status == 'timeout' %}dot-warn{% else %}dot-off{% endif %}"></span>
+        <span class="mono" style="font-size:11px;color:var(--text-3);">{{ check.checked_at|date:"H:i:s" }}</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        {% if check.response_ms %}
+        <span class="mono" style="font-size:11px;
+          {% if check.response_ms < 500 %}color:var(--green);
+          {% elif check.response_ms < 2000 %}color:var(--amber);
+          {% else %}color:var(--red);{% endif %}">{{ check.response_ms }}ms</span>
+        {% endif %}
+        <span class="badge {% if check.status == 'ok' %}badge-ok{% elif check.status == 'timeout' %}badge-warn{% else %}badge-crit{% endif %}" style="padding:1px 6px;font-size:9px;">
+          {{ check.get_status_display }}
+        </span>
+      </div>
+    </div>
+    {% empty %}
+    <div style="padding:28px;text-align:center;font-size:12px;color:var(--text-4);">Sin verificaciones.<br>Se ejecutan cada hora automáticamente.</div>
+    {% endfor %}
+  </div>
+
+  <!-- Email logs recientes -->
+  <div class="card" style="overflow:hidden;">
+    <div class="card-header">
+      <span class="card-title">Emails enviados</span>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span style="display:flex;align-items:center;gap:4px;padding:2px 7px;background:rgba(124,58,237,0.08);border:1px solid rgba(124,58,237,0.15);border-radius:5px;">
+          <span style="width:5px;height:5px;border-radius:50%;background:#a78bfa;display:inline-block;"></span>
+          <span class="mono" style="font-size:9px;color:#a78bfa;font-weight:600;">Brevo webhook</span>
+        </span>
+        <span class="mono" style="font-size:10px;color:var(--text-4);">Últimos 20</span>
+      </div>
+    </div>
+    {% for log in recent_logs %}
+    <div style="display:flex;align-items:center;gap:12px;padding:10px 18px;border-bottom:1px solid rgba(255,255,255,0.03);">
+      <!-- Indicador -->
+      <span class="dot {% if log.status == 'sent' %}dot-on{% elif log.status == 'failed' %}dot-off{% else %}dot-warn{% endif %}" style="flex-shrink:0;"></span>
+      <!-- Contenido -->
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:12px;font-weight:500;color:#cbd5e1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+          {{ log.subject|truncatechars:58 }}
+        </div>
+        <div class="mono" style="font-size:10px;color:var(--text-4);margin-top:1px;display:flex;align-items:center;gap:8px;">
+          <span>{{ log.sent_at|date:"d/m H:i" }}</span>
+          <span style="color:var(--text-3);">→ {{ log.recipient }}</span>
+          <span class="badge badge-gray" style="padding:0px 5px;font-size:9px;">{{ log.get_category_display }}</span>
+          {% if log.error_msg %}
+          <span style="color:var(--red);">{{ log.error_msg|truncatechars:35 }}</span>
+          {% endif %}
+        </div>
+      </div>
+      <!-- Badge estado con origen Brevo -->
+      <span class="badge {% if log.status == 'sent' %}badge-ok{% elif log.status == 'failed' %}badge-crit{% else %}badge-warn{% endif %}" style="flex-shrink:0;">
+        {% if log.status == 'sent' %}✓ Entregado
+        {% elif log.status == 'bounced' %}↩ Rebotado
+        {% else %}✗ Fallido{% endif %}
+      </span>
+    </div>
+    {% empty %}
+    <div style="padding:40px;text-align:center;font-size:12px;color:var(--text-4);">
+      Sin emails registrados aún.<br>
+      <span style="font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--text-4);">Los emails enviados por el sistema aparecerán aquí.</span>
+    </div>
+    {% endfor %}
+  </div>
+</div>

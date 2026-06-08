@@ -1,0 +1,16 @@
+<div style="padding:16px 18px;display:flex;flex-direction:column;gap:14px;">
+  {% for lic in licenses %}
+  <div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+      <span style="font-size:12px;font-weight:500;color:#94a3b8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:65%;">{{ lic.friendly_name|default:lic.sku_part_number }}</span>
+      <span class="mono" style="font-size:11px;{% if lic.utilization_status == 'critical' %}color:var(--red);font-weight:600;{% elif lic.utilization_status == 'warning' %}color:var(--amber);{% else %}color:var(--text-3);{% endif %}">{{ lic.consumed_licenses }}/{{ lic.total_licenses }}</span>
+    </div>
+    <div class="bar-track">
+      <div class="bar-fill {% if lic.utilization_status == 'critical' %}bar-red{% elif lic.utilization_status == 'warning' %}bar-amber{% else %}bar-blue{% endif %}" style="width:{{ lic.utilization_percent }}%;"></div>
+    </div>
+    <div style="font-size:10px;color:var(--text-4);margin-top:4px;">{{ lic.available_licenses }} disponibles · {{ lic.capability_status }}</div>
+  </div>
+  {% empty %}
+  <div style="text-align:center;font-size:12px;color:var(--text-4);padding:12px 0;">Sin licencias M365 configuradas.</div>
+  {% endfor %}
+</div>

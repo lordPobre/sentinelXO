@@ -1,0 +1,145 @@
+{% extends "base/layout.html" %}
+{% block title %}{{ client.company_name }} — Panel{% endblock %}
+{% block page_title %}{{ client.company_name }}{% endblock %}
+{% block page_subtitle %}<div class="mono" style="font-size:10px;color:var(--text-3);margin-top:1px;">panel de monitoreo · {{ client.get_plan_display|lower }}</div>{% endblock %}
+
+{% block header_actions %}
+<a href="{% url 'dashboard:realtime' client.id %}" class="btn-primary" style="background:rgba(16,185,129,0.12);color:var(--green);border:1px solid rgba(16,185,129,0.2);">
+  <span class="dot dot-on dot-pulse" style="width:6px;height:6px;flex-shrink:0;"></span>
+  Monitor en vivo
+</a>
+{% endblock %}
+
+{% block content %}
+
+<!-- KPIs -->
+<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:18px;">
+  <div class="kpi-card {% if uptime_percent and uptime_percent >= 99 %}kpi-accent{% endif %} fu"
+       style="{% if uptime_percent and uptime_percent >= 99 %}border-color:rgba(16,185,129,0.25);{% elif uptime_percent and uptime_percent < 99 %}border-color:rgba(245,158,11,0.2);{% endif %}">
+    {% if uptime_percent and uptime_percent >= 99 %}
+    <div style="position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(16,185,129,0.5),transparent);"></div>
+    {% endif %}
+    <div class="kpi-label">Disponibilidad del mes</div>
+    {% if uptime_percent is not None %}
+    <div class="kpi-value" style="{% if uptime_percent >= 99 %}color:var(--green);{% elif uptime_percent >= 95 %}color:var(--amber);{% else %}color:var(--red);{% endif %}">{{ uptime_percent }}%</div>
+    <div class="bar-track" style="margin-bottom:6px;"><div class="bar-fill {% if uptime_percent >= 99 %}bar-green{% elif uptime_percent >= 95 %}bar-amber{% else %}bar-red{% endif %}" style="width:{{ uptime_percent }}%;"></div></div>
+    {% else %}
+    <div class="kpi-value" style="color:var(--text-4);font-size:18px;padding-top:4px;">Sin datos</div>
+    {% endif %}
+    <div style="font-size:11px;color:var(--text-4);">Telemetría del mes actual</div>
+  </div>
+
+  <div class="kpi-card fu-1">
+    <div class="kpi-label">Incidentes resueltos</div>
+    <div class="kpi-value">{{ incidents_resolved_count }}</div>
+    <div style="font-size:11px;color:var(--text-4);">Últimos 30 días · automáticos</div>
+  </div>
+
+  <div class="kpi-card fu-2">
+    <div class="kpi-label">Equipos en red</div>
+    <div class="kpi-value">{{ devices|length }}</div>
+    <div style="display:flex;align-items:center;gap:4px;margin-top:6px;flex-wrap:wrap;">
+      {% for d in devices %}<span class="dot {% if d.is_online %}dot-on{% elif d.status == 'warning' %}dot-warn{% else %}dot-off{% endif %}" title="{{ d.display_name }}"></span>{% endfor %}
+    </div>
+  </div>
+</div>
+
+<!-- Equipos + Detalle HTMX -->
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+  <div class="card fu-2" style="overflow:hidden;">
+    <div class="card-header"><span class="card-title">Equipos</span></div>
+    {% for device in devices %}
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 18px;border-bottom:1px solid rgba(255,255,255,0.03);cursor:pointer;"
+         class="row-hover"
+         hx-get="{% url 'dashboard:htmx-device-detail' device.id %}"
+         hx-target="#device-panel" hx-swap="innerHTML">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span class="dot {% if device.is_online %}dot-on{% elif device.status == 'warning' %}dot-warn{% else %}dot-off{% endif %}"></span>
+        <div>
+          <div style="font-size:13px;font-weight:500;color:#cbd5e1;">{{ device.display_name }}</div>
+          <div class="mono" style="font-size:10px;color:var(--text-4);">{{ device.os|default:"—" }}</div>
+        </div>
+      </div>
+      <span class="badge {% if device.status == 'online' %}badge-ok{% elif device.status == 'warning' %}badge-warn{% elif device.status == 'offline' %}badge-crit{% else %}badge-gray{% endif %}">
+        {% if device.status == 'online' %}En línea{% elif device.status == 'warning' %}Alerta{% elif device.status == 'offline' %}Offline{% else %}Sin datos{% endif %}
+      </span>
+    </div>
+    {% empty %}
+    <div style="padding:36px;text-align:center;font-size:12px;color:var(--text-4);">Sin equipos registrados.</div>
+    {% endfor %}
+  </div>
+
+  <div class="card fu-3" style="overflow:hidden;">
+    <div class="card-header"><span class="card-title">Detalle del equipo</span></div>
+    <div id="device-panel" style="padding:36px;text-align:center;font-size:12px;color:var(--text-4);">
+      Haga clic en un equipo para ver su estado.
+    </div>
+  </div>
+</div>
+
+<!-- Dominios + Licencias -->
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+  <div class="card fu-3" style="overflow:hidden;">
+    <div class="card-header">
+      <span class="card-title">Vencimientos de dominios</span>
+      {% if domains_critical %}<span class="badge badge-crit">{{ domains_critical }} crítico{{ domains_critical|pluralize:"s" }}</span>{% endif %}
+    </div>
+    {% for domain in domains %}
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 18px;border-bottom:1px solid rgba(255,255,255,0.03);">
+      <div>
+        <div class="mono" style="font-size:12px;font-weight:500;color:#94a3b8;">{{ domain.fqdn }}</div>
+        <div style="font-size:10px;color:var(--text-4);margin-top:1px;">
+          {% if domain.expiry_date %}Vence {{ domain.expiry_date|date:"d/m/Y" }}{% else %}Sin fecha{% endif %}
+          {% if not domain.resolves_dns %} · <span style="color:var(--red);">DNS falla</span>{% endif %}
+        </div>
+      </div>
+      <span class="badge {% if domain.status == 'critical' or domain.status == 'expired' %}badge-crit{% elif domain.status == 'warning' %}badge-warn{% elif domain.status == 'ok' %}badge-ok{% else %}badge-gray{% endif %}">
+        {% if domain.days_until_expiry is not None %}{% if domain.days_until_expiry < 0 %}Vencido{% else %}{{ domain.days_until_expiry }}d{% endif %}{% else %}—{% endif %}
+      </span>
+    </div>
+    {% empty %}
+    <div style="padding:32px;text-align:center;font-size:12px;color:var(--text-4);">Sin dominios.</div>
+    {% endfor %}
+  </div>
+
+  <div class="card fu-4" style="overflow:hidden;">
+    <div class="card-header"><span class="card-title">Licencias Microsoft 365</span></div>
+    <div style="padding:16px 18px;display:flex;flex-direction:column;gap:14px;">
+      {% for lic in licenses %}
+      <div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+          <span style="font-size:12px;font-weight:500;color:#94a3b8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:68%;">{{ lic.friendly_name|default:lic.sku_part_number }}</span>
+          <span class="mono" style="font-size:11px;{% if lic.utilization_status == 'critical' %}color:var(--red);font-weight:600;{% elif lic.utilization_status == 'warning' %}color:var(--amber);{% else %}color:var(--text-3);{% endif %}">{{ lic.consumed_licenses }}/{{ lic.total_licenses }}</span>
+        </div>
+        <div class="bar-track">
+          <div class="bar-fill {% if lic.utilization_status == 'critical' %}bar-red{% elif lic.utilization_status == 'warning' %}bar-amber{% else %}bar-blue{% endif %}" style="width:{{ lic.utilization_percent }}%;"></div>
+        </div>
+        <div style="font-size:10px;color:var(--text-4);margin-top:4px;">{{ lic.available_licenses }} disponibles · {{ lic.utilization_percent }}% uso</div>
+      </div>
+      {% empty %}
+      <div style="text-align:center;font-size:12px;color:var(--text-4);padding:12px 0;">M365 no configurado.</div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<!-- Actividad reciente -->
+<div class="card fu-4" style="overflow:hidden;">
+  <div class="card-header"><span class="card-title">Actividad de mantenimiento</span></div>
+  {% for incident in incidents_recent %}
+  <div style="display:flex;align-items:flex-start;gap:12px;padding:13px 18px;border-bottom:1px solid rgba(255,255,255,0.03);">
+    <span class="dot {% if incident.is_resolved %}dot-on{% elif incident.severity in 'critical,high' %}dot-off{% else %}dot-warn{% endif %}" style="margin-top:3px;flex-shrink:0;"></span>
+    <div style="flex:1;min-width:0;">
+      <div style="font-size:13px;color:#cbd5e1;{% if incident.is_resolved %}opacity:0.45;text-decoration:line-through;{% endif %}">{{ incident.title }}</div>
+      <div class="mono" style="font-size:10px;color:var(--text-4);margin-top:2px;">
+        {{ incident.created_at|date:"d/m/Y H:i" }}{% if incident.device %} · {{ incident.device.display_name }}{% endif %} · {{ incident.get_severity_display }}
+      </div>
+    </div>
+    <span class="badge {% if incident.is_resolved %}badge-ok{% else %}badge-warn{% endif %}" style="flex-shrink:0;">{% if incident.is_resolved %}Resuelto{% else %}En curso{% endif %}</span>
+  </div>
+  {% empty %}
+  <div style="padding:32px;text-align:center;font-size:12px;color:var(--text-4);">Sin actividad reciente.</div>
+  {% endfor %}
+</div>
+
+{% endblock %}

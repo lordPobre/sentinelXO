@@ -1,0 +1,100 @@
+{% extends "base/layout.html" %}
+{% block title %}Clientes — Sentinel XO{% endblock %}
+{% block page_title %}Clientes{% endblock %}
+{% block page_subtitle %}<div class="mono" style="font-size:10px;color:var(--text-3);margin-top:1px;">{{ clients|length }} registrado{{ clients|length|pluralize:"s" }}</div>{% endblock %}
+{% block header_actions %}
+<a href="/admin/core/client/add/" class="btn-primary">
+  <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 5v14M5 12h14"/></svg>
+  Nuevo cliente
+</a>
+{% endblock %}
+
+{% block content %}
+<div style="margin-bottom:14px;" class="fu">
+  <input type="text" id="client-search" class="px-input" style="max-width:300px;"
+         placeholder="Buscar por nombre, email o RUT…"
+         oninput="filterClients(this.value)">
+</div>
+
+<div class="card fu-1" style="overflow:hidden;">
+  <table class="px-table">
+    <thead><tr>
+      <th>Empresa</th><th>RUT</th><th>Equipos</th><th>Dominios</th><th>Plan</th><th>Estado</th><th style="text-align:right;">Acciones</th>
+    </tr></thead>
+    <tbody id="clients-tbody">
+      {% for client in clients %}
+      {% with health=client.get_health_status %}
+      <tr class="client-row" data-search="{{ client.company_name|lower }} {{ client.rut|lower }} {{ client.contact_email|lower }}">
+        <td>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <div class="avatar av-blue">{{ client.company_name|slice:":2"|upper }}</div>
+            <div>
+              <div style="font-size:13px;font-weight:600;color:#cbd5e1;">{{ client.company_name }}</div>
+              <div class="mono" style="font-size:10px;color:var(--text-4);">{{ client.contact_email }}</div>
+            </div>
+          </div>
+        </td>
+        <td><span class="mono" style="font-size:11px;color:var(--text-3);">{{ client.rut|default:"—" }}</span></td>
+        <td>
+          <div style="display:flex;align-items:center;gap:4px;">
+            {% for d in client.devices.all|slice:":6" %}
+            <span class="dot {% if d.is_online %}dot-on{% elif d.status == 'warning' %}dot-warn{% else %}dot-off{% endif %}" title="{{ d.display_name }}"></span>
+            {% endfor %}
+            {% if client.devices.count > 6 %}<span style="font-size:10px;color:var(--text-4);">+{{ client.devices.count|add:"-6" }}</span>{% endif %}
+            {% if client.devices.count %}<span style="font-size:11px;color:var(--text-3);margin-left:4px;">{{ client.devices.count }}</span>{% else %}<span style="font-size:11px;color:var(--text-4);">—</span>{% endif %}
+          </div>
+        </td>
+        <td>
+          <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;">
+            <span style="font-size:11px;color:var(--text-3);">{{ client.domains.count }}</span>
+            {% for d in client.domains.all %}{% if d.status == 'critical' or d.status == 'expired' %}<span class="badge badge-crit">{{ d.fqdn|truncatechars:10 }}</span>{% elif d.status == 'warning' %}<span class="badge badge-warn">{{ d.fqdn|truncatechars:10 }}</span>{% endif %}{% endfor %}
+          </div>
+        </td>
+        <td><span class="badge badge-blue">{{ client.get_plan_display }}</span></td>
+        <td>
+          <span class="badge {% if health == 'ok' %}badge-ok{% elif health == 'warning' %}badge-warn{% elif health == 'critical' %}badge-crit{% else %}badge-gray{% endif %}">
+            <span class="dot {% if health == 'ok' %}dot-on{% elif health == 'warning' %}dot-warn{% elif health == 'critical' %}dot-off{% else %}dot-idle{% endif %}"></span>
+            {% if health == 'ok' %}OK{% elif health == 'warning' %}Atención{% elif health == 'critical' %}Crítico{% else %}—{% endif %}
+          </span>
+        </td>
+        <td style="text-align:right;">
+          <div style="display:flex;align-items:center;justify-content:flex-end;gap:6px;">
+            <a href="{% url 'dashboard:admin-client-detail' client.id %}" class="btn-ghost" style="padding:5px 10px;font-size:11px;">Ver</a>
+            <a href="{% url 'dashboard:client-portal' client.id %}" class="btn-icon" title="Vista cliente">
+              <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3" stroke-width="1.5"/></svg>
+            </a>
+          </div>
+        </td>
+      </tr>
+      {% endwith %}
+      {% empty %}
+      <tr><td colspan="7" style="text-align:center;padding:52px;color:var(--text-4);">No hay clientes aún. <a href="/admin/core/client/add/" style="color:#2563eb;">Crear el primero →</a></td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% if clients %}
+  <div style="padding:11px 18px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;">
+    <span id="visible-count" class="mono" style="font-size:10px;color:var(--text-4);">{{ clients|length }} clientes</span>
+    <div style="display:flex;align-items:center;gap:12px;font-size:10px;color:var(--text-4);">
+      <span style="display:flex;align-items:center;gap:4px;"><span class="dot dot-on"></span> online</span>
+      <span style="display:flex;align-items:center;gap:4px;"><span class="dot dot-warn"></span> advertencia</span>
+      <span style="display:flex;align-items:center;gap:4px;"><span class="dot dot-off"></span> offline</span>
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+<script>
+function filterClients(q){
+  q=q.toLowerCase().trim();
+  let v=0;
+  document.querySelectorAll('.client-row').forEach(r=>{
+    const m=!q||r.dataset.search.includes(q);
+    r.style.display=m?'':'none';
+    if(m)v++;
+  });
+  const c=document.getElementById('visible-count');
+  if(c)c.textContent=v+' cliente'+(v!==1?'s':'');
+}
+</script>
+{% endblock %}

@@ -1,0 +1,524 @@
+{% extends "base/layout.html" %}
+{% block title %}{{ device.display_name }} — Monitor{% endblock %}
+{% block page_title %}{{ device.display_name }}{% endblock %}
+{% block page_subtitle %}
+<div style="display:flex;align-items:center;gap:8px;">
+  <div class="mono" style="font-size:10px;color:var(--text-3);margin-top:1px;">{{ device.client.company_name }} · {{ device.get_device_type_display }}</div>
+  <span id="dev-status-badge" class="badge badge-gray">Cargando…</span>
+</div>
+{% endblock %}
+
+{% block header_actions %}
+<div style="display:flex;align-items:center;gap:6px;padding:4px 10px;background:rgba(16,185,129,0.05);border:1px solid rgba(16,185,129,0.13);border-radius:7px;">
+  <span class="dot dot-on dot-pulse"></span>
+  <span class="mono" style="font-size:10px;color:#10b981;font-weight:600;">LIVE</span>
+  <span class="mono" style="font-size:10px;color:var(--text-4);" id="dev-last-update">—</span>
+</div>
+<a href="{% url 'dashboard:realtime' device.client.id %}" class="btn-ghost">← Flota</a>
+{% endblock %}
+
+{% block extra_head %}
+<style>
+  .gauge-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+  .gauge-ring {
+    transform: rotate(-90deg);
+    transition: stroke-dashoffset 0.8s ease;
+  }
+  .gauge-val {
+    font-size: 28px;
+    font-weight: 700;
+    font-family: 'JetBrains Mono', monospace;
+    line-height: 1;
+    transition: color 0.4s;
+  }
+  .gauge-label {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-4);
+    margin-top: 4px;
+  }
+  .chart-card {
+    background: #0d1117;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 18px 20px;
+    position: relative;
+  }
+  .chart-card::before {
+    content: '';
+    position: absolute; top:0; left:0; right:0; height:1px;
+    background: linear-gradient(90deg,transparent,rgba(255,255,255,0.06),transparent);
+  }
+  .chart-title {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-3);
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .disk-block {
+    background: rgba(255,255,255,0.02);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+  }
+  .disk-name { font-size: 12px; font-weight: 500; color: #94a3b8; font-family: 'JetBrains Mono', monospace; }
+  .disk-size { font-size: 10px; color: var(--text-4); margin-top: 2px; }
+  .disk-bar-track { height: 6px; background: rgba(255,255,255,0.05); border-radius: 3px; overflow: hidden; margin: 10px 0 6px; }
+  .disk-bar-fill  { height: 6px; border-radius: 3px; transition: width 0.8s ease, background 0.4s; }
+  .info-row { display:flex; align-items:center; justify-content:space-between; padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.04); }
+  .info-row:last-child { border-bottom: none; }
+  .info-key { font-size: 11px; color: var(--text-4); }
+  .info-val { font-size: 11px; color: var(--text-2); font-family: 'JetBrains Mono', monospace; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- Gauges principales -->
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:14px;">
+
+  <!-- CPU Gauge -->
+  <div class="chart-card" style="display:flex;flex-direction:column;align-items:center;padding:24px 20px;">
+    <div class="gauge-wrap">
+      <svg width="120" height="120" viewBox="0 0 120 120">
+        <circle cx="60" cy="60" r="50" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="10"/>
+        <circle id="gauge-cpu-ring" class="gauge-ring" cx="60" cy="60" r="50"
+                fill="none" stroke="#3b82f6" stroke-width="10"
+                stroke-linecap="round"
+                stroke-dasharray="314" stroke-dashoffset="314"/>
+        <text x="60" y="56" text-anchor="middle" dominant-baseline="central"
+              id="gauge-cpu-val" class="gauge-val" fill="#f1f5f9">—</text>
+        <text x="60" y="76" text-anchor="middle" fill="#64748b"
+              style="font-size:10px;font-family:'JetBrains Mono',monospace;">CPU</text>
+      </svg>
+    </div>
+    <div id="cpu-cores" class="mono" style="font-size:10px;color:var(--text-4);margin-top:4px;">—</div>
+  </div>
+
+  <!-- RAM Gauge -->
+  <div class="chart-card" style="display:flex;flex-direction:column;align-items:center;padding:24px 20px;">
+    <div class="gauge-wrap">
+      <svg width="120" height="120" viewBox="0 0 120 120">
+        <circle cx="60" cy="60" r="50" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="10"/>
+        <circle id="gauge-ram-ring" class="gauge-ring" cx="60" cy="60" r="50"
+                fill="none" stroke="#10b981" stroke-width="10"
+                stroke-linecap="round"
+                stroke-dasharray="314" stroke-dashoffset="314"/>
+        <text x="60" y="56" text-anchor="middle" dominant-baseline="central"
+              id="gauge-ram-val" class="gauge-val" fill="#f1f5f9">—</text>
+        <text x="60" y="76" text-anchor="middle" fill="#64748b"
+              style="font-size:10px;font-family:'JetBrains Mono',monospace;">RAM</text>
+      </svg>
+    </div>
+    <div id="ram-detail" class="mono" style="font-size:10px;color:var(--text-4);margin-top:4px;">—</div>
+  </div>
+
+  <!-- Uptime -->
+  <div class="chart-card" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;">
+    <div style="font-size:9px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-4);">Uptime</div>
+    <div id="uptime-val" class="mono" style="font-size:22px;font-weight:700;color:#f1f5f9;text-align:center;">—</div>
+    <div style="font-size:9px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-4);">IP local</div>
+    <div id="ip-val" class="mono" style="font-size:13px;color:#60a5fa;">—</div>
+  </div>
+
+  <!-- Estado e info -->
+  <div class="chart-card" style="display:flex;flex-direction:column;justify-content:center;gap:0;">
+    <div class="info-row">
+      <span class="info-key">Estado</span>
+      <span id="info-status" class="info-val">—</span>
+    </div>
+    <div class="info-row">
+      <span class="info-key">Sistema</span>
+      <span id="info-os" class="info-val" style="font-size:10px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">—</span>
+    </div>
+    <div class="info-row">
+      <span class="info-key">Último dato</span>
+      <span id="info-ts" class="info-val">—</span>
+    </div>
+    <div class="info-row">
+      <span class="info-key">Tipo</span>
+      <span class="info-val">{{ device.get_device_type_display }}</span>
+    </div>
+  </div>
+</div>
+
+<!-- Gráficos históricos -->
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
+
+  <!-- CPU histórico -->
+  <div class="chart-card">
+    <div class="chart-title">
+      Uso de CPU
+      <span id="cpu-current" class="mono" style="font-size:13px;font-weight:700;color:#3b82f6;">—</span>
+    </div>
+    <div style="position:relative;height:140px;"><canvas id="chart-cpu"></canvas></div>
+  </div>
+
+  <!-- RAM histórico -->
+  <div class="chart-card">
+    <div class="chart-title">
+      Uso de RAM
+      <span id="ram-current" class="mono" style="font-size:13px;font-weight:700;color:#10b981;">—</span>
+    </div>
+    <div style="position:relative;height:140px;"><canvas id="chart-ram"></canvas></div>
+  </div>
+</div>
+
+<!-- Discos -->
+<div class="chart-card" style="margin-bottom:14px;">
+  <div class="chart-title">Almacenamiento</div>
+  <div id="disks-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;">
+    <div class="disk-block">
+      <div class="disk-name" style="color:var(--text-4);">Cargando…</div>
+    </div>
+  </div>
+</div>
+
+<!-- Temperaturas -->
+<div class="chart-card" style="margin-bottom:14px;" id="temp-section" style="display:none;">
+  <div class="chart-title">
+    Temperaturas
+    <span class="mono" style="font-size:10px;color:var(--text-4);" id="temp-count">—</span>
+  </div>
+  <div id="temps-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;">
+    <div style="color:var(--text-4);font-size:12px;padding:8px;">Sin sensores disponibles.</div>
+  </div>
+</div>
+
+<!-- CPU + RAM combinado (últimos 5 min) -->
+<div class="chart-card">
+  <div class="chart-title">
+    CPU vs RAM — últimas lecturas
+    <span class="mono" style="font-size:10px;color:var(--text-4);" id="chart-count">0 lecturas</span>
+  </div>
+  <div style="position:relative;height:120px;"><canvas id="chart-combined"></canvas></div>
+</div>
+
+<script>
+const DEVICE_ID = "{{ device.id }}";
+const API_URL   = "/api/v1/devices/" + DEVICE_ID + "/history/?limit=120";
+
+const CIRCUMFERENCE = 314;
+
+function pctColor(v) {
+  if (v >= 90) return "#ef4444";
+  if (v >= 75) return "#f59e0b";
+  return null;
+}
+
+function updateGauge(ringId, valId, value, defaultColor) {
+  const ring = document.getElementById(ringId);
+  const val  = document.getElementById(valId);
+  if (!ring || !val) return;
+  const offset = CIRCUMFERENCE - (value / 100) * CIRCUMFERENCE;
+  ring.style.strokeDashoffset = offset;
+  const color = pctColor(value) || defaultColor;
+  ring.setAttribute("stroke", color);
+  val.textContent  = value.toFixed(1) + "%";
+  val.style.fill   = color;
+  val.setAttribute("fill", color);
+}
+
+// Opciones base compartidas por todos los charts
+function baseOpts(extraPlugins) {
+  return {
+    responsive: true,
+    maintainAspectRatio: false,
+    animation: { duration: 300 },
+    interaction: { mode: "index", intersect: false },
+    scales: {
+      x: {
+        display: true,
+        grid: { color: "rgba(255,255,255,0.03)", drawTicks: false },
+        ticks: {
+          color: "#475569",
+          font: { size: 9, family: "'JetBrains Mono',monospace" },
+          maxTicksLimit: 8,
+          maxRotation: 0,
+        },
+        border: { display: false },
+      },
+      y: {
+        display: true,
+        min: 0, max: 100,
+        grid: { color: "rgba(255,255,255,0.04)", drawTicks: false },
+        ticks: {
+          color: "#475569",
+          font: { size: 9, family: "'JetBrains Mono',monospace" },
+          callback: v => v + "%",
+          maxTicksLimit: 5,
+          padding: 6,
+        },
+        border: { display: false },
+      },
+    },
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        backgroundColor: "#0d1117",
+        borderColor: "rgba(255,255,255,0.08)",
+        borderWidth: 1,
+        titleFont: { size: 10, family: "'JetBrains Mono',monospace" },
+        bodyFont:  { size: 11, family: "'JetBrains Mono',monospace" },
+        titleColor: "#64748b",
+        bodyColor: "#e2e8f0",
+        padding: 10,
+        callbacks: { label: ctx => " " + ctx.dataset.label + ": " + ctx.raw.toFixed(1) + "%" },
+      },
+      ...(extraPlugins || {}),
+    },
+  };
+}
+
+// Chart CPU
+const ctxCpu = document.getElementById("chart-cpu").getContext("2d");
+const chartCpu = new Chart(ctxCpu, {
+  type: "line",
+  data: {
+    labels: [],
+    datasets: [{
+      label: "CPU",
+      data: [],
+      borderColor: "#3b82f6",
+      backgroundColor: "rgba(37,99,235,0.08)",
+      borderWidth: 2,
+      pointRadius: 0,
+      pointHoverRadius: 4,
+      pointHoverBackgroundColor: "#3b82f6",
+      fill: true,
+      tension: 0.4,
+    }],
+  },
+  options: baseOpts(),
+});
+
+// Chart RAM
+const ctxRam = document.getElementById("chart-ram").getContext("2d");
+const chartRam = new Chart(ctxRam, {
+  type: "line",
+  data: {
+    labels: [],
+    datasets: [{
+      label: "RAM",
+      data: [],
+      borderColor: "#10b981",
+      backgroundColor: "rgba(16,185,129,0.07)",
+      borderWidth: 2,
+      pointRadius: 0,
+      pointHoverRadius: 4,
+      pointHoverBackgroundColor: "#10b981",
+      fill: true,
+      tension: 0.4,
+    }],
+  },
+  options: baseOpts(),
+});
+
+// Chart combinado
+const ctxComb = document.getElementById("chart-combined").getContext("2d");
+const chartComb = new Chart(ctxComb, {
+  type: "line",
+  data: {
+    labels: [],
+    datasets: [
+      {
+        label: "CPU",
+        data: [],
+        borderColor: "#3b82f6",
+        backgroundColor: "rgba(37,99,235,0.06)",
+        borderWidth: 1.5,
+        pointRadius: 0,
+        fill: true,
+        tension: 0.4,
+      },
+      {
+        label: "RAM",
+        data: [],
+        borderColor: "#10b981",
+        backgroundColor: "rgba(16,185,129,0.05)",
+        borderWidth: 1.5,
+        pointRadius: 0,
+        fill: true,
+        tension: 0.4,
+      },
+    ],
+  },
+  options: baseOpts({
+    legend: {
+      display: true,
+      labels: {
+        color: "#64748b",
+        font: { size: 10, family: "'JetBrains Mono',monospace" },
+        boxWidth: 12,
+        padding: 16,
+        usePointStyle: true,
+        pointStyle: "line",
+      },
+    },
+  }),
+});
+
+function updateCharts(labels, cpuData, ramData) {
+  [chartCpu, chartRam, chartComb].forEach(c => {
+    c.data.labels = labels;
+  });
+  chartCpu.data.datasets[0].data  = cpuData;
+  chartRam.data.datasets[0].data  = ramData;
+  chartComb.data.datasets[0].data = cpuData;
+  chartComb.data.datasets[1].data = ramData;
+  [chartCpu, chartRam, chartComb].forEach(c => c.update("none"));
+
+  document.getElementById("chart-count").textContent = labels.length + " lecturas";
+}
+
+function updateDisks(disks) {
+  const grid = document.getElementById("disks-grid");
+  if (!disks || !disks.length) {
+    grid.innerHTML = '<div class="disk-block"><div class="disk-name" style="color:var(--text-4);">Sin datos de disco</div></div>';
+    return;
+  }
+  grid.innerHTML = disks.map(disk => {
+    const pct   = disk.used_percent.toFixed(1);
+    const color = disk.used_percent >= 90 ? "#ef4444" : disk.used_percent >= 75 ? "#f59e0b" : "#3b82f6";
+    const used  = (disk.total_gb * disk.used_percent / 100).toFixed(1);
+    return `
+      <div class="disk-block">
+        <div class="disk-name">${disk.mountpoint}</div>
+        <div class="disk-size">${used} GB usados de ${disk.total_gb} GB</div>
+        <div class="disk-bar-track">
+          <div class="disk-bar-fill" style="width:${pct}%;background:${color};"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;">
+          <span class="mono" style="font-size:11px;color:${color};font-weight:600;">${pct}%</span>
+          <span class="mono" style="font-size:10px;color:var(--text-4);">${(disk.total_gb - used).toFixed(1)} GB libres</span>
+        </div>
+      </div>`;
+  }).join("");
+}
+
+function timeAgo(iso) {
+  if (!iso) return "—";
+  const s = Math.floor((Date.now() - new Date(iso)) / 1000);
+  if (s < 10)  return "ahora mismo";
+  if (s < 60)  return s + "s atrás";
+  if (s < 3600) return Math.floor(s/60) + "m atrás";
+  return Math.floor(s/3600) + "h atrás";
+}
+
+async function poll() {
+  try {
+    const res = await fetch(API_URL, { credentials: "same-origin" });
+    if (!res.ok) return;
+    const data = await res.json();
+
+    // Badge de estado
+    const badge = document.getElementById("dev-status-badge");
+    if (data.is_online) {
+      badge.className = "badge badge-ok";
+      badge.textContent = "● En línea";
+    } else {
+      badge.className = "badge badge-crit";
+      badge.textContent = "● Offline";
+    }
+
+    // Info panel
+    document.getElementById("info-status").textContent  = data.is_online ? "En línea" : "Offline";
+    document.getElementById("info-status").style.color  = data.is_online ? "#10b981" : "#ef4444";
+    document.getElementById("info-os").textContent      = data.os || "—";
+    document.getElementById("info-ts").textContent      = timeAgo(data.last_seen);
+    document.getElementById("dev-last-update").textContent = new Date().toLocaleTimeString("es-CL");
+
+    if (data.current) {
+      const cur = data.current;
+      // Gauges
+      updateGauge("gauge-cpu-ring", "gauge-cpu-val", cur.cpu, "#3b82f6");
+      updateGauge("gauge-ram-ring", "gauge-ram-val", cur.ram, "#10b981");
+      // Valores en texto
+      document.getElementById("cpu-current").textContent = cur.cpu.toFixed(1) + "%";
+      document.getElementById("cpu-current").style.color = pctColor(cur.cpu) || "#3b82f6";
+      document.getElementById("ram-current").textContent = cur.ram.toFixed(1) + "%";
+      document.getElementById("ram-current").style.color = pctColor(cur.ram) || "#10b981";
+      // Uptime e IP
+      document.getElementById("uptime-val").textContent  = cur.uptime_human || "—";
+      document.getElementById("ip-val").textContent      = data.ip_address || "—";
+      // RAM detalle
+      if (cur.ram_total_gb) {
+        const used = (cur.ram_total_gb * cur.ram / 100).toFixed(1);
+        document.getElementById("ram-detail").textContent = used + " / " + cur.ram_total_gb + " GB";
+      }
+      // Discos
+      updateDisks(cur.disk_usage);
+
+      // Temperaturas
+      updateTemperatures(cur.temperatures || []);
+
+      // CPU info
+      const freqEl  = document.getElementById("info-freq");
+      const coresEl = document.getElementById("info-cores");
+      if (freqEl && cur.cpu_freq_mhz)
+        freqEl.textContent = (cur.cpu_freq_mhz / 1000).toFixed(2) + " GHz";
+      if (coresEl && cur.cpu_cores)
+        coresEl.textContent = cur.cpu_cores + " físicos / " + (cur.cpu_threads || "?") + " hilos";
+    }
+
+    // Gráficos históricos
+    if (data.history && data.history.length) {
+      const labels  = data.history.map(h => h.t);
+      const cpuData = data.history.map(h => h.cpu);
+      const ramData = data.history.map(h => h.ram);
+      updateCharts(labels, cpuData, ramData);
+    }
+
+  } catch(e) {
+    console.warn("Poll error:", e);
+  }
+}
+
+function updateTemperatures(temps) {
+  const grid = document.getElementById("temps-grid");
+  const section = document.getElementById("temp-section");
+  const count = document.getElementById("temp-count");
+  if (!grid) return;
+
+  if (!temps || temps.length === 0) {
+    grid.innerHTML = '<div style="color:var(--text-4);font-size:12px;padding:8px;">Sin sensores de temperatura disponibles.<br><span style="font-size:10px;font-family:JetBrains Mono,monospace;">Instala OpenHardwareMonitor + pip install wmi</span></div>';
+    if (count) count.textContent = "No disponible";
+    return;
+  }
+
+  if (count) count.textContent = temps.length + " sensor" + (temps.length !== 1 ? "es" : "");
+
+  grid.innerHTML = temps.map(t => {
+    const pct   = Math.min((t.current / (t.critical || 100)) * 100, 100);
+    const color = t.current >= (t.critical || 95) ? "#ef4444"
+                : t.current >= (t.high || 80)     ? "#f59e0b"
+                : "#10b981";
+    return `
+      <div style="background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:10px;padding:12px 14px;">
+        <div style="font-size:10px;color:var(--text-4);margin-bottom:6px;font-family:'JetBrains Mono',monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${t.label}</div>
+        <div style="font-size:22px;font-weight:700;color:${color};font-family:'JetBrains Mono',monospace;line-height:1;margin-bottom:6px;">${t.current}°C</div>
+        <div style="height:3px;background:rgba(255,255,255,0.05);border-radius:2px;overflow:hidden;">
+          <div style="height:3px;background:${color};width:${pct}%;border-radius:2px;transition:width 0.8s ease;"></div>
+        </div>
+        ${t.high || t.critical ? `<div style="font-size:9px;color:var(--text-4);margin-top:4px;font-family:'JetBrains Mono',monospace;">máx ${t.critical || t.high}°C</div>` : ""}
+      </div>`;
+  }).join("");
+}
+
+// Arrancar polling
+poll();
+const pollTimer = setInterval(poll, 5000);
+</script>
+{% endblock %}

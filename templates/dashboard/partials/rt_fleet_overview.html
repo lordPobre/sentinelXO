@@ -1,0 +1,17 @@
+{% for device in devices %}
+<div hx-get="{% url 'dashboard:rt-device-card' device.id %}"
+     hx-trigger="load, every 5s"
+     hx-swap="outerHTML"
+     id="rt-card-{{ device.id }}">
+  <!-- Placeholder mientras carga -->
+  <div style="background:#0d1117;border:1px solid rgba(255,255,255,0.06);border-radius:14px;padding:20px;display:flex;align-items:center;gap:10px;">
+    <span class="dot {% if device.is_online %}dot-on{% else %}dot-off{% endif %}"></span>
+    <span style="font-size:13px;font-weight:500;color:#94a3b8;">{{ device.display_name }}</span>
+    <span style="font-size:11px;color:var(--text-4);margin-left:auto;" class="mono">Cargando…</span>
+  </div>
+</div>
+{% empty %}
+<div style="grid-column:1/-1;padding:36px;text-align:center;font-size:12px;color:var(--text-4);">
+  Sin equipos registrados.
+</div>
+{% endfor %}

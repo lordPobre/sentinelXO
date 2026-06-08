@@ -1,0 +1,127 @@
+{% extends "base/base.html" %}
+{% block title %}Acceso — Sentinel XO{% endblock %}
+
+{% block body %}
+<style>
+  /* Animaciones para el fondo tecnológico */
+  @keyframes float {
+    0%, 100% { transform: translateY(0px) scale(1); }
+    50% { transform: translateY(-30px) scale(1.05); }
+  }
+  @keyframes float-reverse {
+    0%, 100% { transform: translateY(0px) scale(1); }
+    50% { transform: translateY(30px) scale(0.95); }
+  }
+  @keyframes scan {
+    0% { transform: translateY(-100%); opacity: 0; }
+    10% { opacity: 0.5; }
+    90% { opacity: 0.5; }
+    100% { transform: translateY(100vh); opacity: 0; }
+  }
+  
+  /* Capas del fondo */
+  .bg-sentinel {
+    background: #0f172a; /* Slate 900 base */
+    background: radial-gradient(circle at 50% 50%, #1e293b 0%, #0f172a 100%);
+  }
+  
+  .tech-grid {
+    position: absolute;
+    inset: 0;
+    background-image: 
+      linear-gradient(rgba(37, 99, 235, 0.08) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(37, 99, 235, 0.08) 1px, transparent 1px);
+    background-size: 40px 40px;
+    /* Efecto de difuminado circular hacia los bordes */
+    mask-image: radial-gradient(ellipse at center, rgba(0,0,0,1) 15%, rgba(0,0,0,0) 80%);
+    -webkit-mask-image: radial-gradient(ellipse at center, rgba(0,0,0,1) 15%, rgba(0,0,0,0) 80%);
+    pointer-events: none;
+  }
+  
+  .tech-dots {
+    position: absolute;
+    inset: 0;
+    background-image: radial-gradient(rgba(148, 163, 184, 0.15) 1px, transparent 1px);
+    background-size: 20px 20px;
+    /* Difuminado desde arriba hacia el centro */
+    mask-image: radial-gradient(ellipse at top, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0) 60%);
+    -webkit-mask-image: radial-gradient(ellipse at top, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0) 60%);
+    pointer-events: none;
+  }
+
+  .scan-line {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 3px;
+    background: linear-gradient(90deg, transparent, rgba(37, 99, 235, 0.4), transparent);
+    box-shadow: 0 0 12px rgba(37, 99, 235, 0.6);
+    animation: scan 8s linear infinite;
+    pointer-events: none;
+    z-index: 0;
+  }
+</style>
+
+<div class="bg-sentinel" style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;position:relative;overflow:hidden;">
+  
+  <!-- Elementos del fondo tecnológico -->
+  <div class="tech-grid"></div>
+  <div class="tech-dots"></div>
+  <div class="scan-line"></div>
+
+  <!-- Resplandores animados (Glow orbs) -->
+  <div style="position:absolute;top:-10%;left:-10%;width:50vw;height:50vw;max-width:600px;max-height:600px;border-radius:50%;background:radial-gradient(circle,rgba(37,99,235,0.08) 0%,transparent 65%);pointer-events:none;animation:float 12s ease-in-out infinite;"></div>
+  <div style="position:absolute;bottom:-10%;right:-10%;width:40vw;height:40vw;max-width:500px;max-height:500px;border-radius:50%;background:radial-gradient(circle,rgba(124,58,237,0.06) 0%,transparent 65%);pointer-events:none;animation:float-reverse 15s ease-in-out infinite;"></div>
+
+  <div class="fu" style="width:100%;max-width:380px;position:relative;z-index:1;">
+    <!-- Brand -->
+    <div style="text-align:center;margin-bottom:32px;">
+      <svg width="46" height="46" viewBox="0 0 34 34" fill="none">
+        <rect x="8" y="8" width="18" height="18" rx="2" transform="rotate(45 17 17)" stroke="#2563eb" stroke-width="1" fill="none"/>
+        <line x1="17" y1="11" x2="17" y2="23" stroke="#2563eb" stroke-width="1.5" stroke-linecap="round"/>
+        <line x1="11" y1="17" x2="23" y2="17" stroke="#2563eb" stroke-width="1.5" stroke-linecap="round"/>
+        <circle cx="17" cy="17" r="2.5" fill="#2563eb"/>
+        <circle cx="17" cy="17" r="1" fill="white"/>
+      </svg>
+      <div style="font-size:18px;font-weight:700;color:#f1f5f9;letter-spacing:-0.02em;margin-bottom:4px;">Sentinel XO</div>
+      <div class="mono" style="font-size:10px;color:var(--text-4);letter-spacing:0.08em;">XO CONTROL PANEL</div>
+    </div>
+
+    <!-- Card -->
+    <div class="card accent-top" style="padding:28px; background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.05);">
+      {% if form.errors %}
+      <div style="margin-bottom:16px;padding:10px 14px;background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.2);border-radius:8px;color:#ef4444;font-size:12px;">
+        Credenciales incorrectas. Intenta nuevamente.
+      </div>
+      {% endif %}
+
+      <form method="post" action="{% url 'login' %}">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ next }}">
+
+        <div style="margin-bottom:14px;">
+          <label style="display:block;font-size:10px;font-weight:600;letter-spacing:0.07em;text-transform:uppercase;color:var(--text-4);margin-bottom:6px;">Usuario</label>
+          <input type="text" name="username" id="id_username" autocomplete="username" required
+                 class="px-input" placeholder="tu_usuario" autofocus style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255,255,255,0.08); color: #f1f5f9;">
+        </div>
+
+        <div style="margin-bottom:24px;">
+          <label style="display:block;font-size:10px;font-weight:600;letter-spacing:0.07em;text-transform:uppercase;color:var(--text-4);margin-bottom:6px;">Contraseña</label>
+          <input type="password" name="password" id="id_password" autocomplete="current-password" required
+                 class="px-input" placeholder="••••••••" style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255,255,255,0.08); color: #f1f5f9;">
+        </div>
+
+        <button type="submit" class="btn-primary" style="width:100%;justify-content:center;padding:11px;font-size:13px; box-shadow: 0 4px 14px rgba(37, 99, 235, 0.3);">
+          Ingresar al panel
+          <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </button>
+      </form>
+    </div>
+
+    <p class="mono" style="text-align:center;font-size:10px;color:var(--text-4);margin-top:20px; opacity: 0.8;">
+      ¿Problemas? <a href="mailto:{{ SENTINEL_SUPPORT_EMAIL }}" style="color:#60a5fa;text-decoration:none;transition: color 0.2s;">{{ SENTINEL_SUPPORT_EMAIL }}</a>
+    </p>
+  </div>
+</div>
+{% endblock %}

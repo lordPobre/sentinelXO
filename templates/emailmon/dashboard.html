@@ -1,0 +1,133 @@
+{% extends "base/layout.html" %}
+{% block title %}Email — Sentinel XO{% endblock %}
+{% block page_title %}Monitoreo de Email{% endblock %}
+{% block page_subtitle %}
+<div style="display:flex;align-items:center;gap:8px;">
+  <div class="mono" style="font-size:10px;color:var(--text-3);margin-top:1px;">SMTP · registros · tiempo real</div>
+  <span style="display:flex;align-items:center;gap:5px;padding:2px 8px;background:rgba(16,185,129,0.06);border:1px solid rgba(16,185,129,0.15);border-radius:5px;">
+    <span class="dot dot-on dot-pulse"></span>
+    <span class="mono" style="font-size:9px;color:#10b981;font-weight:600;letter-spacing:0.04em;">LIVE · 10s</span>
+  </span>
+</div>
+{% endblock %}
+
+{% block header_actions %}
+<form method="post" action="{% url 'emailmon:send-test' %}" style="display:inline;">
+  {% csrf_token %}
+  <input type="hidden" name="email" value="{{ request.user.email|default:'' }}">
+  <button type="submit" class="btn-ghost" style="font-size:12px;">
+    <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+    Email de prueba
+  </button>
+</form>
+<div style="display:flex;align-items:center;gap:6px;padding:5px 12px;background:rgba(16,185,129,0.05);border:1px solid rgba(16,185,129,0.15);border-radius:7px;">
+  <span class="dot dot-on dot-pulse"></span>
+  <span class="mono" style="font-size:10px;color:#10b981;font-weight:600;">Auto-check cada 5 min</span>
+</div>
+{% endblock %}
+
+{% block content %}
+
+<!-- Panel en tiempo real — HTMX polling cada 10s -->
+<div id="live-panel"
+     hx-get="{% url 'emailmon:live' %}"
+     hx-trigger="load, every 10s, refresh"
+     hx-swap="innerHTML"
+     hx-indicator="#live-indicator">
+
+  <!-- Estado inicial mientras carga -->
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px;">
+    {% for i in "1234" %}
+    <div class="kpi-card" style="min-height:90px;">
+      <div class="kpi-label">Cargando…</div>
+      <div class="bar-track" style="margin-top:20px;"><div class="bar-fill bar-blue" style="width:60%;opacity:0.3;"></div></div>
+    </div>
+    {% endfor %}
+  </div>
+  <div class="card" style="padding:48px;text-align:center;">
+    <div class="mono" style="font-size:12px;color:var(--text-4);">Conectando al monitor de email…</div>
+  </div>
+</div>
+
+<!-- Indicador de actualización (sutil, esquina superior) -->
+<div id="live-indicator" class="htmx-indicator"
+     style="position:fixed;bottom:20px;right:20px;z-index:100;
+            display:flex;align-items:center;gap:6px;
+            padding:6px 12px;background:#0d1117;
+            border:1px solid rgba(37,99,235,0.2);border-radius:8px;">
+  <svg width="12" height="12" fill="none" stroke="#60a5fa" viewBox="0 0 24 24"
+       style="animation:spin 1s linear infinite;">
+    <path stroke-linecap="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+  </svg>
+  <span class="mono" style="font-size:10px;color:#60a5fa;">Actualizando…</span>
+</div>
+
+<!-- Gráfico de historial SMTP (estático, solo se actualiza con F5) -->
+{% if chart_data_json %}
+<div class="chart-card fu" style="margin-top:14px;">
+  <div class="chart-title">
+    Historial de respuesta SMTP
+    <span class="mono" style="font-size:10px;color:var(--text-4);">Últimas verificaciones</span>
+  </div>
+  <div style="position:relative;height:90px;">
+    <canvas id="chart-smtp"></canvas>
+  </div>
+</div>
+{% endif %}
+
+<style>
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+
+{% if chart_data_json %}
+<script>
+const chartData = {{ chart_data_json|safe }};
+const colors = chartData.status.map(s =>
+  s === "ok" ? "rgba(16,185,129,0.75)" : s === "timeout" ? "rgba(245,158,11,0.75)" : "rgba(239,68,68,0.75)"
+);
+const ctx = document.getElementById("chart-smtp");
+if (ctx && chartData.labels.length) {
+  new Chart(ctx.getContext("2d"), {
+    type: "bar",
+    data: {
+      labels: chartData.labels,
+      datasets: [{
+        label: "ms", data: chartData.ms,
+        backgroundColor: colors,
+        borderRadius: 3, borderSkipped: false,
+      }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      animation: { duration: 300 },
+      scales: {
+        x: {
+          display: true,
+          grid: { display: false },
+          ticks: { color: "#475569", font: { size: 9, family: "'JetBrains Mono',monospace" }, maxTicksLimit: 12, maxRotation: 0 },
+          border: { display: false },
+        },
+        y: {
+          display: true, min: 0,
+          grid: { color: "rgba(255,255,255,0.04)", drawTicks: false },
+          ticks: { color: "#475569", font: { size: 9, family: "'JetBrains Mono',monospace" }, callback: v => v + "ms", maxTicksLimit: 4, padding: 6 },
+          border: { display: false },
+        },
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: "#0d1117", borderColor: "rgba(255,255,255,0.08)", borderWidth: 1,
+          titleFont: { size: 10, family: "'JetBrains Mono',monospace" },
+          bodyFont:  { size: 11, family: "'JetBrains Mono',monospace" },
+          titleColor: "#64748b", bodyColor: "#e2e8f0",
+          callbacks: { label: ctx => " " + ctx.raw + "ms" },
+        },
+      },
+    },
+  });
+}
+</script>
+{% endif %}
+
+{% endblock %}

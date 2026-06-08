@@ -1,0 +1,61 @@
+{% extends "base/layout.html" %}
+{% block title %}Resumen — Sentinel XO{% endblock %}
+{% block page_title %}Resumen global{% endblock %}
+{% block page_subtitle %}<div class="mono" style="font-size:10px;color:var(--text-3);margin-top:1px;">todos los clientes · vista general</div>{% endblock %}
+
+{% block content %}
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px;">
+  <div class="kpi-card kpi-accent fu">
+    <div class="kpi-label">Clientes activos</div>
+    <div class="kpi-value">{{ clients|length }}</div>
+    <div style="font-size:11px;color:var(--text-4);">en monitoreo</div>
+  </div>
+  <div class="kpi-card fu-1">
+    <div class="kpi-label">Equipos totales</div>
+    <div class="kpi-value" style="{% if devices_offline %}color:var(--amber);{% endif %}">{{ devices_total }}</div>
+    <div style="font-size:11px;color:var(--text-4);">{% if devices_offline %}<span style="color:var(--red);">{{ devices_offline }} offline</span>{% else %}todos en línea{% endif %}</div>
+  </div>
+  <div class="kpi-card fu-2">
+    <div class="kpi-label">Dominios críticos</div>
+    <div class="kpi-value" style="{% if domains_critical %}color:var(--red);{% endif %}">{{ domains_critical }}</div>
+    <div style="font-size:11px;color:var(--text-4);">vencen en &lt;30 días</div>
+  </div>
+  <div class="kpi-card fu-3">
+    <div class="kpi-label">Incidentes abiertos</div>
+    <div class="kpi-value" style="{% if incidents_open %}color:var(--amber);{% endif %}">{{ incidents_open }}</div>
+    <div style="font-size:11px;color:var(--text-4);">sin resolver</div>
+  </div>
+</div>
+
+<div class="card fu-2">
+  <div class="card-header">
+    <span class="card-title">Estado por cliente</span>
+    <a href="{% url 'dashboard:admin-clients' %}" class="btn-ghost" style="padding:5px 10px;font-size:11px;">Ver todos →</a>
+  </div>
+  {% for client in clients %}
+  {% with health=client.get_health_status %}
+  <a href="{% url 'dashboard:admin-client-detail' client.id %}"
+     style="display:flex;align-items:center;justify-content:space-between;padding:14px 18px;text-decoration:none;border-bottom:1px solid rgba(255,255,255,0.03);"
+     class="row-hover">
+    <div style="display:flex;align-items:center;gap:12px;">
+      <div class="avatar av-blue">{{ client.company_name|slice:":2"|upper }}</div>
+      <div>
+        <div style="font-size:13px;font-weight:600;color:#cbd5e1;">{{ client.company_name }}</div>
+        <div class="mono" style="font-size:10px;color:var(--text-4);">{{ client.contact_email }}</div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <span style="font-size:11px;color:var(--text-4);">{{ client.devices.count }} eq.</span>
+      <span style="font-size:11px;color:var(--text-4);">{{ client.domains.count }} dom.</span>
+      <span class="badge {% if health == 'ok' %}badge-ok{% elif health == 'warning' %}badge-warn{% elif health == 'critical' %}badge-crit{% else %}badge-gray{% endif %}">
+        {{ health|upper }}
+      </span>
+      <span class="badge badge-blue">{{ client.get_plan_display }}</span>
+    </div>
+  </a>
+  {% endwith %}
+  {% empty %}
+  <div style="padding:48px;text-align:center;color:var(--text-4);font-size:13px;">No hay clientes registrados.</div>
+  {% endfor %}
+</div>
+{% endblock %}

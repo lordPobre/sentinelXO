@@ -1,0 +1,66 @@
+# ─── Python ──────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+.Python
+
+# ─── Entorno virtual ─────────────────────────────────────────────────────────
+venv/
+env/
+.env/
+.venv/
+ENV/
+
+# ─── Variables de entorno (NUNCA subir a Git) ─────────────────────────────────
+.env
+!.env.example
+
+# ─── Base de datos ───────────────────────────────────────────────────────────
+*.sqlite3
+*.db
+
+# ─── Archivos estáticos compilados ───────────────────────────────────────────
+staticfiles/
+static/collected/
+
+# ─── Uploads y media ─────────────────────────────────────────────────────────
+media/
+reports/*.pdf
+
+# ─── Logs ────────────────────────────────────────────────────────────────────
+*.log
+logs/
+perseus_agent.log
+
+# ─── IDEs ────────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# ─── Testing ─────────────────────────────────────────────────────────────────
+.coverage
+htmlcov/
+.pytest_cache/
+.tox/
+
+# ─── Celery ──────────────────────────────────────────────────────────────────
+celerybeat-schedule
+celerybeat.pid
+
+# ─── OneDrive / sync ─────────────────────────────────────────────────────────
+*.tmp
+~$*
+
+# ─── Agente compilado ────────────────────────────────────────────────────────
+agent/dist/
+agent/build/
+agent/*.spec

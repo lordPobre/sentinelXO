@@ -1,0 +1,99 @@
+{% extends "base/layout.html" %}
+{% block title %}Reportes — Sentinel XO{% endblock %}
+{% block page_title %}Reportes mensuales{% endblock %}
+{% block page_subtitle %}<div class="mono" style="font-size:10px;color:var(--text-3);margin-top:1px;">PDFs de mantenimiento preventivo</div>{% endblock %}
+
+{% block content %}
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px;">
+  <div class="kpi-card kpi-accent fu">
+    <div class="kpi-label">Total enviados</div>
+    <div class="kpi-value">{{ reports|length }}</div>
+    <div style="font-size:11px;color:var(--text-4);">historial completo</div>
+  </div>
+  <div class="kpi-card fu-1">
+    <div class="kpi-label">Enviados este mes</div>
+    <div class="kpi-value" style="color:var(--green);">{{ reports|length }}</div>
+    <div style="font-size:11px;color:var(--text-4);">clientes notificados</div>
+  </div>
+  <div class="kpi-card fu-2">
+    <div class="kpi-label">Próxima generación</div>
+    <div class="kpi-value" style="font-size:18px;padding-top:4px;color:#60a5fa;">01/07</div>
+    <div class="mono" style="font-size:10px;color:var(--text-4);">a las 08:00</div>
+  </div>
+  <div class="kpi-card fu-3">
+    <div class="kpi-label">Generación automática</div>
+    <div style="display:flex;align-items:center;gap:7px;margin-top:8px;">
+      <span class="dot dot-on dot-pulse"></span>
+      <span style="font-size:13px;font-weight:600;color:var(--green);">Activa</span>
+    </div>
+    <div style="font-size:11px;color:var(--text-4);margin-top:6px;">Celery + Redis</div>
+  </div>
+</div>
+
+<div class="card fu-1" style="overflow:hidden;">
+  <div class="card-header">
+    <span class="card-title">Historial de reportes</span>
+    <div class="mono" style="font-size:10px;color:var(--text-4);">Próximo: 01/07/2026 · 08:00</div>
+  </div>
+
+  <table class="px-table">
+    <thead><tr>
+      <th>Cliente</th>
+      <th>Período</th>
+      <th>Equipos</th>
+      <th>Incidentes res.</th>
+      <th>Uptime</th>
+      <th>Estado</th>
+      <th style="text-align:right;">PDF</th>
+    </tr></thead>
+    <tbody>
+      {% for report in reports %}
+      <tr>
+        <td>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <div class="avatar av-blue" style="width:30px;height:30px;border-radius:8px;font-size:10px;">{{ report.client.company_name|slice:":2"|upper }}</div>
+            <span style="font-size:13px;font-weight:600;color:#cbd5e1;">{{ report.client.company_name }}</span>
+          </div>
+        </td>
+        <td><span class="mono" style="font-size:11px;color:var(--text-3);">{{ report.period_month|stringformat:"02d" }}/{{ report.period_year }}</span></td>
+        <td style="color:var(--text-3);">{% if report.summary_data.devices_count %}{{ report.summary_data.devices_count }}{% else %}—{% endif %}</td>
+        <td style="color:var(--text-3);">{% if report.summary_data.incidents_resolved is not None %}{{ report.summary_data.incidents_resolved }}{% else %}—{% endif %}</td>
+        <td>
+          {% if report.summary_data.avg_uptime_percent %}
+          <span style="font-size:13px;font-weight:600;{% if report.summary_data.avg_uptime_percent >= 99 %}color:var(--green);{% elif report.summary_data.avg_uptime_percent >= 95 %}color:var(--amber);{% else %}color:var(--red);{% endif %}">{{ report.summary_data.avg_uptime_percent }}%</span>
+          {% else %}<span style="color:var(--text-4);">—</span>{% endif %}
+        </td>
+        <td>
+          {% if report.status == 'sent' %}<span class="badge badge-ok">✓ Enviado</span>
+          {% elif report.status == 'ready' %}<span class="badge badge-blue">Listo</span>
+          {% elif report.status == 'generating' %}<span class="badge badge-warn">Generando…</span>
+          {% elif report.status == 'error' %}<span class="badge badge-crit" title="{{ report.error_message }}">✗ Error</span>
+          {% else %}<span class="badge badge-gray">Pendiente</span>{% endif %}
+        </td>
+        <td style="text-align:right;">
+          {% if report.status == 'sent' or report.status == 'ready' %}
+          <a href="{% url 'reports:download' report.id %}" class="btn-pdf">
+            <svg width="11" height="11" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+            Descargar
+          </a>
+          {% else %}<span style="color:var(--text-4);font-size:11px;">—</span>{% endif %}
+        </td>
+      </tr>
+      {% empty %}
+      <tr>
+        <td colspan="7" style="padding:64px 20px;text-align:center;">
+          <div style="font-size:28px;margin-bottom:12px;opacity:0.2;">📄</div>
+          <div style="font-size:13px;color:var(--text-3);margin-bottom:4px;">No hay reportes generados aún</div>
+          <div class="mono" style="font-size:10px;color:var(--text-4);">Se generan automáticamente el día 1 de cada mes · 08:00</div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div style="margin-top:12px;padding:12px 16px;background:rgba(37,99,235,0.04);border:1px solid rgba(37,99,235,0.12);border-radius:10px;display:flex;align-items:center;gap:12px;" class="fu-2">
+  <svg width="14" height="14" fill="none" stroke="#2563eb" viewBox="0 0 24 24" style="flex-shrink:0;"><circle cx="12" cy="12" r="10" stroke-width="1.5"/><path stroke-linecap="round" stroke-width="1.5" d="M12 16v-4M12 8h.01"/></svg>
+  <span style="font-size:11px;color:var(--text-3);line-height:1.6;">Generación automática activa · Próximo ciclo: <span class="mono" style="color:#60a5fa;">01/07/2026 · 08:00</span> · Para generar un reporte ahora, ve al detalle del cliente.</span>
+</div>
+{% endblock %}

@@ -1,0 +1,195 @@
+{% extends "base/layout.html" %}
+{% block title %}Microsoft 365 — Sentinel XO{% endblock %}
+{% block page_title %}Monitor Microsoft 365{% endblock %}
+{% block page_subtitle %}<div class="mono" style="font-size:10px;color:var(--text-3);margin-top:1px;">SMTP · Graph API · conectividad por cliente</div>{% endblock %}
+
+{% block header_actions %}
+<button class="btn-primary"
+        hx-post="{% url 'emailmon:m365-check' %}"
+        hx-target="#m365-global-result"
+        hx-swap="innerHTML">
+  <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+  Verificar ahora
+</button>
+<a href="{% url 'emailmon:dashboard' %}" class="btn-ghost">← Email</a>
+{% endblock %}
+
+{% block content %}
+
+<!-- KPIs -->
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px;">
+  <div class="kpi-card kpi-accent fu">
+    <div class="kpi-label">SMTP M365 (24h)</div>
+    {% if uptime is not None %}
+    <div class="kpi-value" style="{% if uptime >= 99 %}color:var(--green);{% elif uptime >= 95 %}color:var(--amber);{% else %}color:var(--red);{% endif %}">{{ uptime }}%</div>
+    {% else %}
+    <div class="kpi-value" style="color:var(--text-4);font-size:18px;padding-top:4px;">Sin datos</div>
+    {% endif %}
+    <div style="font-size:11px;color:var(--text-4);">smtp.office365.com:587</div>
+  </div>
+
+  <div class="kpi-card fu-1">
+    <div class="kpi-label">Último check SMTP</div>
+    {% if latest %}
+    <div style="display:flex;align-items:center;gap:8px;margin-top:8px;margin-bottom:4px;">
+      <span class="dot {% if latest.status == 'ok' %}dot-on dot-pulse{% elif latest.status == 'timeout' %}dot-warn{% else %}dot-off{% endif %}"></span>
+      <span class="mono" style="font-size:18px;font-weight:700;{% if latest.status == 'ok' %}color:var(--green);{% elif latest.status == 'timeout' %}color:var(--amber);{% else %}color:var(--red);{% endif %}">
+        {{ latest.get_status_display }}
+      </span>
+    </div>
+    {% if latest.response_ms %}
+    <div class="mono" style="font-size:11px;color:var(--text-4);">{{ latest.response_ms }}ms · {{ latest.checked_at|date:"d/m H:i:s" }}</div>
+    {% endif %}
+    {% else %}
+    <div style="font-size:13px;color:var(--text-4);margin-top:12px;">Sin verificaciones</div>
+    {% endif %}
+  </div>
+
+  <div class="kpi-card fu-2">
+    <div class="kpi-label">Clientes M365</div>
+    <div class="kpi-value" style="color:#60a5fa;">{{ m365_clients|length }}</div>
+    <div style="font-size:11px;color:var(--text-4);">con tenant configurado</div>
+  </div>
+
+  <div class="kpi-card fu-3" id="m365-global-result">
+    <div class="kpi-label">Verificación global</div>
+    <div style="font-size:12px;color:var(--text-4);margin-top:12px;">Usa el botón "Verificar ahora"</div>
+  </div>
+</div>
+
+<!-- Gráfico SMTP M365 -->
+{% if chart_data_json %}
+<div class="chart-card fu-1" style="margin-bottom:14px;">
+  <div class="chart-title">
+    Tiempo de respuesta — smtp.office365.com:587
+    <span class="mono" style="font-size:10px;color:var(--text-4);">Últimas verificaciones</span>
+  </div>
+  <div style="position:relative;height:90px;">
+    <canvas id="chart-m365-smtp"></canvas>
+  </div>
+</div>
+{% endif %}
+
+<!-- Estado por cliente -->
+<div class="card fu-2" style="overflow:hidden;margin-bottom:14px;">
+  <div class="card-header">
+    <span class="card-title">Estado M365 por cliente</span>
+    <span class="mono" style="font-size:10px;color:var(--text-4);">Graph API + SMTP</span>
+  </div>
+  {% for client in m365_clients %}
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid rgba(255,255,255,0.03);">
+    <div style="display:flex;align-items:center;gap:12px;">
+      <div class="avatar av-blue" style="width:32px;height:32px;border-radius:9px;font-size:11px;">
+        {{ client.company_name|slice:":2"|upper }}
+      </div>
+      <div>
+        <div style="font-size:13px;font-weight:600;color:#cbd5e1;">{{ client.company_name }}</div>
+        <div class="mono" style="font-size:10px;color:var(--text-4);">
+          Tenant: {{ client.m365_tenant.tenant_id|slice:":18" }}…
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex;align-items:center;gap:10px;">
+      <!-- Licencias -->
+      {% with licenses=client.m365_licenses.all %}
+      {% if licenses %}
+      <div style="text-align:right;">
+        <div style="font-size:10px;color:var(--text-4);margin-bottom:3px;">Licencias</div>
+        <div style="display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end;">
+          {% for lic in licenses|slice:":3" %}
+          <span class="badge {% if lic.utilization_status == 'critical' %}badge-crit{% elif lic.utilization_status == 'warning' %}badge-warn{% else %}badge-blue{% endif %}" style="font-size:9px;padding:1px 6px;">
+            {{ lic.friendly_name|default:lic.sku_part_number|truncatechars:14 }} {{ lic.consumed_licenses }}/{{ lic.total_licenses }}
+          </span>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+      {% endwith %}
+
+      <!-- Botón verificar este cliente -->
+      <div id="m365-client-{{ client.id }}" style="min-width:140px;text-align:right;">
+        <button class="btn-ghost" style="padding:5px 10px;font-size:11px;"
+                hx-post="{% url 'emailmon:m365-check' %}"
+                hx-vals='{"client_id": "{{ client.id }}"}'
+                hx-target="#m365-client-{{ client.id }}"
+                hx-swap="innerHTML">
+          ↻ Verificar
+        </button>
+      </div>
+    </div>
+  </div>
+  {% empty %}
+  <div style="padding:48px;text-align:center;font-size:13px;color:var(--text-4);">
+    No hay clientes con M365 configurado.<br>
+    <span style="font-size:11px;font-family:'JetBrains Mono',monospace;">Configura un tenant en Admin → M365 Tenant → Agregar</span>
+  </div>
+  {% endfor %}
+</div>
+
+<!-- Historial de checks SMTP M365 -->
+<div class="card fu-3" style="overflow:hidden;">
+  <div class="card-header">
+    <span class="card-title">Historial SMTP — smtp.office365.com</span>
+    <span class="mono" style="font-size:10px;color:var(--text-4);">Últimas 24 verificaciones</span>
+  </div>
+  {% for check in m365_checks %}
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 18px;border-bottom:1px solid rgba(255,255,255,0.03);">
+    <div style="display:flex;align-items:center;gap:8px;">
+      <span class="dot {% if check.status == 'ok' %}dot-on{% elif check.status == 'timeout' %}dot-warn{% else %}dot-off{% endif %}"></span>
+      <span class="mono" style="font-size:11px;color:var(--text-3);">{{ check.checked_at|date:"d/m H:i:s" }}</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;">
+      {% if check.response_ms %}
+      <span class="mono" style="font-size:11px;{% if check.response_ms < 500 %}color:var(--green);{% elif check.response_ms < 2000 %}color:var(--amber);{% else %}color:var(--red);{% endif %}">{{ check.response_ms }}ms</span>
+      {% endif %}
+      <span class="badge {% if check.status == 'ok' %}badge-ok{% elif check.status == 'timeout' %}badge-warn{% else %}badge-crit{% endif %}" style="font-size:9px;padding:1px 6px;">
+        {{ check.get_status_display }}
+      </span>
+    </div>
+  </div>
+  {% empty %}
+  <div style="padding:32px;text-align:center;font-size:12px;color:var(--text-4);">Sin verificaciones aún. Usa el botón "Verificar ahora".</div>
+  {% endfor %}
+</div>
+
+{% if chart_data_json %}
+<script>
+const chartData = {{ chart_data_json|safe }};
+const colors = chartData.status.map(s =>
+  s === "ok" ? "rgba(16,185,129,0.75)" : s === "timeout" ? "rgba(245,158,11,0.75)" : "rgba(239,68,68,0.75)"
+);
+const ctx = document.getElementById("chart-m365-smtp");
+if (ctx && chartData.labels.length) {
+  new Chart(ctx.getContext("2d"), {
+    type: "bar",
+    data: {
+      labels: chartData.labels,
+      datasets: [{ label: "ms", data: chartData.ms, backgroundColor: colors, borderRadius: 3, borderSkipped: false }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: { duration: 300 },
+      scales: {
+        x: { display: true, grid: { display: false },
+             ticks: { color: "#475569", font: { size: 9, family: "'JetBrains Mono',monospace" }, maxTicksLimit: 12, maxRotation: 0 },
+             border: { display: false } },
+        y: { display: true, min: 0, grid: { color: "rgba(255,255,255,0.04)", drawTicks: false },
+             ticks: { color: "#475569", font: { size: 9, family: "'JetBrains Mono',monospace" }, callback: v => v + "ms", maxTicksLimit: 4, padding: 6 },
+             border: { display: false } },
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: "#0d1117", borderColor: "rgba(255,255,255,0.08)", borderWidth: 1,
+          titleFont: { size: 10, family: "'JetBrains Mono',monospace" },
+          bodyFont:  { size: 11, family: "'JetBrains Mono',monospace" },
+          titleColor: "#64748b", bodyColor: "#e2e8f0",
+          callbacks: { label: ctx => " " + ctx.raw + "ms" },
+        },
+      },
+    },
+  });
+}
+</script>
+{% endif %}
+{% endblock %}
