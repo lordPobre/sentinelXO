@@ -7,8 +7,16 @@ load_dotenv()
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = os.environ.get("SECRET_KEY", "dev-insecure-key-change-in-production")
-DEBUG = os.environ.get("DEBUG", "True") == "True"
-ALLOWED_HOSTS = ["localhost", "127.0.0.1", "192.168.1.11", "192.168.1.34"]
+DEBUG = os.environ.get("DEBUG", "False") == "True"
+ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS", "localhost 127.0.0.1").split()
+
+# Producción — Railway agrega RAILWAY_PUBLIC_DOMAIN automáticamente
+RAILWAY_PUBLIC_DOMAIN = os.environ.get("RAILWAY_PUBLIC_DOMAIN", "")
+if RAILWAY_PUBLIC_DOMAIN:
+    ALLOWED_HOSTS.append(RAILWAY_PUBLIC_DOMAIN)
+    CSRF_TRUSTED_ORIGINS = [f"https://{RAILWAY_PUBLIC_DOMAIN}"]
+else:
+    CSRF_TRUSTED_ORIGINS = os.environ.get("CSRF_TRUSTED_ORIGINS", "").split()
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -21,7 +29,7 @@ INSTALLED_APPS = [
     "rest_framework",
     "rest_framework.authtoken",
     "django_celery_beat",
-    # Perseus apps
+    # Sentinel XO apps
     "core",
     "monitoring",
     "reports",
@@ -134,14 +142,14 @@ EMAIL_PORT = int(os.environ.get("EMAIL_PORT", 587))
 EMAIL_USE_TLS = True
 EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "")
 EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD", "")
-DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "soporte@perseustechnology.dev")
+DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "soporte@sentinelxo.dev")
 
 # --- Brevo ---
 BREVO_WEBHOOK_SECRET = os.environ.get("BREVO_WEBHOOK_SECRET", "")  # Clave para verificar webhooks
 
-# --- Perseus config ---
-PERSEUS_COMPANY_NAME = os.environ.get("PERSEUS_COMPANY_NAME", "Perseus Technology")
-PERSEUS_SUPPORT_EMAIL = os.environ.get("PERSEUS_SUPPORT_EMAIL", "soporte@perseustechnology.dev")
+# --- Sentinel XO config ---
+SENTINEL_COMPANY_NAME = os.environ.get("SENTINEL_COMPANY_NAME", "Sentinel XO")
+SENTINEL_SUPPORT_EMAIL = os.environ.get("SENTINEL_SUPPORT_EMAIL", "soporte@sentinelxo.dev")
 
 # --- Logging básico ---
 LOGGING = {

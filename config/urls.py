@@ -1,8 +1,16 @@
 from django.contrib import admin
+from django.http import JsonResponse
+from django.utils import timezone
+
+
+def health_check(request):
+    """Health check endpoint para Railway."""
+    return JsonResponse({"status": "ok", "time": timezone.now().isoformat()})
 from django.urls import path, include
 from django.views.generic import RedirectView
 
 urlpatterns = [
+    path("health/", health_check, name="health-check"),
     path("admin/", admin.site.urls),
     path("", RedirectView.as_view(url="/dashboard/", permanent=False)),
     path("auth/", include("django.contrib.auth.urls")),
