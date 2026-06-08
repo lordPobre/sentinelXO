@@ -15,6 +15,7 @@ venv/
 env/
 .env/
 .venv/
+.env.example
 ENV/
 
 # ─── Variables de entorno (NUNCA subir a Git) ─────────────────────────────────
