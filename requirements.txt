@@ -7,7 +7,7 @@ python-dotenv==1.2.2
 dj-database-url==2.3.0
 
 # ─── Base de datos ───────────────────────────────────────────────────────────
-psycopg2==2.9.10
+psycopg2-binary==2.9.10
 
 # ─── Tareas en segundo plano ─────────────────────────────────────────────────
 celery==5.6.3
