@@ -1,7 +1,3 @@
-"""
-Script para crear superusuario automáticamente en Railway.
-Se ejecuta como parte del preDeployCommand si las variables están definidas.
-"""
 import os
 import django
 
@@ -17,8 +13,10 @@ password = os.environ.get('DJANGO_SUPERUSER_PASSWORD')
 if not username or not password:
     print("Superuser: variables no definidas, saltando.")
 else:
-    if User.objects.filter(username=username).exists():
-        print(f"Superuser '{username}' ya existe, saltando.")
-    else:
-        User.objects.create_superuser(username, email, password)
-        print(f"Superuser '{username}' creado correctamente.")
+    user, created = User.objects.get_or_create(username=username)
+    user.set_password(password)
+    user.is_superuser = True
+    user.is_staff = True
+    user.email = email
+    user.save()
+    print(f"Superuser '{username}' {'creado' if created else 'actualizado'} correctamente.")
