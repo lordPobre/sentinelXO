@@ -10,7 +10,6 @@ nixPkgs = [
   "libffi",
   "glib",
   "fontconfig",
-  "freetype",
 ]
 
 [phases.install]
