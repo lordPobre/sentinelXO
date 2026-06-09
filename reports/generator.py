@@ -1,355 +1,111 @@
 """
-Sentinel XO — Generador de Reportes PDF (WeasyPrint)
-Diseño moderno, limpio y profesional.
+Sentinel XO — Generador de Reportes PDF
+Usa ReportLab puro — sin dependencias de sistema externas.
 """
 import io
 from datetime import datetime
 from django.utils import timezone
-from django.template import Template, Context
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.units import cm
+from reportlab.lib import colors
+from reportlab.lib.styles import ParagraphStyle
+from reportlab.lib.enums import TA_RIGHT, TA_CENTER, TA_LEFT
+from reportlab.platypus import (
+    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+)
+from reportlab.graphics.shapes import Drawing, Rect
 
-MESES = {1:"enero", 2:"febrero", 3:"marzo", 4:"abril", 5:"mayo", 6:"junio",
-         7:"julio", 8:"agosto", 9:"septiembre", 10:"octubre", 11:"noviembre", 12:"diciembre"}
+PAGE_W, PAGE_H = A4
+M  = 1.5 * cm
+CW = PAGE_W - 2 * M
 
-REPORT_TEMPLATE = """
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <title>Reporte de Mantenimiento</title>
-    <style>
-        @page {
-            size: A4;
-            margin: 15mm 15mm 20mm 15mm;
-            @bottom-right {
-                content: "Página " counter(page);
-                font-family: Helvetica, Arial, sans-serif;
-                font-size: 8pt;
-                color: #64748b;
-            }
-            @bottom-left {
-                content: "{{ company }} · {{ support }} · Confidencial";
-                font-family: Helvetica, Arial, sans-serif;
-                font-size: 8pt;
-                color: #64748b;
-            }
-        }
-        *, *::before, *::after { box-sizing: border-box; }
-        body { font-family: Helvetica, Arial, sans-serif; color: #334155; margin: 0; padding: 0; line-height: 1.4; }
-        .text-right { text-align: right; }
-        .text-center { text-align: center; }
-        .text-blue { color: #2563eb; }
-        .text-green { color: #10b981; }
-        .text-red { color: #ef4444; }
-        .text-amber { color: #f59e0b; }
-        .text-slate-500 { color: #64748b; }
-        .text-slate-800 { color: #1e293b; }
-        .font-bold { font-weight: bold; }
-        .text-xs { font-size: 8pt; }
+# ── Paleta ────────────────────────────────────────────────────────────────────
+BLUE     = colors.HexColor("#2563eb")
+SLATE900 = colors.HexColor("#0f172a")
+SLATE800 = colors.HexColor("#1e293b")
+SLATE500 = colors.HexColor("#64748b")
+SLATE300 = colors.HexColor("#cbd5e1")
+SLATE100 = colors.HexColor("#f1f5f9")
+SLATE50  = colors.HexColor("#f8fafc")
+WHITE    = colors.white
+GREEN    = colors.HexColor("#10b981")
+AMBER    = colors.HexColor("#f59e0b")
+RED      = colors.HexColor("#ef4444")
 
-        /* Header */
-        .cover-header { width: 100%; background-color: #0f172a; color: #ffffff; display: table; padding: 25px 20px; margin-bottom: 0; }
-        .cover-header-cell { display: table-cell; vertical-align: middle; }
-        .header-title { color: #93c5fd; font-size: 10pt; margin-bottom: 4px; }
-        .accent-line { height: 4px; background-color: #2563eb; margin-bottom: 20px; }
+MESES = {1:"enero",2:"febrero",3:"marzo",4:"abril",5:"mayo",6:"junio",
+         7:"julio",8:"agosto",9:"septiembre",10:"octubre",11:"noviembre",12:"diciembre"}
 
-        /* Info cliente */
-        .client-info-table { width: 100%; background-color: #f8fafc; border-bottom: 3px solid #2563eb; display: table; margin-bottom: 24px; }
-        .client-info-cell { display: table-cell; padding: 12px 15px; border-right: 1px solid #e2e8f0; vertical-align: top; }
-        .client-info-cell:last-child { border-right: none; }
-        .client-label { font-size: 7pt; font-weight: bold; color: #64748b; letter-spacing: 0.5px; margin-bottom: 3px; text-transform: uppercase; }
-        .client-value { font-size: 11pt; font-weight: bold; color: #1e293b; }
+def hx(c):
+    """Extrae hex limpio de un color ReportLab."""
+    return c.hexval()[2:]
 
-        /* Secciones */
-        .section-header { margin-top: 22px; margin-bottom: 12px; padding-left: 10px; border-left: 4px solid #2563eb; page-break-after: avoid; }
-        .section-title { font-size: 11pt; font-weight: bold; color: #1e293b; text-transform: uppercase; letter-spacing: 0.5px; margin: 0; }
-        .section-subtitle { font-size: 9pt; color: #64748b; margin-top: 2px; }
+def sty(name, **kw):
+    d = dict(fontName="Helvetica", fontSize=9, textColor=SLATE500,
+             leading=13, spaceAfter=0, spaceBefore=0)
+    d.update(kw)
+    return ParagraphStyle(name, **d)
 
-        /* KPIs */
-        .kpi-container { width: 100%; display: table; background-color: #f8fafc; border-bottom: 3px solid #2563eb; margin-bottom: 24px; page-break-inside: avoid; }
-        .kpi-card { display: table-cell; padding: 14px 10px; text-align: center; border-right: 1px solid #e2e8f0; width: 20%; }
-        .kpi-card:last-child { border-right: none; }
-        .kpi-label { font-size: 7pt; font-weight: bold; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; }
-        .kpi-value { font-size: 20pt; font-weight: bold; margin: 6px 0; }
-        .kpi-sub { font-size: 8pt; color: #64748b; }
+def bar(pct, w=3*cm, h=5, fc=None):
+    pct = max(0, min(100, pct))
+    if fc is None:
+        fc = GREEN if pct < 70 else AMBER if pct < 90 else RED
+    d = Drawing(w, h + 4)
+    d.add(Rect(0, 2, w, h, fillColor=SLATE100, strokeColor=None, rx=2, ry=2))
+    if pct > 0:
+        d.add(Rect(0, 2, w * pct / 100, h, fillColor=fc, strokeColor=None, rx=2, ry=2))
+    return d
 
-        /* Tablas */
-        .data-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 9pt; }
-        .data-table th, .data-table td { padding: 9px 11px; text-align: left; border-bottom: 1px solid #e2e8f0; }
-        .data-table th { background-color: #1e293b; color: #ffffff; font-weight: bold; text-transform: uppercase; font-size: 8pt; letter-spacing: 0.5px; }
-        .data-table tr:nth-child(even) td { background-color: #f8fafc; }
+def section_hdr(title, sub=""):
+    txt = f'<b>{title.upper()}</b>'
+    if sub:
+        txt += f'&nbsp;&nbsp;<font color="#94a3b8" size="8">{sub}</font>'
+    row = [["", Paragraph(txt, sty("sh", fontName="Helvetica-Bold", fontSize=8,
+                                    textColor=BLUE, letterSpacing=0.5))]]
+    t = Table(row, colWidths=[3, CW - 3])
+    t.setStyle(TableStyle([
+        ("BACKGROUND",    (0,0),(0,0), BLUE),
+        ("LEFTPADDING",   (0,0),(-1,-1), 0),
+        ("RIGHTPADDING",  (0,0),(-1,-1), 0),
+        ("LEFTPADDING",   (1,0),(1,0), 10),
+        ("TOPPADDING",    (0,0),(-1,-1), 6),
+        ("BOTTOMPADDING", (0,0),(-1,-1), 6),
+        ("VALIGN",        (0,0),(-1,-1), "MIDDLE"),
+    ]))
+    return [t, Spacer(1, 7)]
 
-        /* Barras */
-        .progress-wrapper { width: 70px; display: inline-block; vertical-align: middle; margin-right: 6px; }
-        .progress-track { background-color: #e2e8f0; height: 5px; border-radius: 3px; width: 100%; overflow: hidden; }
-        .progress-fill { height: 100%; border-radius: 3px; }
+def tbl_style():
+    return TableStyle([
+        ("LEFTPADDING",   (0,0),(-1,-1), 10),
+        ("RIGHTPADDING",  (0,0),(-1,-1), 10),
+        ("TOPPADDING",    (0,0),(-1,-1), 7),
+        ("BOTTOMPADDING", (0,0),(-1,-1), 7),
+        ("VALIGN",        (0,0),(-1,-1), "MIDDLE"),
+        ("GRID",          (0,0),(-1,-1), 0.3, SLATE300),
+        ("BACKGROUND",    (0,0),(-1,0), SLATE800),
+        ("TEXTCOLOR",     (0,0),(-1,0), WHITE),
+        ("FONTNAME",      (0,0),(-1,0), "Helvetica-Bold"),
+        ("FONTSIZE",      (0,0),(-1,0), 8),
+        ("ROWBACKGROUNDS",(0,1),(-1,-1), [WHITE, SLATE50]),
+    ])
 
-        /* Pills */
-        .pill { display: inline-block; padding: 2px 7px; border-radius: 10px; font-size: 7.5pt; font-weight: bold; }
-        .pill-green  { background-color: #d1fae5; color: #065f46; }
-        .pill-amber  { background-color: #fef3c7; color: #92400e; }
-        .pill-red    { background-color: #fee2e2; color: #991b1b; }
-        .pill-blue   { background-color: #dbeafe; color: #1e40af; }
-        .pill-slate  { background-color: #f1f5f9; color: #475569; }
-        .avoid-break { page-break-inside: avoid; }
-    </style>
-</head>
-<body>
+def th(txt):
+    return Paragraph(f'<b>{txt}</b>',
+        sty(f"th{txt[:3]}", fontName="Helvetica-Bold", fontSize=8, textColor=WHITE))
 
-<div class="cover-header">
-    <div class="cover-header-cell">
-        <div style="font-size:18pt;font-weight:bold;">{{ company }}</div>
-        <div style="font-size:9pt;color:#cbd5e1;margin-top:4px;">Plataforma de Monitoreo Avanzado</div>
-    </div>
-    <div class="cover-header-cell text-right">
-        <div class="header-title">Reporte de Mantenimiento Preventivo</div>
-        <div style="font-size:18pt;font-weight:bold;">{{ month_name|title }} {{ year }}</div>
-    </div>
-</div>
-<div class="accent-line"></div>
+def footer(canvas, doc):
+    from django.conf import settings
+    company = getattr(settings, "SENTINEL_COMPANY_NAME", "Sentinel XO")
+    support = getattr(settings, "SENTINEL_SUPPORT_EMAIL", "soporte@perseustechnology.dev")
+    canvas.saveState()
+    canvas.setStrokeColor(SLATE300)
+    canvas.setLineWidth(0.4)
+    canvas.line(M, 1.4*cm, PAGE_W - M, 1.4*cm)
+    canvas.setFont("Helvetica", 7)
+    canvas.setFillColor(SLATE500)
+    canvas.drawString(M, 0.9*cm, f"{company}  ·  {support}  ·  Confidencial")
+    canvas.drawRightString(PAGE_W - M, 0.9*cm, f"Página {doc.page}")
+    canvas.restoreState()
 
-<div class="client-info-table">
-    <div class="client-info-cell" style="width:35%;">
-        <div class="client-label">Cliente</div>
-        <div class="client-value" style="font-size:14pt;">{{ client.company_name }}</div>
-    </div>
-    <div class="client-info-cell" style="width:25%;">
-        <div class="client-label">Contacto</div>
-        <div class="client-value" style="font-size:10pt;font-weight:normal;">{{ client.contact_email }}</div>
-    </div>
-    <div class="client-info-cell" style="width:20%;">
-        <div class="client-label">Plan Activo</div>
-        <div class="client-value" style="font-size:10pt;">{{ client.get_plan_display }}</div>
-    </div>
-    <div class="client-info-cell text-right" style="width:20%;">
-        <div class="client-label">Generado</div>
-        <div class="client-value" style="font-size:10pt;font-weight:normal;">{{ now_str }}</div>
-    </div>
-</div>
-
-<div class="section-header">
-    <h2 class="section-title">Resumen Ejecutivo</h2>
-    <div class="section-subtitle">Métricas clave del período</div>
-</div>
-
-<div class="kpi-container">
-    <div class="kpi-card">
-        <div class="kpi-label">Disponibilidad</div>
-        <div class="kpi-value {% if uptime >= 99 %}text-green{% elif uptime >= 95 %}text-amber{% else %}text-red{% endif %}">{{ uptime }}%</div>
-        <div class="kpi-sub">promedio del período</div>
-    </div>
-    <div class="kpi-card">
-        <div class="kpi-label">Equipos</div>
-        <div class="kpi-value text-blue">{{ devices_count }}</div>
-        <div class="kpi-sub">monitorizados</div>
-    </div>
-    <div class="kpi-card">
-        <div class="kpi-label">Incidentes Res.</div>
-        <div class="kpi-value text-green">{{ inc_ok }}</div>
-        <div class="kpi-sub">solucionados</div>
-    </div>
-    <div class="kpi-card">
-        <div class="kpi-label">Pendientes</div>
-        <div class="kpi-value {% if inc_open > 0 %}text-red{% else %}text-slate-800{% endif %}">{{ inc_open }}</div>
-        <div class="kpi-sub">sin resolver</div>
-    </div>
-    <div class="kpi-card">
-        <div class="kpi-label">Dom. Críticos</div>
-        <div class="kpi-value {% if dom_crit > 0 %}text-red{% else %}text-green{% endif %}">{{ dom_crit }}</div>
-        <div class="kpi-sub">requieren atención</div>
-    </div>
-</div>
-
-{% if devices %}
-<div class="section-header">
-    <h2 class="section-title">Estado de Dispositivos</h2>
-    <div class="section-subtitle">{{ devices|length }} equipos registrados</div>
-</div>
-<table class="data-table">
-    <thead><tr>
-        <th style="width:22%">Equipo</th>
-        <th style="width:15%">Tipo</th>
-        <th style="width:18%">Sistema</th>
-        <th style="width:17%">CPU</th>
-        <th style="width:17%">RAM</th>
-        <th style="width:11%">Estado</th>
-    </tr></thead>
-    <tbody>
-    {% for dev in devices %}
-    <tr>
-        <td class="font-bold">{{ dev.name }}</td>
-        <td class="text-slate-500">{{ dev.type }}</td>
-        <td class="text-slate-500">{{ dev.os }}</td>
-        <td>{% if dev.cpu is not None %}<div class="progress-wrapper"><div class="progress-track"><div class="progress-fill" style="width:{{ dev.cpu }}%;background-color:{{ dev.cpu_color }};"></div></div></div><span class="text-xs">{{ dev.cpu }}%</span>{% else %}—{% endif %}</td>
-        <td>{% if dev.ram is not None %}<div class="progress-wrapper"><div class="progress-track"><div class="progress-fill" style="width:{{ dev.ram }}%;background-color:{{ dev.ram_color }};"></div></div></div><span class="text-xs">{{ dev.ram }}%</span>{% else %}—{% endif %}</td>
-        <td><span class="pill pill-{{ dev.status_color }}">{{ dev.status_label }}</span></td>
-    </tr>
-    {% endfor %}
-    </tbody>
-</table>
-{% endif %}
-
-{% if incidents %}
-<div class="avoid-break">
-<div class="section-header">
-    <h2 class="section-title">Incidentes Resueltos — {{ month_name|title }}</h2>
-</div>
-<table class="data-table">
-    <thead><tr>
-        <th style="width:12%">Fecha</th>
-        <th style="width:50%">Título</th>
-        <th style="width:18%">Severidad</th>
-        <th style="width:20%">Equipo</th>
-    </tr></thead>
-    <tbody>
-    {% for inc in incidents %}
-    <tr>
-        <td class="text-slate-500">{{ inc.date }}</td>
-        <td class="font-bold">{{ inc.title }}</td>
-        <td><span class="pill pill-{{ inc.sev_color }}">{{ inc.sev_label }}</span></td>
-        <td class="text-slate-500">{{ inc.device }}</td>
-    </tr>
-    {% endfor %}
-    </tbody>
-</table>
-</div>
-{% endif %}
-
-{% if domains %}
-<div class="avoid-break">
-<div class="section-header">
-    <h2 class="section-title">Estado de Dominios</h2>
-    <div class="section-subtitle">{{ domains|length }} dominios gestionados</div>
-</div>
-<table class="data-table">
-    <thead><tr>
-        <th style="width:30%">Dominio</th>
-        <th style="width:20%">Registrador</th>
-        <th style="width:15%">Vencimiento</th>
-        <th style="width:20%">Días Restantes</th>
-        <th style="width:15%">Estado</th>
-    </tr></thead>
-    <tbody>
-    {% for dom in domains %}
-    <tr>
-        <td class="font-bold">{{ dom.fqdn }}</td>
-        <td class="text-slate-500">{{ dom.registrar }}</td>
-        <td class="text-slate-500">{{ dom.expiry }}</td>
-        <td class="font-bold text-{{ dom.days_color }}">{{ dom.days_str }}</td>
-        <td><span class="pill pill-{{ dom.status_color }}">{{ dom.status_label }}</span></td>
-    </tr>
-    {% endfor %}
-    </tbody>
-</table>
-</div>
-{% endif %}
-
-{% if licenses %}
-<div class="avoid-break">
-<div class="section-header">
-    <h2 class="section-title">Licencias Microsoft 365</h2>
-</div>
-<table class="data-table">
-    <thead><tr>
-        <th style="width:35%">Producto</th>
-        <th class="text-center" style="width:12%">Total</th>
-        <th class="text-center" style="width:12%">Usadas</th>
-        <th class="text-center" style="width:16%">Disponibles</th>
-        <th style="width:25%">Utilización</th>
-    </tr></thead>
-    <tbody>
-    {% for lic in licenses %}
-    <tr>
-        <td class="font-bold">{{ lic.name }}</td>
-        <td class="text-center text-slate-500">{{ lic.total }}</td>
-        <td class="text-center font-bold">{{ lic.used }}</td>
-        <td class="text-center font-bold text-{{ lic.avail_color }}">{{ lic.available }}</td>
-        <td>
-            <div class="progress-wrapper" style="width:60px;">
-                <div class="progress-track"><div class="progress-fill" style="width:{{ lic.pct }}%;background-color:{{ lic.bar_color }};"></div></div>
-            </div>
-            <span class="text-xs">{{ lic.pct }}%</span>
-        </td>
-    </tr>
-    {% endfor %}
-    </tbody>
-</table>
-</div>
-{% endif %}
-
-</body>
-</html>
-"""
-
-# ── Helpers ───────────────────────────────────────────────────────────────────
-
-def format_devices(devices_qs):
-    result = []
-    for dev in devices_qs:
-        snap = dev.snapshots.first()
-        cpu = snap.cpu_percent if snap else None
-        ram = snap.ram_used_percent if snap else None
-        st = dev.status
-        result.append({
-            "name": dev.display_name,
-            "type": dev.get_device_type_display(),
-            "os": dev.os or "—",
-            "cpu": round(cpu, 1) if cpu is not None else None,
-            "cpu_color": "#10b981" if cpu and cpu < 70 else "#f59e0b" if cpu and cpu < 90 else "#ef4444",
-            "ram": round(ram, 1) if ram is not None else None,
-            "ram_color": "#10b981" if ram and ram < 70 else "#f59e0b" if ram and ram < 90 else "#ef4444",
-            "status_color": {"online":"green","warning":"amber","offline":"red","never":"slate"}.get(st,"slate"),
-            "status_label": {"online":"En línea","warning":"Alerta","offline":"Offline","never":"Sin datos"}.get(st, st),
-        })
-    return result
-
-def format_incidents(incidents_qs):
-    result = []
-    for inc in incidents_qs[:20]:
-        result.append({
-            "date": inc.resolved_at.strftime("%d/%m/%y") if inc.resolved_at else "—",
-            "title": inc.title[:65],
-            "sev_color": {"low":"slate","medium":"blue","high":"amber","critical":"red"}.get(inc.severity,"slate"),
-            "sev_label": inc.get_severity_display(),
-            "device": inc.device.display_name if inc.device else "—",
-        })
-    return result
-
-def format_domains(domains_qs):
-    result = []
-    for d in domains_qs:
-        days = d.days_until_expiry
-        if days is None:       days_str, days_color = "—", "slate-500"
-        elif days < 0:         days_str, days_color = "Vencido", "red"
-        elif days < 30:        days_str, days_color = f"{days} días", "red"
-        elif days < 90:        days_str, days_color = f"{days} días", "amber"
-        else:                  days_str, days_color = f"{days} días", "green"
-        result.append({
-            "fqdn": d.fqdn,
-            "registrar": d.registrar or "—",
-            "expiry": d.expiry_date.strftime("%d/%m/%Y") if d.expiry_date else "—",
-            "days_str": days_str,
-            "days_color": days_color,
-            "status_color": {"ok":"green","warning":"amber","critical":"red","expired":"red"}.get(d.status,"slate"),
-            "status_label": {"ok":"OK","warning":"Por vencer","critical":"Crítico","expired":"Vencido","unknown":"—"}.get(d.status, d.status),
-        })
-    return result
-
-def format_licenses(licenses_qs):
-    result = []
-    for l in licenses_qs:
-        pct = l.utilization_percent
-        result.append({
-            "name": l.friendly_name or l.sku_part_number,
-            "total": l.total_licenses,
-            "used": l.consumed_licenses,
-            "available": l.available_licenses,
-            "avail_color": "red" if l.available_licenses == 0 else "green",
-            "pct": pct,
-            "bar_color": "#ef4444" if pct >= 100 else "#f59e0b" if pct >= 85 else "#2563eb",
-        })
-    return result
-
-# ── Función principal ─────────────────────────────────────────────────────────
 
 def build_report_pdf(client, year: int, month: int) -> tuple[bytes, dict]:
     from core.models import TelemetrySnapshot
@@ -358,26 +114,26 @@ def build_report_pdf(client, year: int, month: int) -> tuple[bytes, dict]:
 
     period_start = timezone.make_aware(datetime(year, month, 1))
     period_end   = period_start + relativedelta(months=1)
-    month_name   = MESES.get(month, str(month))
-
-    company = getattr(settings, "SENTINEL_COMPANY_NAME", "Sentinel XO")
-    support = getattr(settings, "SENTINEL_SUPPORT_EMAIL", "soporte@perseustechnology.dev")
+    month_name   = MESES.get(month, str(month)).capitalize()
+    company      = getattr(settings, "SENTINEL_COMPANY_NAME", "Sentinel XO")
+    support      = getattr(settings, "SENTINEL_SUPPORT_EMAIL", "soporte@perseustechnology.dev")
 
     devices        = client.devices.filter(is_active=True).prefetch_related("snapshots")
     incidents_res  = client.incidents.filter(resolved_at__range=(period_start, period_end), is_resolved=True)
     incidents_open = client.incidents.filter(is_resolved=False)
     domains        = client.domains.all()
-
     try:
         licenses_qs = client.m365_licenses.filter(
-            capability_status="Enabled", total_licenses__lt=10000, total_licenses__gt=0
-        )
+            capability_status="Enabled", total_licenses__lt=10000, total_licenses__gt=0)
     except Exception:
         licenses_qs = []
 
-    total_snaps  = TelemetrySnapshot.objects.filter(device__client=client, captured_at__range=(period_start, period_end)).count()
-    online_snaps = TelemetrySnapshot.objects.filter(device__client=client, captured_at__range=(period_start, period_end), uptime_seconds__gt=0).count()
-    avg_uptime   = round(online_snaps / total_snaps * 100, 1) if total_snaps else 0.0
+    total_snaps  = TelemetrySnapshot.objects.filter(
+        device__client=client, captured_at__range=(period_start, period_end)).count()
+    online_snaps = TelemetrySnapshot.objects.filter(
+        device__client=client, captured_at__range=(period_start, period_end),
+        uptime_seconds__gt=0).count()
+    avg_uptime = round(online_snaps / total_snaps * 100, 1) if total_snaps else 0.0
 
     summary = {
         "period":             f"{year}/{month:02d}",
@@ -388,35 +144,224 @@ def build_report_pdf(client, year: int, month: int) -> tuple[bytes, dict]:
         "domains_critical":   domains.filter(status__in=["critical","expired"]).count(),
     }
 
-    context = Context({
-        "client":       client,
-        "company":      company,
-        "support":      support,
-        "month_name":   month_name,
-        "year":         year,
-        "now_str":      timezone.now().strftime("%d/%m/%Y %H:%M"),
-        "uptime":       avg_uptime,
-        "devices_count": devices.count(),
-        "inc_ok":       incidents_res.count(),
-        "inc_open":     incidents_open.count(),
-        "dom_crit":     summary["domains_critical"],
-        "devices":      format_devices(devices),
-        "incidents":    format_incidents(incidents_res),
-        "domains":      format_domains(domains),
-        "licenses":     format_licenses(licenses_qs),
-    })
+    buf  = io.BytesIO()
+    doc  = SimpleDocTemplate(buf, pagesize=A4,
+                              leftMargin=M, rightMargin=M,
+                              topMargin=M, bottomMargin=2*cm,
+                              title=f"Reporte {month_name} {year} — {client.company_name}",
+                              author=company)
+    story = []
 
-    template   = Template(REPORT_TEMPLATE)
-    html_string = template.render(context)
+    # ── PORTADA ────────────────────────────────────────────────────────────────
+    hdr = Table([[
+        Paragraph(f'<font color="white" size="18"><b>{company}</b></font>',
+                  sty("ch", fontName="Helvetica-Bold", fontSize=18, textColor=WHITE, leading=22)),
+        Paragraph(
+            f'<font color="#93c5fd" size="9">Reporte de Mantenimiento Preventivo</font><br/>'
+            f'<font color="white" size="18"><b>{month_name} {year}</b></font>',
+            sty("cs", fontSize=9, textColor=colors.HexColor("#93c5fd"),
+                leading=22, alignment=TA_RIGHT)),
+    ]], colWidths=[CW * 0.55, CW * 0.45])
+    hdr.setStyle(TableStyle([
+        ("BACKGROUND",    (0,0),(-1,-1), SLATE900),
+        ("LEFTPADDING",   (0,0),(-1,-1), 18),
+        ("RIGHTPADDING",  (0,0),(-1,-1), 18),
+        ("TOPPADDING",    (0,0),(-1,-1), 18),
+        ("BOTTOMPADDING", (0,0),(-1,-1), 18),
+        ("VALIGN",        (0,0),(-1,-1), "MIDDLE"),
+    ]))
+    story.append(hdr)
 
-    # Generar PDF — compatible con WeasyPrint 52+ y 61+
-    try:
-        from weasyprint import HTML as WeasyHTML
-        pdf_bytes = WeasyHTML(string=html_string).write_pdf()
-    except TypeError:
-        # Fallback para versiones antiguas
-        from weasyprint import HTML as WeasyHTML, CSS
-        doc = WeasyHTML(string=html_string).render()
-        pdf_bytes = doc.write_pdf()
+    accent = Drawing(CW, 3)
+    accent.add(Rect(0, 0, CW, 3, fillColor=BLUE, strokeColor=None))
+    story.append(accent)
 
-    return pdf_bytes, summary
+    info = Table([[
+        Paragraph(f'<font size="7" color="#64748b">CLIENTE</font><br/>'
+                  f'<font size="13"><b>{client.company_name}</b></font>',
+                  sty("ci1", leading=18)),
+        Paragraph(f'<font size="7" color="#64748b">CONTACTO</font><br/>'
+                  f'<font size="9">{client.contact_email}</font>',
+                  sty("ci2", leading=16)),
+        Paragraph(f'<font size="7" color="#64748b">PLAN</font><br/>'
+                  f'<font size="9"><b>{client.get_plan_display()}</b></font>',
+                  sty("ci3", leading=16)),
+        Paragraph(f'<font size="7" color="#64748b">GENERADO</font><br/>'
+                  f'<font size="9">{timezone.now().strftime("%d/%m/%Y %H:%M")}</font>',
+                  sty("ci4", leading=16, alignment=TA_RIGHT)),
+    ]], colWidths=[CW*0.30, CW*0.28, CW*0.18, CW*0.24])
+    info.setStyle(TableStyle([
+        ("BACKGROUND",    (0,0),(-1,-1), SLATE50),
+        ("LEFTPADDING",   (0,0),(-1,-1), 12),
+        ("RIGHTPADDING",  (0,0),(-1,-1), 12),
+        ("TOPPADDING",    (0,0),(-1,-1), 11),
+        ("BOTTOMPADDING", (0,0),(-1,-1), 11),
+        ("VALIGN",        (0,0),(-1,-1), "TOP"),
+        ("LINEAFTER",     (0,0),(2,0), 0.4, SLATE300),
+        ("LINEBELOW",     (0,0),(-1,-1), 2, BLUE),
+    ]))
+    story.append(info)
+    story.append(Spacer(1, 14))
+
+    # ── KPIs ───────────────────────────────────────────────────────────────────
+    story += section_hdr("Resumen Ejecutivo")
+    up_col = GREEN if avg_uptime >= 99 else AMBER if avg_uptime >= 95 else RED
+    op_col = RED if incidents_open.count() > 0 else GREEN
+    cr_col = RED if summary["domains_critical"] > 0 else GREEN
+
+    def kpi(lbl, val, sub, vc):
+        return Table([[
+            Paragraph(f'<font size="7" color="#94a3b8"><b>{lbl}</b></font>',
+                      sty(f"kl{lbl[:3]}", fontSize=7, fontName="Helvetica-Bold",
+                          textColor=SLATE500, letterSpacing=0.3)),
+            Paragraph(f'<font size="22"><b>{val}</b></font>',
+                      sty(f"kv{lbl[:3]}", fontName="Helvetica-Bold", fontSize=22,
+                          textColor=vc, leading=26)),
+            Paragraph(f'<font size="8" color="#94a3b8">{sub}</font>',
+                      sty(f"ks{lbl[:3]}", fontSize=8, textColor=SLATE500)),
+        ]], colWidths=[None])
+
+    krow = Table([[
+        kpi("DISPONIBILIDAD", f"{avg_uptime}%", "promedio del período", up_col),
+        kpi("EQUIPOS", str(devices.count()), "monitorizados", BLUE),
+        kpi("INCIDENTES RES.", str(incidents_res.count()), "este mes", GREEN),
+        kpi("PENDIENTES", str(incidents_open.count()), "sin resolver", op_col),
+        kpi("DOM. CRÍTICOS", str(summary["domains_critical"]), "requieren atención", cr_col),
+    ]], colWidths=[CW/5]*5)
+    krow.setStyle(TableStyle([
+        ("BACKGROUND",    (0,0),(-1,-1), SLATE50),
+        ("LINEAFTER",     (0,0),(3,0), 0.4, SLATE300),
+        ("LEFTPADDING",   (0,0),(-1,-1), 12),
+        ("RIGHTPADDING",  (0,0),(-1,-1), 12),
+        ("TOPPADDING",    (0,0),(-1,-1), 12),
+        ("BOTTOMPADDING", (0,0),(-1,-1), 12),
+        ("VALIGN",        (0,0),(-1,-1), "TOP"),
+        ("LINEBELOW",     (0,0),(-1,-1), 2.5, BLUE),
+    ]))
+    story.append(krow)
+    story.append(Spacer(1, 14))
+
+    # ── DISPOSITIVOS ───────────────────────────────────────────────────────────
+    if devices.exists():
+        story += section_hdr("Estado de Dispositivos",
+                              f"{devices.count()} equipo{'s' if devices.count()!=1 else ''}")
+        cols = [4.5*cm, 2.5*cm, 3.2*cm, 2.8*cm, 2.8*cm, 2.7*cm]
+        rows = [[th("Equipo"), th("Tipo"), th("Sistema"), th("CPU"), th("RAM"), th("Estado")]]
+        for dev in devices:
+            snap = dev.snapshots.first()
+            cpu  = snap.cpu_percent if snap else None
+            ram  = snap.ram_used_percent if snap else None
+            st   = dev.status
+            sc   = {"online":GREEN,"warning":AMBER,"offline":RED,"never":SLATE500}.get(st, SLATE500)
+            sl   = {"online":"En línea","warning":"Alerta","offline":"Offline","never":"Sin datos"}.get(st, st)
+            rows.append([
+                Paragraph(f"<b>{dev.display_name}</b>",
+                          sty("dn", fontName="Helvetica-Bold", fontSize=9, textColor=SLATE800)),
+                Paragraph(dev.get_device_type_display(),
+                          sty("dt", fontSize=8, textColor=SLATE500)),
+                Paragraph(dev.os or "—", sty("dos", fontSize=8, textColor=SLATE500)),
+                [bar(cpu or 0, w=2.2*cm,
+                     fc=GREEN if (cpu or 0)<70 else AMBER if (cpu or 0)<90 else RED),
+                 Paragraph(f"{cpu:.1f}%" if cpu is not None else "—",
+                           sty("dc", fontSize=8, textColor=SLATE500))]
+                if cpu is not None else
+                Paragraph("—", sty("dcn", fontSize=8, textColor=SLATE500)),
+                [bar(ram or 0, w=2.2*cm,
+                     fc=GREEN if (ram or 0)<70 else AMBER if (ram or 0)<90 else RED),
+                 Paragraph(f"{ram:.1f}%" if ram is not None else "—",
+                           sty("dr", fontSize=8, textColor=SLATE500))]
+                if ram is not None else
+                Paragraph("—", sty("drn", fontSize=8, textColor=SLATE500)),
+                Paragraph(f'<font color="#{hx(sc)}" size="8"><b>{sl}</b></font>',
+                          sty("ds", fontName="Helvetica-Bold", fontSize=8, textColor=sc)),
+            ])
+        t = Table(rows, colWidths=cols, repeatRows=1)
+        t.setStyle(tbl_style())
+        story.append(t)
+        story.append(Spacer(1, 12))
+
+    # ── INCIDENTES ─────────────────────────────────────────────────────────────
+    if incidents_res.exists():
+        story += section_hdr(f"Incidentes Resueltos — {month_name}",
+                              f"{incidents_res.count()} incidente(s)")
+        sev_colors = {"low":SLATE500,"medium":BLUE,"high":AMBER,"critical":RED}
+        rows = [[th("Fecha"), th("Título"), th("Severidad"), th("Equipo")]]
+        for inc in incidents_res[:20]:
+            sc = sev_colors.get(inc.severity, SLATE500)
+            rows.append([
+                Paragraph(inc.resolved_at.strftime("%d/%m/%y") if inc.resolved_at else "—",
+                          sty("id", fontSize=8, textColor=SLATE500)),
+                Paragraph(inc.title[:65], sty("it", fontSize=9, textColor=SLATE800)),
+                Paragraph(f'<font color="#{hx(sc)}" size="8"><b>{inc.get_severity_display()}</b></font>',
+                          sty("is", fontName="Helvetica-Bold", fontSize=8, textColor=sc)),
+                Paragraph(inc.device.display_name if inc.device else "—",
+                          sty("ie", fontSize=8, textColor=SLATE500)),
+            ])
+        t = Table(rows, colWidths=[2.3*cm, 8.5*cm, 2.5*cm, 3.2*cm], repeatRows=1)
+        t.setStyle(tbl_style())
+        story.append(t)
+        story.append(Spacer(1, 12))
+
+    # ── DOMINIOS ───────────────────────────────────────────────────────────────
+    if domains.exists():
+        story += section_hdr("Estado de Dominios", f"{domains.count()} dominio(s)")
+        rows = [[th("Dominio"), th("Registrador"), th("Vencimiento"),
+                 th("Días restantes"), th("Estado")]]
+        for d in domains:
+            days = d.days_until_expiry
+            if days is None:    ds, dc = "—", SLATE500
+            elif days < 0:      ds, dc = "Vencido", RED
+            elif days < 30:     ds, dc = f"{days} días", RED
+            elif days < 90:     ds, dc = f"{days} días", AMBER
+            else:               ds, dc = f"{days} días", GREEN
+            sc = {"ok":GREEN,"warning":AMBER,"critical":RED,"expired":RED}.get(d.status, SLATE500)
+            sl = {"ok":"OK","warning":"Por vencer","critical":"Crítico",
+                  "expired":"Vencido","unknown":"—"}.get(d.status, d.status)
+            rows.append([
+                Paragraph(f"<b>{d.fqdn}</b>",
+                          sty("df", fontName="Helvetica-Bold", fontSize=9, textColor=SLATE800)),
+                Paragraph(d.registrar or "—", sty("dr", fontSize=8, textColor=SLATE500)),
+                Paragraph(d.expiry_date.strftime("%d/%m/%Y") if d.expiry_date else "—",
+                          sty("dv", fontSize=8, textColor=SLATE500)),
+                Paragraph(f'<font color="#{hx(dc)}" size="9"><b>{ds}</b></font>',
+                          sty("dd", fontName="Helvetica-Bold", fontSize=9, textColor=dc)),
+                Paragraph(f'<font color="#{hx(sc)}" size="8"><b>{sl}</b></font>',
+                          sty("ds2", fontName="Helvetica-Bold", fontSize=8, textColor=sc)),
+            ])
+        t = Table(rows, colWidths=[5.5*cm, 3*cm, 2.8*cm, 3*cm, 2.2*cm], repeatRows=1)
+        t.setStyle(tbl_style())
+        story.append(t)
+        story.append(Spacer(1, 12))
+
+    # ── LICENCIAS M365 ─────────────────────────────────────────────────────────
+    if licenses_qs:
+        story += section_hdr("Licencias Microsoft 365",
+                              f"{len(list(licenses_qs))} producto(s)")
+        rows = [[th("Producto"), th("Total"), th("Usadas"), th("Disponibles"), th("Utilización")]]
+        for l in licenses_qs:
+            pct   = l.utilization_percent
+            bc    = RED if pct >= 100 else AMBER if pct >= 85 else BLUE
+            avc   = RED if l.available_licenses == 0 else GREEN
+            rows.append([
+                Paragraph(f"<b>{l.friendly_name or l.sku_part_number}</b>",
+                          sty("ln", fontName="Helvetica-Bold", fontSize=9, textColor=SLATE800)),
+                Paragraph(str(l.total_licenses),
+                          sty("lt", fontSize=9, textColor=SLATE500, alignment=TA_CENTER)),
+                Paragraph(str(l.consumed_licenses),
+                          sty("lc", fontSize=9, textColor=SLATE800, alignment=TA_CENTER)),
+                Paragraph(f'<font color="#{hx(avc)}" size="9"><b>{l.available_licenses}</b></font>',
+                          sty("la", fontName="Helvetica-Bold", fontSize=9,
+                              textColor=avc, alignment=TA_CENTER)),
+                [bar(pct, w=3.2*cm, fc=bc),
+                 Paragraph(f"{pct}%", sty("lp", fontSize=8, textColor=SLATE500))],
+            ])
+        ts = tbl_style()
+        ts.add("ALIGN", (1,1), (3,-1), "CENTER")
+        t = Table(rows, colWidths=[6*cm, 2*cm, 2*cm, 2.5*cm, 4*cm], repeatRows=1)
+        t.setStyle(ts)
+        story.append(t)
+
+    doc.build(story, onFirstPage=footer, onLaterPages=footer)
+    pdf = buf.getvalue()
+    buf.close()
+    return pdf, summary
