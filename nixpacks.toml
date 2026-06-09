@@ -2,12 +2,12 @@
 nixPkgs = ["python311", "gcc", "postgresql_15"]
 
 [phases.install]
-cmds = ["pip install -r requirements.txt"]
+cmds = ["python3 -m pip install -r requirements.txt"]
 
 [phases.build]
 cmds = [
-  "python manage.py collectstatic --noinput",
-  "python manage.py migrate --noinput"
+  "python3 manage.py collectstatic --noinput",
+  "python3 manage.py migrate --noinput"
 ]
 
 [start]
