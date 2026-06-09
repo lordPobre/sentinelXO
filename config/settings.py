@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 from dotenv import load_dotenv
+import dj_database_url
 
 load_dotenv()
 
@@ -83,7 +84,7 @@ if DATABASE_URL.startswith("sqlite"):
         }
     }
 else:
-    import dj_database_url
+    
     DATABASES = {"default": dj_database_url.config(default=DATABASE_URL)}
 
 # --- Auth ---
@@ -147,14 +148,14 @@ EMAIL_PORT = int(os.environ.get("EMAIL_PORT", 587))
 EMAIL_USE_TLS = True
 EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "")
 EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD", "")
-DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "soporte@sentinelxo.dev")
+DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "soporte@perseustechnology.dev")
 
 # --- Brevo ---
 BREVO_WEBHOOK_SECRET = os.environ.get("BREVO_WEBHOOK_SECRET", "")  # Clave para verificar webhooks
 
 # --- Sentinel XO config ---
 SENTINEL_COMPANY_NAME = os.environ.get("SENTINEL_COMPANY_NAME", "Sentinel XO")
-SENTINEL_SUPPORT_EMAIL = os.environ.get("SENTINEL_SUPPORT_EMAIL", "soporte@sentinelxo.dev")
+SENTINEL_SUPPORT_EMAIL = os.environ.get("SENTINEL_SUPPORT_EMAIL", "soporte@perseustechnology.dev")
 
 # --- Logging básico ---
 LOGGING = {
