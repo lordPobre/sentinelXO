@@ -1,13 +1,11 @@
 [phases.setup]
-nixPkgs = ["python312", "gcc", "postgresql_15"]
+nixPkgs = ["python311", "gcc", "postgresql_15"]
 
 [phases.install]
-cmds = ["python3 -m pip install -r requirements.txt"]
+cmds = ["pip install -r requirements.txt"]
 
 [phases.build]
-cmds = [
-  "python3 manage.py collectstatic --noinput"
-]
+cmds = ["python manage.py collectstatic --noinput"]
 
 [start]
-cmd = "python3 manage.py migrate --noinput && gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --timeout 120"
+cmd = "python manage.py migrate --noinput && gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --timeout 120"
