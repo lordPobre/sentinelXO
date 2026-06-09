@@ -282,105 +282,24 @@ function baseOpts(extraPlugins) {
   };
 }
 
-// Chart CPU
-const ctxCpu = document.getElementById("chart-cpu").getContext("2d");
-const chartCpu = new Chart(ctxCpu, {
-  type: "line",
-  data: {
-    labels: [],
-    datasets: [{
-      label: "CPU",
-      data: [],
-      borderColor: "#3b82f6",
-      backgroundColor: "rgba(37,99,235,0.08)",
-      borderWidth: 2,
-      pointRadius: 0,
-      pointHoverRadius: 4,
-      pointHoverBackgroundColor: "#3b82f6",
-      fill: true,
-      tension: 0.4,
-    }],
-  },
-  options: baseOpts(),
-});
+// Charts inicializados en initCharts() después de que Chart.js cargue
 
-// Chart RAM
-const ctxRam = document.getElementById("chart-ram").getContext("2d");
-const chartRam = new Chart(ctxRam, {
-  type: "line",
-  data: {
-    labels: [],
-    datasets: [{
-      label: "RAM",
-      data: [],
-      borderColor: "#10b981",
-      backgroundColor: "rgba(16,185,129,0.07)",
-      borderWidth: 2,
-      pointRadius: 0,
-      pointHoverRadius: 4,
-      pointHoverBackgroundColor: "#10b981",
-      fill: true,
-      tension: 0.4,
-    }],
-  },
-  options: baseOpts(),
-});
 
-// Chart combinado
-const ctxComb = document.getElementById("chart-combined").getContext("2d");
-const chartComb = new Chart(ctxComb, {
-  type: "line",
-  data: {
-    labels: [],
-    datasets: [
-      {
-        label: "CPU",
-        data: [],
-        borderColor: "#3b82f6",
-        backgroundColor: "rgba(37,99,235,0.06)",
-        borderWidth: 1.5,
-        pointRadius: 0,
-        fill: true,
-        tension: 0.4,
-      },
-      {
-        label: "RAM",
-        data: [],
-        borderColor: "#10b981",
-        backgroundColor: "rgba(16,185,129,0.05)",
-        borderWidth: 1.5,
-        pointRadius: 0,
-        fill: true,
-        tension: 0.4,
-      },
-    ],
-  },
-  options: baseOpts({
-    legend: {
-      display: true,
-      labels: {
-        color: "#64748b",
-        font: { size: 10, family: "'JetBrains Mono',monospace" },
-        boxWidth: 12,
-        padding: 16,
-        usePointStyle: true,
-        pointStyle: "line",
-      },
-    },
-  }),
-});
 
 function updateCharts(labels, cpuData, ramData) {
-  [chartCpu, chartRam, chartComb].forEach(c => {
-    c.data.labels = labels;
-  });
+  const chartCpu  = window._chartCpu;
+  const chartRam  = window._chartRam;
+  const chartComb = window._chartComb;
+  if (!chartCpu || !chartRam || !chartComb) return;
+
+  [chartCpu, chartRam, chartComb].forEach(c => { c.data.labels = labels; });
   chartCpu.data.datasets[0].data  = cpuData;
   chartRam.data.datasets[0].data  = ramData;
   chartComb.data.datasets[0].data = cpuData;
   chartComb.data.datasets[1].data = ramData;
   [chartCpu, chartRam, chartComb].forEach(c => c.update("none"));
-
-  document.getElementById("chart-count").textContent = labels.length + " lecturas";
+  const el = document.getElementById("chart-count");
+  if (el) el.textContent = labels.length + " lecturas";
 }
 
 function updateDisks(disks) {
@@ -517,8 +436,60 @@ function updateTemperatures(temps) {
   }).join("");
 }
 
-// Arrancar polling
-poll();
-const pollTimer = setInterval(poll, 5000);
+// Esperar a que Chart.js esté disponible antes de arrancar
+function waitForChart(callback, attempts) {
+  attempts = attempts || 0;
+  if (typeof Chart !== 'undefined') {
+    callback();
+  } else if (attempts < 30) {
+    setTimeout(() => waitForChart(callback, attempts + 1), 200);
+  } else {
+    console.warn("Chart.js no cargó — cargando desde CDN alternativo");
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js';
+    s.onload = callback;
+    document.head.appendChild(s);
+  }
+}
+
+waitForChart(function() {
+  // Inicializar charts
+  initCharts();
+  // Arrancar polling
+  poll();
+  setInterval(poll, 5000);
+});
+
+function initCharts() {
+  const ctxCpuEl  = document.getElementById("chart-cpu");
+  const ctxRamEl  = document.getElementById("chart-ram");
+  const ctxCombEl = document.getElementById("chart-combined");
+
+  if (!ctxCpuEl || !ctxRamEl || !ctxCombEl) return;
+
+  window._chartCpu = new Chart(ctxCpuEl.getContext("2d"), {
+    type: "line",
+    data: { labels: [], datasets: [{ label: "CPU", data: [], borderColor: "#3b82f6", backgroundColor: "rgba(37,99,235,0.08)", borderWidth: 2, pointRadius: 0, fill: true, tension: 0.4 }] },
+    options: baseOpts(),
+  });
+
+  window._chartRam = new Chart(ctxRamEl.getContext("2d"), {
+    type: "line",
+    data: { labels: [], datasets: [{ label: "RAM", data: [], borderColor: "#10b981", backgroundColor: "rgba(16,185,129,0.07)", borderWidth: 2, pointRadius: 0, fill: true, tension: 0.4 }] },
+    options: baseOpts(),
+  });
+
+  window._chartComb = new Chart(ctxCombEl.getContext("2d"), {
+    type: "line",
+    data: {
+      labels: [],
+      datasets: [
+        { label: "CPU", data: [], borderColor: "#3b82f6", backgroundColor: "rgba(37,99,235,0.06)", borderWidth: 1.5, pointRadius: 0, fill: true, tension: 0.4 },
+        { label: "RAM", data: [], borderColor: "#10b981", backgroundColor: "rgba(16,185,129,0.05)", borderWidth: 1.5, pointRadius: 0, fill: true, tension: 0.4 },
+      ],
+    },
+    options: baseOpts({ legend: { display: true, labels: { color: "#64748b", font: { size: 10, family: "'JetBrains Mono',monospace" }, boxWidth: 12, padding: 16, usePointStyle: true, pointStyle: "line" } } }),
+  });
+}
 </script>
 {% endblock %}
