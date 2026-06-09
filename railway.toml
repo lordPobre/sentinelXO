@@ -2,8 +2,8 @@
 builder = "nixpacks"
 
 [deploy]
-preDeployCommand = "python manage.py migrate --noinput && python manage.py create_admin"
-startCommand = "sh -c 'gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --timeout 120'"
+preDeployCommand = "python manage.py migrate --noinput"
+startCommand = "sh -c 'python manage.py create_admin && gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --timeout 120'"
 healthcheckPath = "/health/"
 healthcheckTimeout = 300
 restartPolicyType = "on_failure"
