@@ -32,6 +32,6 @@ def m365_sync_htmx(request, client_id):
         messages.success(request, f"Licencias M365 de {client} sincronizadas.")
     else:
         messages.error(request, f"Error sincronizando M365 de {client}.")
-    licenses = client.m365_licenses.all()
+    licenses = client.m365_licenses.filter(capability_status="Enabled", total_licenses__lt=10000, total_licenses__gt=0)
     return render(request, "monitoring/partials/m365_licenses.html",
                   {"client": client, "licenses": licenses})

@@ -128,14 +128,32 @@ def fetch_m365_licenses(tenant_id: str, client_id: str, client_secret: str) -> l
     )
     resp.raise_for_status()
 
+    # SKUs internos de Microsoft que no son licencias reales
+    SKIP_SKUS = {
+        "FLOW_FREE", "POWER_BI_STANDARD", "TEAMS_EXPLORATORY",
+        "MICROSOFT_REMOTE_ASSIST", "WINDOWS_STORE", "DEVELOPERPACK",
+        "DEVELOPERPACK_E5", "SHAREPOINTDESKLESS", "MCOIMP",
+        "RIGHTSMANAGEMENT_ADHOC", "VISIOONLINE_PLAN1", "SPZA_IW",
+    }
+
     skus = resp.json().get("value", [])
     licenses = []
     for sku in skus:
         sku_number = sku.get("skuPartNumber", "")
+        total = sku["prepaidUnits"]["enabled"]
+
+        # Filtrar SKUs internos y licencias con más de 10000 unidades
+        if sku_number in SKIP_SKUS:
+            continue
+        if total >= 10000:
+            continue
+        if total == 0 and sku.get("consumedUnits", 0) == 0:
+            continue
+
         licenses.append({
             "sku_part_number": sku_number,
             "friendly_name": SKU_FRIENDLY_NAMES.get(sku_number, sku_number),
-            "total_licenses": sku["prepaidUnits"]["enabled"],
+            "total_licenses": total,
             "consumed_licenses": sku.get("consumedUnits", 0),
             "capability_status": sku.get("capabilityStatus", "Enabled"),
         })

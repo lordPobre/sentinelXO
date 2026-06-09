@@ -26,7 +26,7 @@ def home(request):
     return redirect("dashboard:client-select")
 
 
-# ─── PANEL ADMINISTRADOR (Perseus) ───────────────────────────────────────────
+# ─── PANEL ADMINISTRADOR (Sentinel XO) ───────────────────────────────────────────
 
 @login_required
 def admin_overview(request):
@@ -65,7 +65,7 @@ def admin_client_detail(request, client_id):
     client = get_object_or_404(Client, pk=client_id)
     devices = client.devices.filter(is_active=True).prefetch_related("snapshots")
     domains = client.domains.all()
-    licenses = client.m365_licenses.all()
+    licenses = client.m365_licenses.filter(capability_status="Enabled", total_licenses__lt=10000, total_licenses__gt=0)
     incidents = client.incidents.order_by("-created_at")[:20]
     context = {
         "client": client,
@@ -99,7 +99,7 @@ def client_portal(request, client_id):
 
     devices = client.devices.filter(is_active=True)
     domains = client.domains.all()
-    licenses = client.m365_licenses.all()
+    licenses = client.m365_licenses.filter(capability_status="Enabled", total_licenses__lt=10000, total_licenses__gt=0)
     incidents_recent = client.incidents.filter(
         created_at__gte=timezone.now() - timezone.timedelta(days=30)
     ).order_by("-created_at")[:10]
