@@ -1,25 +1,182 @@
 {% extends "base/base.html" %}
 {% block body %}
-<div style="display:flex;height:100vh;overflow:hidden;">
+
+<style>
+/* ── Responsive Layout ──────────────────────────────────────────── */
+
+/* Overlay para cerrar sidebar en móvil */
+#sidebar-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.6);
+  z-index: 40;
+  backdrop-filter: blur(2px);
+}
+#sidebar-overlay.active { display: block; }
+
+/* Sidebar */
+#sidebar {
+  width: 210px;
+  background: var(--bg);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  position: relative;
+  transition: transform 0.25s ease;
+  z-index: 50;
+}
+
+/* Botón hamburguesa */
+#menu-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 36px; height: 36px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+/* Header actions wrap */
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+  overflow: hidden;
+}
+
+/* Ocultar reloj y badge ACTIVO en móvil pequeño */
+@media (max-width: 480px) {
+  #live-time { display: none !important; }
+  .header-badge-activo { display: none !important; }
+  .header-actions-wrap { gap: 4px !important; }
+}
+
+/* ── TABLET (768px y menos) ────────────────────────────────────── */
+@media (max-width: 768px) {
+  #menu-btn { display: flex; }
+
+  #sidebar {
+    position: fixed;
+    top: 0; left: 0; bottom: 0;
+    transform: translateX(-100%);
+    box-shadow: 4px 0 24px rgba(0,0,0,0.4);
+  }
+  #sidebar.open { transform: translateX(0); }
+
+  /* Content padding reducido */
+  #main-content {
+    padding: 14px 16px !important;
+  }
+
+  /* Topbar más compacto */
+  #topbar {
+    padding: 0 14px !important;
+    height: 52px !important;
+  }
+
+  /* KPI grids → 2 columnas en tablet */
+  .kpi-grid-4 { grid-template-columns: repeat(2, 1fr) !important; }
+  .kpi-grid-3 { grid-template-columns: repeat(2, 1fr) !important; }
+
+  /* Grids de 2 columnas → 1 columna */
+  .grid-2col { grid-template-columns: 1fr !important; }
+
+  /* Tablas → scroll horizontal */
+  .px-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+  /* Page title más pequeño */
+  #page-title { font-size: 13px !important; }
+}
+
+/* ── MÓVIL (480px y menos) ─────────────────────────────────────── */
+@media (max-width: 480px) {
+  #main-content {
+    padding: 12px !important;
+  }
+
+  /* KPI grids → 1 columna */
+  .kpi-grid-4,
+  .kpi-grid-3 { grid-template-columns: 1fr !important; }
+
+  /* KPI cards más compactos */
+  .kpi-card { padding: 14px 16px !important; }
+  .kpi-value { font-size: 24px !important; }
+
+  /* Cards → sin padding lateral exagerado */
+  .card { border-radius: 10px !important; }
+
+  /* Tablas → texto más pequeño */
+  .px-table th,
+  .px-table td { padding: 8px 10px !important; font-size: 11px !important; }
+
+  /* Botones → más compactos */
+  .btn-primary,
+  .btn-ghost { padding: 6px 10px !important; font-size: 11px !important; }
+
+  /* RT grid → 1 columna */
+  .rt-grid { grid-template-columns: 1fr !important; }
+
+  /* Summary bar → 2 columnas */
+  .summary-bar { grid-template-columns: repeat(2, 1fr) !important; }
+}
+
+/* ── LAYOUT BASE ────────────────────────────────────────────────── */
+#app-shell {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+}
+#main-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+  min-width: 0;
+}
+#main-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 22px 24px;
+  position: relative;
+  z-index: 1;
+  -webkit-overflow-scrolling: touch;
+}
+</style>
+
+<!-- Overlay móvil -->
+<div id="sidebar-overlay" onclick="closeSidebar()"></div>
+
+<div id="app-shell">
 
   <!-- ── SIDEBAR ─────────────────────────────────────────── -->
-  <aside style="width:210px;background:var(--bg);border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;position:relative;">
+  <aside id="sidebar">
     <div style="position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,#2563eb,#7c3aed,transparent);z-index:1;"></div>
 
     <!-- Logo -->
-    <div style="padding:22px 16px 18px;border-bottom:1px solid var(--border);">
+    <div style="padding:18px 16px 16px;border-bottom:1px solid var(--border);">
       <div style="display:flex;align-items:center;gap:10px;">
-        <svg width="34" height="34" viewBox="0 0 34 34" fill="none">
-        <rect x="8" y="8" width="18" height="18" rx="2" transform="rotate(45 17 17)" stroke="#2563eb" stroke-width="1" fill="none"/>
-        <line x1="17" y1="11" x2="17" y2="23" stroke="#2563eb" stroke-width="1.5" stroke-linecap="round"/>
-        <line x1="11" y1="17" x2="23" y2="17" stroke="#2563eb" stroke-width="1.5" stroke-linecap="round"/>
-        <circle cx="17" cy="17" r="2.5" fill="#2563eb"/>
-        <circle cx="17" cy="17" r="1" fill="white"/>
-      </svg>
+        <svg width="32" height="32" viewBox="0 0 34 34" fill="none">
+          <rect x="8" y="8" width="18" height="18" rx="2" transform="rotate(45 17 17)" stroke="#2563eb" stroke-width="1" fill="none"/>
+          <line x1="17" y1="11" x2="17" y2="23" stroke="#2563eb" stroke-width="1.5" stroke-linecap="round"/>
+          <line x1="11" y1="17" x2="23" y2="17" stroke="#2563eb" stroke-width="1.5" stroke-linecap="round"/>
+          <circle cx="17" cy="17" r="2.5" fill="#2563eb"/>
+          <circle cx="17" cy="17" r="1" fill="white"/>
+        </svg>
         <div>
           <div style="font-size:13px;font-weight:700;color:#f1f5f9;letter-spacing:-0.01em;">Sentinel XO</div>
           <div class="mono" style="font-size:9px;color:var(--text-3);letter-spacing:0.07em;">XO CONTROL</div>
         </div>
+        <!-- Botón cerrar en móvil -->
+        <button onclick="closeSidebar()" style="margin-left:auto;display:none;background:transparent;border:none;color:var(--text-3);cursor:pointer;padding:4px;" id="sidebar-close">
+          <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
       </div>
     </div>
 
@@ -27,34 +184,34 @@
     <nav style="flex:1;padding:12px 4px;overflow-y:auto;display:flex;flex-direction:column;gap:1px;">
       {% if user.is_staff %}
       <div style="font-size:9px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-3);padding:8px 18px 4px;">Admin</div>
-      <a href="{% url 'dashboard:admin-overview' %}" class="nav-link {% if section == 'overview' %}active{% endif %}">
+      <a href="{% url 'dashboard:admin-overview' %}" class="nav-link {% if section == 'overview' %}active{% endif %}" onclick="closeSidebar()">
         <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5" stroke-width="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5" stroke-width="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5" stroke-width="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5" stroke-width="1.5"/></svg>
         Resumen
       </a>
-      <a href="{% url 'dashboard:admin-clients' %}" class="nav-link {% if section == 'clients' %}active{% endif %}">
+      <a href="{% url 'dashboard:admin-clients' %}" class="nav-link {% if section == 'clients' %}active{% endif %}" onclick="closeSidebar()">
         <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="1.5" stroke-linecap="round" d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4" stroke-width="1.5"/><path stroke-width="1.5" stroke-linecap="round" d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
         Clientes
       </a>
-      <a href="{% url 'monitoring:domain-list' %}" class="nav-link {% if section == 'domains' %}active{% endif %}">
+      <a href="{% url 'monitoring:domain-list' %}" class="nav-link {% if section == 'domains' %}active{% endif %}" onclick="closeSidebar()">
         <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" stroke-width="1.5"/><path stroke-width="1.5" stroke-linecap="round" d="M12 3c-3 4-3 14 0 18M12 3c3 4 3 14 0 18M3 12h18"/></svg>
         Dominios
       </a>
-      <a href="{% url 'reports:list' %}" class="nav-link {% if section == 'reports' %}active{% endif %}">
+      <a href="{% url 'reports:list' %}" class="nav-link {% if section == 'reports' %}active{% endif %}" onclick="closeSidebar()">
         <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="1.5" stroke-linecap="round" d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8" stroke-width="1.5"/><line x1="16" y1="13" x2="8" y2="13" stroke-width="1.5" stroke-linecap="round"/><line x1="16" y1="17" x2="8" y2="17" stroke-width="1.5" stroke-linecap="round"/></svg>
         Reportes
       </a>
       <div class="divider" style="margin:8px 12px;"></div>
-      <a href="{% url 'emailmon:m365-dashboard' %}" class="nav-link {% if section == 'email' %}active{% endif %}">
+      <a href="{% url 'emailmon:m365-dashboard' %}" class="nav-link {% if section == 'email' %}active{% endif %}" onclick="closeSidebar()">
         <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-width="1.5" stroke-linecap="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
         Email / M365
       </a>
-      <a href="/admin/" class="nav-link">
+      <a href="/admin/" class="nav-link" onclick="closeSidebar()">
         <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" stroke-width="1.5"/><path stroke-width="1.5" stroke-linecap="round" d="M19.07 4.93a10 10 0 010 14.14M4.93 4.93a10 10 0 000 14.14"/></svg>
         Django Admin
       </a>
       {% else %}
       <div style="font-size:9px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-3);padding:8px 18px 4px;">Mi empresa</div>
-      <a href="{% url 'dashboard:home' %}" class="nav-link {% if section == 'portal' %}active{% endif %}">
+      <a href="{% url 'dashboard:home' %}" class="nav-link {% if section == 'portal' %}active{% endif %}" onclick="closeSidebar()">
         <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2" stroke-width="1.5"/><path stroke-width="1.5" stroke-linecap="round" d="M8 21h8M12 17v4"/></svg>
         Mi Dashboard
       </a>
@@ -62,7 +219,7 @@
     </nav>
 
     <!-- User -->
-    <div style="padding:12px 12px;border-top:1px solid var(--border);">
+    <div style="padding:12px;border-top:1px solid var(--border);">
       <div style="display:flex;align-items:center;gap:8px;">
         <div class="avatar av-blue" style="width:28px;height:28px;border-radius:7px;font-size:10px;">
           {{ user.username|slice:":2"|upper }}
@@ -71,47 +228,81 @@
           <div style="font-size:11px;font-weight:600;color:var(--text-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ user.username }}</div>
           <div class="mono" style="font-size:9px;color:var(--text-4);">{% if user.is_staff %}admin{% else %}client{% endif %}</div>
         </div>
-        <form action="{% url 'logout' %}" method="post" style="display: inline;">
-            {% csrf_token %}
-            <button type="submit" class="btn-icon" style="width:24px; height:24px; border-radius:6px; border:none; background:none; padding:0; cursor:pointer;" title="Salir">
-                <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
-                </svg>
-            </button>
+        <form action="{% url 'logout' %}" method="post" style="display:inline;">
+          {% csrf_token %}
+          <button type="submit" class="btn-icon" style="width:28px;height:28px;border-radius:6px;" title="Salir">
+            <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
+          </button>
         </form>
       </div>
     </div>
   </aside>
 
   <!-- ── MAIN ─────────────────────────────────────────────── -->
-  <main style="flex:1;display:flex;flex-direction:column;overflow:hidden;position:relative;">
+  <main id="main-area">
     <div class="scan-line"></div>
 
     <!-- Topbar -->
-    <header style="height:54px;background:var(--bg);border-bottom:1px solid var(--border);padding:0 24px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;position:relative;z-index:1;">
-      <div>
-        <div style="font-size:14px;font-weight:600;color:#f1f5f9;letter-spacing:-0.01em;">{% block page_title %}Dashboard{% endblock %}</div>
-        {% block page_subtitle %}<div class="mono" style="font-size:10px;color:var(--text-3);margin-top:1px;">{{ SENTINEL_COMPANY_NAME }}</div>{% endblock %}
+    <header id="topbar" style="height:54px;background:var(--bg);border-bottom:1px solid var(--border);padding:0 20px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;position:relative;z-index:1;gap:10px;">
+
+      <!-- Izquierda: hamburguesa + título -->
+      <div style="display:flex;align-items:center;gap:10px;min-width:0;flex:1;">
+        <button id="menu-btn" onclick="openSidebar()" aria-label="Abrir menú">
+          <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+        </button>
+        <div style="min-width:0;">
+          <div id="page-title" style="font-size:14px;font-weight:600;color:#f1f5f9;letter-spacing:-0.01em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{% block page_title %}Dashboard{% endblock %}</div>
+          {% block page_subtitle %}<div class="mono" style="font-size:10px;color:var(--text-3);margin-top:1px;">{{ SENTINEL_COMPANY_NAME }}</div>{% endblock %}
+        </div>
       </div>
-      <div style="display:flex;align-items:center;gap:10px;">
+
+      <!-- Derecha: acciones + badges -->
+      <div class="header-right header-actions-wrap" style="gap:8px;">
         {% block header_actions %}{% endblock %}
-        <div style="display:flex;align-items:center;gap:6px;padding:5px 10px;background:rgba(16,185,129,0.05);border:1px solid rgba(16,185,129,0.13);border-radius:7px;">
+        <div class="header-badge-activo" style="display:flex;align-items:center;gap:5px;padding:4px 8px;background:rgba(16,185,129,0.05);border:1px solid rgba(16,185,129,0.13);border-radius:7px;flex-shrink:0;">
           <span class="dot dot-on dot-pulse"></span>
           <span class="mono" style="font-size:10px;color:#10b981;font-weight:600;letter-spacing:0.04em;">ACTIVO</span>
         </div>
-        <div class="mono" style="font-size:11px;color:var(--text-4);background:rgba(255,255,255,0.03);border:1px solid var(--border);padding:4px 10px;border-radius:6px;" id="live-time"></div>
+        <div id="live-time" class="mono" style="font-size:11px;color:var(--text-4);background:rgba(255,255,255,0.03);border:1px solid var(--border);padding:4px 8px;border-radius:6px;flex-shrink:0;"></div>
       </div>
     </header>
 
     <!-- Content -->
-    <div style="flex:1;overflow-y:auto;padding:22px 24px;position:relative;z-index:1;">
+    <div id="main-content">
       {% block content %}{% endblock %}
     </div>
   </main>
 </div>
 
 <script>
+// Reloj
 function tick(){const e=document.getElementById('live-time');if(e)e.textContent=new Date().toLocaleTimeString('es-CL',{hour:'2-digit',minute:'2-digit',second:'2-digit'});}
 tick();setInterval(tick,1000);
+
+// Sidebar móvil
+function openSidebar(){
+  document.getElementById('sidebar').classList.add('open');
+  document.getElementById('sidebar-overlay').classList.add('active');
+  document.getElementById('sidebar-close').style.display='block';
+  document.body.style.overflow='hidden';
+}
+function closeSidebar(){
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('sidebar-overlay').classList.remove('active');
+  document.getElementById('sidebar-close').style.display='none';
+  document.body.style.overflow='';
+}
+
+// Cerrar con tecla Escape
+document.addEventListener('keydown',function(e){if(e.key==='Escape')closeSidebar();});
+
+// En desktop, siempre mostrar sidebar
+function handleResize(){
+  if(window.innerWidth > 768){
+    closeSidebar();
+    document.getElementById('sidebar').style.transform='';
+  }
+}
+window.addEventListener('resize', handleResize);
 </script>
 {% endblock %}
