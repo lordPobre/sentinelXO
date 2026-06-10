@@ -243,6 +243,12 @@ class M365Tenant(models.Model):
     last_synced = models.DateTimeField("Última sincronización", null=True, blank=True)
     sync_error = models.TextField("Último error de sync", blank=True)
     is_active = models.BooleanField("Activo", default=True)
+    verify_email = models.EmailField(
+        "Email para verificación sendMail",
+        blank=True,
+        help_text="Email al que se enviará el test de envío en cada verificación. "
+                  "Si está vacío, no se envía el email de prueba."
+    )
 
     class Meta:
         verbose_name = "Tenant M365"

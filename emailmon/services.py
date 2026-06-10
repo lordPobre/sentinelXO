@@ -387,13 +387,10 @@ def check_m365_graph_health(client) -> dict:
     # Solo envía email de verificación si el cliente no tiene notify_incidents_only
     start = time.monotonic()
     try:
-        # Enviar a todos los emails de alerta configurados en el cliente
-        alert_recipients = client.get_alert_recipients()
-        # Respetar preferencia notify_incidents_only — no enviar email de verificación
-        if getattr(client, "notify_incidents_only", False):
-            test_recipient = ""
-        else:
-            test_recipient = alert_recipients[0] if alert_recipients else (client.contact_email or "")
+        # Usar el email configurado en el tenant M365 para la verificación
+        # Si está vacío, no se envía el email de prueba
+        verify_email = getattr(tenant, "verify_email", "").strip()
+        test_recipient = verify_email  # vacío = no enviar
         if test_recipient:
             company = getattr(settings, "SENTINEL_COMPANY_NAME", "Sentinel XO")
             from django.utils import timezone as tz
