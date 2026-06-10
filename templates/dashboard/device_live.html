@@ -9,29 +9,45 @@
 {% endblock %}
 
 {% block header_actions %}
-<div style="display:flex;align-items:center;gap:6px;padding:4px 10px;background:rgba(16,185,129,0.05);border:1px solid rgba(16,185,129,0.13);border-radius:7px;">
+<style>
+  .dev-live-badge { display:flex;align-items:center;gap:6px;padding:4px 10px;background:rgba(16,185,129,0.05);border:1px solid rgba(16,185,129,0.13);border-radius:7px; }
+  .dev-btn-label { display:inline; }
+  @media (max-width: 600px) {
+    .dev-live-badge { padding:4px 7px; }
+    .dev-live-time  { display:none !important; }
+    .dev-btn-label  { display:none !important; }
+  }
+</style>
+
+<div class="dev-live-badge">
   <span class="dot dot-on dot-pulse"></span>
   <span class="mono" style="font-size:10px;color:#10b981;font-weight:600;">LIVE</span>
-  <span class="mono" style="font-size:10px;color:var(--text-4);" id="dev-last-update">—</span>
+  <span class="mono dev-live-time" style="font-size:10px;color:var(--text-4);" id="dev-last-update">—</span>
 </div>
-<a href="{% url 'dashboard:realtime' device.client.id %}" class="btn-ghost">← Flota</a>
 
-<!-- Reporte PDF del dispositivo -->
+<a href="{% url 'dashboard:realtime' device.client.id %}" class="btn-ghost" style="display:flex;align-items:center;gap:5px;">
+  <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
+  </svg>
+  <span class="dev-btn-label" class="btn-txt">Flota</span>
+</a>
+
 <a href="{% url 'reports:device-report' device.id %}?granularity=daily"
-   class="btn-ghost" style="display:flex;align-items:center;gap:5px;font-size:12px;">
+   class="btn-ghost" title="Reporte Diario PDF" style="display:flex;align-items:center;gap:5px;">
   <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
           d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
   </svg>
-  Reporte Diario
+  <span class="dev-btn-label" class="btn-txt">Diario</span>
 </a>
+
 <a href="{% url 'reports:device-report' device.id %}?granularity=weekly"
-   class="btn-ghost" style="display:flex;align-items:center;gap:5px;font-size:12px;">
+   class="btn-ghost" title="Reporte Semanal PDF" style="display:flex;align-items:center;gap:5px;">
   <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
           d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
   </svg>
-  Reporte Semanal
+  <span class="dev-btn-label" class="btn-txt">Semanal</span>
 </a>
 {% endblock %}
 
@@ -99,13 +115,23 @@
   .info-row:last-child { border-bottom: none; }
   .info-key { font-size: 11px; color: var(--text-4); }
   .info-val { font-size: 11px; color: var(--text-2); font-family: 'JetBrains Mono', monospace; }
+  /* Responsive device_live */
+  @media (max-width: 768px) {
+    .gauges-grid { grid-template-columns: 1fr 1fr !important; }
+    .grid-2col   { grid-template-columns: 1fr !important; }
+  }
+  @media (max-width: 480px) {
+    .gauges-grid { grid-template-columns: 1fr 1fr !important; }
+    .gauge-val   { font-size: 22px !important; }
+    .dev-live-badge span.mono:last-child { display: none; }
+  }
 </style>
 {% endblock %}
 
 {% block content %}
 
 <!-- Gauges principales -->
-<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:14px;">
+<div class="gauges-grid" style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;margin-bottom:14px;">
 
   <!-- CPU Gauge -->
   <div class="chart-card" style="display:flex;flex-direction:column;align-items:center;padding:24px 20px;">
@@ -173,7 +199,7 @@
 </div>
 
 <!-- Gráficos históricos -->
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
+<div class="grid-2col" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
 
   <!-- CPU histórico -->
   <div class="chart-card">

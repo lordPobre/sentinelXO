@@ -4,7 +4,7 @@
 {% block page_subtitle %}<div class="mono" style="font-size:10px;color:var(--text-3);margin-top:1px;">todos los clientes · vista general</div>{% endblock %}
 
 {% block content %}
-<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px;">
+<div class="kpi-grid-4" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px;">
   <div class="kpi-card kpi-accent fu">
     <div class="kpi-label">Clientes activos</div>
     <div class="kpi-value">{{ clients|length }}</div>

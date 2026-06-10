@@ -17,9 +17,9 @@
 </div>
 
 <div class="card fu-1" style="overflow:hidden;">
-  <table class="px-table">
+  <div class="table-wrap"><table class="px-table">
     <thead><tr>
-      <th>Empresa</th><th>RUT</th><th>Equipos</th><th>Dominios</th><th>Plan</th><th>Estado</th><th style="text-align:right;">Acciones</th>
+      <th>Empresa</th><th class="col-hide-mobile">RUT</th><th>Equipos</th><th class="col-hide-mobile">Dominios</th><th class="col-hide-mobile">Plan</th><th>Estado</th><th style="text-align:right;">Acciones</th>
     </tr></thead>
     <tbody id="clients-tbody">
       {% for client in clients %}
@@ -71,7 +71,7 @@
       <tr><td colspan="7" style="text-align:center;padding:52px;color:var(--text-4);">No hay clientes aún. <a href="/admin/core/client/add/" style="color:#2563eb;">Crear el primero →</a></td></tr>
       {% endfor %}
     </tbody>
-  </table>
+  </table></div>
   {% if clients %}
   <div style="padding:11px 18px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;">
     <span id="visible-count" class="mono" style="font-size:10px;color:var(--text-4);">{{ clients|length }} clientes</span>

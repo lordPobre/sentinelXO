@@ -51,10 +51,12 @@
 }
 
 /* Ocultar reloj y badge ACTIVO en móvil pequeño */
-@media (max-width: 480px) {
+@media (max-width: 600px) {
   #live-time { display: none !important; }
   .header-badge-activo { display: none !important; }
   .header-actions-wrap { gap: 4px !important; }
+  /* Botones más compactos */
+  .btn-ghost, .btn-primary { padding: 5px 8px !important; font-size: 11px !important; }
 }
 
 /* ── TABLET (768px y menos) ────────────────────────────────────── */

@@ -7,10 +7,10 @@
   <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
   Generar reporte
 </a>
-<a href="{% url 'dashboard:client-portal' client.id %}" class="btn-ghost">Vista cliente</a>
+<a href="{% url 'dashboard:client-portal' client.id %}" class="btn-ghost"><span class="btn-txt">Vista cliente</span></a>
 <a href="{% url 'dashboard:realtime' client.id %}" class="btn-primary" style="background:rgba(16,185,129,0.15);color:var(--green);border:1px solid rgba(16,185,129,0.25);">
   <span class="dot dot-on dot-pulse" style="width:6px;height:6px;flex-shrink:0;"></span>
-  Monitor en vivo
+  <span class="btn-txt">Monitor en vivo</span>
 </a>
 {% endblock %}
 
@@ -21,8 +21,8 @@
     <span class="card-title">Dispositivos</span>
     <span class="mono" style="font-size:10px;color:var(--text-4);">{{ devices|length }} registrado{{ devices|length|pluralize:"s" }}</span>
   </div>
-  <table class="px-table">
-    <thead><tr><th>Equipo</th><th>Tipo</th><th>Sistema</th><th>Token</th><th>CPU</th><th>RAM</th><th>Estado</th></tr></thead>
+  <div class="table-wrap"><table class="px-table">
+    <thead><tr><th>Equipo</th><th>Tipo</th><th class="col-hide-mobile">Sistema</th><th class="col-hide-mobile">Token</th><th>CPU</th><th>RAM</th><th>Estado</th></tr></thead>
     <tbody>
     {% for device in devices %}
     <tr>
@@ -33,8 +33,8 @@
         </div>
       </td>
       <td><span class="badge badge-gray">{{ device.get_device_type_display }}</span></td>
-      <td><span style="font-size:11px;color:var(--text-3);">{{ device.os|default:"—" }}</span></td>
-      <td><span class="mono" style="font-size:10px;color:var(--text-4);">{{ device.agent_token|slice:":14" }}…</span></td>
+      <td class="col-hide-mobile"><span style="font-size:11px;color:var(--text-3);">{{ device.os|default:"—" }}</span></td>
+      <td class="col-hide-mobile"><span class="mono" style="font-size:10px;color:var(--text-4);">{{ device.agent_token|slice:":14" }}…</span></td>
       <td>{% with snap=device.snapshots.first %}{% if snap %}
         <div style="display:flex;align-items:center;gap:6px;">
           <div class="bar-track" style="width:44px;"><div class="bar-fill {% if snap.cpu_percent > 90 %}bar-red{% elif snap.cpu_percent > 70 %}bar-amber{% else %}bar-blue{% endif %}" style="width:{{ snap.cpu_percent }}%;"></div></div>
@@ -55,11 +55,11 @@
     <tr><td colspan="7" style="text-align:center;padding:32px;color:var(--text-4);">Sin dispositivos.</td></tr>
     {% endfor %}
     </tbody>
-  </table>
+  </table></div>
 </div>
 
 <!-- Dominios + M365 -->
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
+<div class="grid-2col" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
   <div class="card fu-1" style="overflow:hidden;">
     <div class="card-header"><span class="card-title">Dominios</span></div>
     {% for domain in domains %}

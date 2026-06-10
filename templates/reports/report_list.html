@@ -36,12 +36,12 @@
     <div class="mono" style="font-size:10px;color:var(--text-4);">Próximo: 01/07/2026 · 08:00</div>
   </div>
 
-  <table class="px-table">
+  <div class="table-wrap"><table class="px-table">
     <thead><tr>
       <th>Cliente</th>
       <th>Período</th>
-      <th>Equipos</th>
-      <th>Incidentes res.</th>
+      <th class="col-hide-mobile">Equipos</th>
+      <th class="col-hide-mobile">Incidentes res.</th>
       <th>Uptime</th>
       <th>Estado</th>
       <th style="text-align:right;">PDF</th>
@@ -89,7 +89,7 @@
       </tr>
       {% endfor %}
     </tbody>
-  </table>
+  </table></div>
 </div>
 
 <div style="margin-top:12px;padding:12px 16px;background:rgba(37,99,235,0.04);border:1px solid rgba(37,99,235,0.12);border-radius:10px;display:flex;align-items:center;gap:12px;" class="fu-2">

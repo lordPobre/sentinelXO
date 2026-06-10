@@ -298,6 +298,16 @@
     .toast { animation: toastIn 0.2s ease; border-radius:9px; padding:11px 14px; font-size:12px; font-weight:500; display:flex; align-items:center; gap:8px; }
 
     /* ── Responsive helpers ─────────────────────────────────── */
+
+    /* Wrapper para tablas con scroll horizontal en móvil */
+    .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+    /* Ocultar texto de botones en header en móvil — solo ícono */
+    @media (max-width: 600px) {
+      .btn-ghost .btn-txt,
+      .btn-primary .btn-txt { display: none !important; }
+    }
+
     @media (max-width: 768px) {
       /* Grids de 4 columnas → 2 en tablet */
       div[style*="grid-template-columns:repeat(4"] { grid-template-columns: repeat(2,1fr) !important; }
@@ -308,14 +318,13 @@
       div[style*="grid-template-columns:1fr 1.1fr"] { grid-template-columns: 1fr !important; }
       div[style*="grid-template-columns:1.4fr 1fr"] { grid-template-columns: 1fr !important; }
       div[style*="grid-template-columns:0.65fr"] { grid-template-columns: 1fr !important; }
-      /* Tablas */
+      div[style*="grid-template-columns:1.35fr"] { grid-template-columns: 1fr !important; }
+      /* Tablas con scroll */
       .px-table { font-size: 11px; }
       .px-table th, .px-table td { padding: 8px 10px; }
-      /* Botones de header → solo icono */
-      .btn-primary span, .btn-ghost span { display: none; }
     }
     @media (max-width: 480px) {
-      div[style*="grid-template-columns:repeat(4"] { grid-template-columns: 1fr !important; }
+      div[style*="grid-template-columns:repeat(4"] { grid-template-columns: repeat(2,1fr) !important; }
       div[style*="grid-template-columns:repeat(3"] { grid-template-columns: 1fr !important; }
       div[style*="grid-template-columns:repeat(2"] { grid-template-columns: 1fr !important; }
       /* KPI values más pequeños */
@@ -325,6 +334,8 @@
       .rt-grid { grid-template-columns: 1fr !important; }
       /* Summary bar 2 cols */
       .summary-bar { grid-template-columns: repeat(2,1fr) !important; }
+      /* Ocultar columnas no esenciales en tablas */
+      .px-table .col-hide-mobile { display: none !important; }
     }
   </style>
   {% block extra_head %}{% endblock %}

@@ -17,7 +17,7 @@
 {% block header_actions %}
 <a href="{% url 'dashboard:client-portal' client.id %}" class="btn-ghost">← Volver</a>
 <div style="display:flex;align-items:center;gap:8px;padding:5px 12px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.15);border-radius:7px;">
-  <span class="mono" style="font-size:10px;color:var(--text-3);">Intervalo:</span>
+  <span class="mono btn-txt" style="font-size:10px;color:var(--text-3);">Intervalo:</span>
   <select id="poll-interval" class="mono" style="background:transparent;border:none;color:#60a5fa;font-size:11px;cursor:pointer;outline:none;">
     <option value="3000">3s</option>
     <option value="5000" selected>5s</option>
@@ -31,7 +31,7 @@
 <style>
   .rt-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(min(340px, 100%), 1fr));
     gap: 12px;
   }
   .device-card {
@@ -140,6 +140,15 @@
     border:1px solid var(--border);
     border-radius:12px;
     padding:14px 16px;
+  }
+  @media (max-width: 768px) {
+    .summary-bar { grid-template-columns: repeat(2, 1fr) !important; }
+    .rt-grid { grid-template-columns: 1fr !important; }
+  }
+  @media (max-width: 480px) {
+    .summary-bar { grid-template-columns: repeat(2, 1fr) !important; }
+    .summary-stat { padding: 10px 12px !important; }
+    #topbar .btn-ghost { padding: 5px 8px !important; }
   }
 </style>
 {% endblock %}

@@ -13,7 +13,7 @@
 {% block content %}
 
 <!-- KPIs -->
-<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:18px;">
+<div class="kpi-grid-3" style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:18px;">
   <div class="kpi-card {% if uptime_percent and uptime_percent >= 99 %}kpi-accent{% endif %} fu"
        style="{% if uptime_percent and uptime_percent >= 99 %}border-color:rgba(16,185,129,0.25);{% elif uptime_percent and uptime_percent < 99 %}border-color:rgba(245,158,11,0.2);{% endif %}">
     {% if uptime_percent and uptime_percent >= 99 %}
@@ -45,7 +45,7 @@
 </div>
 
 <!-- Equipos + Detalle HTMX -->
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+<div class="grid-2col" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
   <div class="card fu-2" style="overflow:hidden;">
     <div class="card-header"><span class="card-title">Equipos</span></div>
     {% for device in devices %}
@@ -78,7 +78,7 @@
 </div>
 
 <!-- Dominios + Licencias -->
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+<div class="grid-2col" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
   <div class="card fu-3" style="overflow:hidden;">
     <div class="card-header">
       <span class="card-title">Vencimientos de dominios</span>
