@@ -1,53 +1,89 @@
 {% if result %}
 <div style="margin-top:8px;">
-  <!-- SMTP -->
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
-    <span class="mono" style="font-size:10px;color:var(--text-4);">smtp.office365.com:587</span>
-    {% if result.smtp.status == 'ok' %}
-    <div style="display:flex;align-items:center;gap:6px;">
-      <span class="dot dot-on"></span>
-      <span class="mono" style="font-size:11px;color:var(--green);font-weight:600;">OK</span>
-      <span class="mono" style="font-size:10px;color:var(--text-4);">{{ result.smtp.ms }}ms</span>
-      {% if result.smtp.tls %}<span class="badge badge-ok" style="font-size:9px;padding:1px 5px;">TLS ✓</span>{% endif %}
-    </div>
-    {% elif result.smtp.status == 'timeout' %}
-    <div style="display:flex;align-items:center;gap:6px;">
-      <span class="dot dot-warn"></span>
-      <span class="mono" style="font-size:11px;color:var(--amber);font-weight:600;">TIMEOUT</span>
-    </div>
-    {% else %}
-    <div style="display:flex;align-items:center;gap:6px;">
-      <span class="dot dot-off"></span>
-      <span class="mono" style="font-size:11px;color:var(--red);font-weight:600;">ERROR</span>
-    </div>
+
+  {% if result.overall == 'not_configured' %}
+  <div style="font-size:11px;color:var(--text-4);padding:8px 0;">
+    Tenant M365 no configurado para este cliente.
+  </div>
+
+  {% elif result.checks %}
+  <!-- Resultado detallado con checks individuales -->
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+    <span class="dot {% if result.overall == 'ok' %}dot-on{% elif result.overall == 'warning' %}dot-warn{% else %}dot-off{% endif %}"></span>
+    <span class="mono" style="font-size:12px;font-weight:700;
+      {% if result.overall == 'ok' %}color:var(--green);
+      {% elif result.overall == 'warning' %}color:var(--amber);
+      {% else %}color:var(--red);{% endif %}">
+      {% if result.overall == 'ok' %}Operativo{% elif result.overall == 'warning' %}Advertencia{% else %}Error{% endif %}
+    </span>
+    {% if result.checks.graph_ping.tenant_name %}
+    <span style="font-size:10px;color:var(--text-4);">— {{ result.checks.graph_ping.tenant_name }}</span>
     {% endif %}
   </div>
 
-  <!-- Graph API -->
-  {% if result.graph and result.graph.status != 'not_configured' %}
-  <div style="display:flex;align-items:center;justify-content:space-between;">
-    <span class="mono" style="font-size:10px;color:var(--text-4);">graph.microsoft.com</span>
-    {% if result.graph.status == 'ok' %}
+  {% for key, check in result.checks.items %}
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.03);">
     <div style="display:flex;align-items:center;gap:6px;">
-      <span class="dot dot-on"></span>
-      <span class="mono" style="font-size:11px;color:var(--green);font-weight:600;">OK</span>
-      <span class="mono" style="font-size:10px;color:var(--text-4);">{{ result.graph.ms }}ms</span>
+      <span class="dot
+        {% if check.status == 'ok' %}dot-on
+        {% elif check.status == 'warning' %}dot-warn
+        {% elif check.status == 'skipped' %}dot-idle
+        {% else %}dot-off{% endif %}"
+        style="width:6px;height:6px;"></span>
+      <span style="font-size:11px;color:var(--text-3);">{{ check.label }}</span>
     </div>
-    {% else %}
     <div style="display:flex;align-items:center;gap:6px;">
-      <span class="dot dot-off"></span>
-      <span class="mono" style="font-size:11px;color:var(--red);font-weight:600;">ERROR</span>
+      {% if check.ms %}
+      <span class="mono" style="font-size:10px;color:var(--text-4);">{{ check.ms }}ms</span>
+      {% endif %}
+      {% if check.status == 'ok' %}
+        {% if check.detail %}
+        <span style="font-size:10px;color:var(--green);">{{ check.detail }}</span>
+        {% else %}
+        <span class="badge badge-ok" style="font-size:9px;padding:1px 6px;">OK</span>
+        {% endif %}
+      {% elif check.status == 'warning' %}
+        <span class="badge badge-warn" style="font-size:9px;padding:1px 6px;">{{ check.detail|default:"Advertencia" }}</span>
+      {% elif check.status == 'skipped' %}
+        <span style="font-size:10px;color:var(--text-4);">Sin permiso</span>
+      {% else %}
+        <span class="badge badge-crit" style="font-size:9px;padding:1px 6px;">Error</span>
+      {% endif %}
     </div>
-    {% endif %}
   </div>
-  {% endif %}
+  {% endfor %}
 
   {% if result.errors %}
-  <div style="margin-top:6px;">
+  <div style="margin-top:8px;">
     {% for err in result.errors %}
-    <div class="mono" style="font-size:10px;color:var(--red);">✗ {{ err }}</div>
+    <div class="mono" style="font-size:10px;color:var(--red);margin-top:3px;">✗ {{ err }}</div>
     {% endfor %}
   </div>
   {% endif %}
+
+  {% else %}
+  <!-- Resultado simple (formato anterior) -->
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+    <span class="mono" style="font-size:10px;color:var(--text-4);">graph.microsoft.com</span>
+    {% if result.graph and result.graph.status == 'ok' %}
+    <div style="display:flex;align-items:center;gap:6px;">
+      <span class="dot dot-on"></span>
+      <span class="mono" style="font-size:11px;color:var(--green);font-weight:600;">OK</span>
+      {% if result.graph.ms %}<span class="mono" style="font-size:10px;color:var(--text-4);">{{ result.graph.ms }}ms</span>{% endif %}
+    </div>
+    {% else %}
+    <div style="display:flex;align-items:center;gap:6px;">
+      <span class="dot dot-off"></span>
+      <span class="mono" style="font-size:11px;color:var(--red);font-weight:600;">ERROR</span>
+    </div>
+    {% endif %}
+  </div>
+  {% if result.smtp and result.smtp.status == 'skipped' %}
+  <div style="font-size:10px;color:var(--text-4);font-family:'JetBrains Mono',monospace;margin-top:4px;">
+    SMTP: monitoreado vía Graph API
+  </div>
+  {% endif %}
+  {% endif %}
+
 </div>
 {% endif %}

@@ -1,70 +1,151 @@
 """
-Servicios de monitoreo de email:
-  - check_smtp_connectivity(): verifica que el servidor SMTP responde
-  - send_tracked_email(): wrapper de send_mail que registra el resultado
-  - send_test_email(): envía un email de prueba verificable
+Sentinel XO — Servicios de Email
+Usa la API HTTP de Brevo (sin SMTP) — compatible con Railway plan Hobby.
 """
-import smtplib
-import socket
 import time
 import logging
+import urllib.request
+import urllib.error
+import json
+import socket
 from django.conf import settings
-from django.core.mail import EmailMessage
 from .models import EmailLog, SmtpCheck
 
 logger = logging.getLogger("perseus")
 
 
-def check_smtp_connectivity() -> SmtpCheck:
-    """
-    Intenta conectarse al servidor SMTP y mide el tiempo de respuesta.
-    No envía ningún email — solo verifica que el puerto responde.
-    """
-    host = getattr(settings, "EMAIL_HOST", "smtp-relay.brevo.com")
-    port = getattr(settings, "EMAIL_PORT", 587)
-    timeout = 10
+# ── Brevo API HTTP ─────────────────────────────────────────────────────────────
 
-    start = time.monotonic()
+def _resend_send(subject: str, body: str, to: list[str],
+                 attachments: list = None) -> tuple[bool, str]:
+    """
+    Envía un email vía API HTTP de Resend.
+    No usa SMTP — funciona en Railway plan Hobby.
+    Retorna (success, error_msg).
+    """
+    api_key      = getattr(settings, "RESEND_API_KEY", "")
+    sender_email = getattr(settings, "DEFAULT_FROM_EMAIL", "soporte@perseustechnology.dev")
+    sender_name  = getattr(settings, "SENTINEL_COMPANY_NAME", "Sentinel XO")
+
+    if not api_key:
+        return False, "RESEND_API_KEY no configurada en variables de entorno"
+
+    payload = {
+        "from":    f"{sender_name} <{sender_email}>",
+        "to":      to,
+        "subject": subject,
+        "text":    body,
+    }
+
+    if attachments:
+        payload["attachments"] = []
+        import base64
+        for filename, file_content, mimetype in attachments:
+            if isinstance(file_content, bytes):
+                b64 = base64.b64encode(file_content).decode()
+            else:
+                b64 = base64.b64encode(file_content.encode()).decode()
+            payload["attachments"].append({
+                "filename": filename,
+                "content":  b64,
+            })
+
     try:
-        with smtplib.SMTP(host, port, timeout=timeout) as smtp:
-            smtp.ehlo()
-            # Intentar STARTTLS si está disponible
-            if smtp.has_extn("STARTTLS"):
-                smtp.starttls()
-                smtp.ehlo()
-        elapsed_ms = int((time.monotonic() - start) * 1000)
-        check = SmtpCheck.objects.create(
-            status="ok",
-            response_ms=elapsed_ms,
-            smtp_host=host,
-            smtp_port=port,
+        data = json.dumps(payload).encode("utf-8")
+        req  = urllib.request.Request(
+            "https://api.resend.com/emails",
+            data=data,
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type":  "application/json",
+            },
+            method="POST",
         )
-        logger.info(f"SMTP check OK: {host}:{port} — {elapsed_ms}ms")
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            result = json.loads(resp.read().decode())
+            msg_id = result.get("id", "—")
+            logger.info(f"Resend OK → {', '.join(to)} | id={msg_id}")
+            return True, ""
 
-    except (socket.timeout, TimeoutError):
-        elapsed_ms = int((time.monotonic() - start) * 1000)
-        check = SmtpCheck.objects.create(
-            status="timeout",
-            response_ms=elapsed_ms,
-            smtp_host=host,
-            smtp_port=port,
-            error_msg=f"Timeout después de {timeout}s",
-        )
-        logger.warning(f"SMTP timeout: {host}:{port}")
-
+    except urllib.error.HTTPError as e:
+        body_err = e.read().decode(errors="ignore")[:300]
+        logger.error(f"Resend HTTP {e.code}: {body_err}")
+        return False, f"Resend error {e.code}: {body_err}"
     except Exception as e:
+        logger.error(f"Resend error: {e}")
+        return False, str(e)[:300]
+
+
+def check_resend_api() -> SmtpCheck:
+    """
+    Verifica conectividad con la API de Resend.
+    Hace un GET al endpoint de dominios — si responde, la API está OK.
+    """
+    api_key = getattr(settings, "RESEND_API_KEY", "")
+    start   = time.monotonic()
+
+    try:
+        req = urllib.request.Request(
+            "https://api.resend.com/domains",
+            headers={"Authorization": f"Bearer {api_key}"},
+            method="GET",
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            json.loads(resp.read().decode())
+            elapsed_ms = int((time.monotonic() - start) * 1000)
+            logger.info(f"Resend API OK — {elapsed_ms}ms")
+            return SmtpCheck.objects.create(
+                status="ok",
+                response_ms=elapsed_ms,
+                smtp_host="api.resend.com",
+                smtp_port=443,
+            )
+
+    except urllib.error.HTTPError as e:
         elapsed_ms = int((time.monotonic() - start) * 1000)
+        err = f"HTTP {e.code}: {e.read().decode(errors='ignore')[:200]}"
+        logger.error(f"Resend API error: {err}")
         check = SmtpCheck.objects.create(
             status="error",
             response_ms=elapsed_ms,
-            smtp_host=host,
-            smtp_port=port,
+            smtp_host="api.resend.com",
+            smtp_port=443,
+            error_msg=err,
+        )
+        _fire_smtp_alert(err)
+        return check
+
+    except Exception as e:
+        elapsed_ms = int((time.monotonic() - start) * 1000)
+        logger.error(f"Resend API no disponible: {e}")
+        check = SmtpCheck.objects.create(
+            status="error",
+            response_ms=elapsed_ms,
+            smtp_host="api.resend.com",
+            smtp_port=443,
             error_msg=str(e)[:500],
         )
-        logger.error(f"SMTP error: {host}:{port} — {e}")
+        _fire_smtp_alert(str(e)[:200])
+        return check
 
-    return check
 
+def _fire_smtp_alert(error_msg: str):
+    """Dispara alerta inteligente cuando la API de email falla."""
+    try:
+        from core.alert_engine import evaluate_smtp_failure
+        from core.models import Client
+        for client in Client.objects.filter(is_active=True):
+            evaluate_smtp_failure(client, "api.resend.com:443", error_msg)
+    except Exception as ae:
+        logger.debug(f"Alert engine: {ae}")
+
+
+# Alias para compatibilidad con código que llama check_smtp_connectivity
+def check_smtp_connectivity() -> SmtpCheck:
+    return check_resend_api()
+
+
+# ── send_tracked_email ────────────────────────────────────────────────────────
 
 def send_tracked_email(
     subject: str,
@@ -75,30 +156,11 @@ def send_tracked_email(
     attachments: list = None,
 ) -> bool:
     """
-    Envía un email y registra el resultado en EmailLog.
+    Envía un email vía Brevo API y registra el resultado en EmailLog.
     Retorna True si se envió correctamente.
     """
-    success = True
-    error_msg = ""
+    success, error_msg = _resend_send(subject, body, to, attachments)
 
-    try:
-        email = EmailMessage(
-            subject=subject,
-            body=body,
-            to=to,
-        )
-        if attachments:
-            for filename, content, mimetype in attachments:
-                email.attach(filename, content, mimetype)
-        email.send()
-        logger.info(f"Email enviado → {', '.join(to)} | {subject[:60]}")
-
-    except Exception as e:
-        success = False
-        error_msg = str(e)[:500]
-        logger.error(f"Error enviando email → {', '.join(to)}: {e}")
-
-    # Registrar cada destinatario por separado
     for recipient in to:
         EmailLog.objects.create(
             recipient=recipient,
@@ -113,29 +175,17 @@ def send_tracked_email(
 
 
 def send_test_email(to: str) -> dict:
-    """
-    Envía un email de prueba y retorna el resultado completo.
-    Usado desde el panel de administrador.
-    """
+    """Envía un email de prueba y retorna el resultado."""
     from django.utils import timezone
 
-    # 1. Verificar SMTP primero
-    check = check_smtp_connectivity()
+    # Verificar API antes de enviar
+    check = check_resend_api()
 
-    if check.status != "ok":
-        return {
-            "success": False,
-            "smtp_status": check.status,
-            "smtp_ms": check.response_ms,
-            "error": check.error_msg,
-        }
-
-    # 2. Enviar email de prueba
-    subject = f"[Perseus Technology] Email de prueba — {timezone.now().strftime('%d/%m/%Y %H:%M')}"
+    subject = f"[Sentinel XO] Email de prueba — {timezone.now().strftime('%d/%m/%Y %H:%M')}"
     body = (
-        f"Este es un email de prueba del sistema Perseus Technology.\n\n"
-        f"Servidor SMTP: {check.smtp_host}:{check.smtp_port}\n"
-        f"Tiempo de respuesta: {check.response_ms}ms\n"
+        f"Este es un email de prueba del sistema Sentinel XO.\n\n"
+        f"Canal: Resend API HTTP (sin SMTP)\n"
+        f"Tiempo de respuesta API: {check.response_ms}ms\n"
         f"Generado: {timezone.now().strftime('%d/%m/%Y %H:%M:%S')}\n\n"
         f"Si recibes este mensaje, el sistema de email está funcionando correctamente."
     )
@@ -143,109 +193,232 @@ def send_test_email(to: str) -> dict:
     success = send_tracked_email(subject, body, [to], category="test")
 
     return {
-        "success": success,
+        "success":     success,
         "smtp_status": check.status,
-        "smtp_ms": check.response_ms,
-        "error": "" if success else "Error al enviar",
+        "smtp_ms":     check.response_ms,
+        "error":       "" if success else "Error al enviar — revisa RESEND_API_KEY",
     }
 
 
-# ─── Verificación SMTP Microsoft 365 ─────────────────────────────────────────
+
+
+def check_m365_graph_health(client) -> dict:
+    """
+    Monitorea el estado del servicio de email de Microsoft 365 usando Graph API.
+    No usa SMTP (puerto 587) — funciona en Railway plan Hobby.
+
+    Verifica 3 cosas vía HTTPS:
+      1. Token válido  → credenciales Azure correctas
+      2. Exchange Online health → estado oficial del servicio M365
+      3. Buzones activos → que el tenant tiene usuarios con email
+    """
+    import time
+    import requests as req_lib
+    from monitoring.services import get_graph_token
+
+    result = {
+        "client":   str(client),
+        "overall":  "ok",
+        "errors":   [],
+        "checks":   {},
+    }
+
+    if not (hasattr(client, "m365_tenant") and client.m365_tenant and client.m365_tenant.is_active):
+        return {**result, "overall": "not_configured",
+                "errors": ["Tenant M365 no configurado para este cliente"]}
+
+    tenant = client.m365_tenant
+
+    # ── 1. Obtener token (valida credenciales Azure) ───────────────────────────
+    start = time.monotonic()
+    try:
+        token = get_graph_token(
+            tenant.tenant_id,
+            tenant.azure_client_id,
+            tenant.azure_client_secret,
+        )
+        token_ms = int((time.monotonic() - start) * 1000)
+        result["checks"]["auth"] = {"status": "ok", "ms": token_ms,
+                                     "label": "Autenticación Azure AD"}
+    except Exception as e:
+        result["checks"]["auth"] = {"status": "error", "ms": 0,
+                                     "label": "Autenticación Azure AD",
+                                     "error": str(e)[:200]}
+        result["overall"] = "error"
+        result["errors"].append(f"Auth fallida: {e}")
+        return result  # sin token no podemos continuar
+
+    headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
+
+    # ── 2. Service Health — estado de Exchange Online ─────────────────────────
+    # Requiere permiso ServiceHealth.Read.All en la app Azure
+    start = time.monotonic()
+    try:
+        resp = req_lib.get(
+            "https://graph.microsoft.com/v1.0/admin/serviceAnnouncement/healthOverviews",
+            headers=headers, timeout=10,
+        )
+        health_ms = int((time.monotonic() - start) * 1000)
+
+        if resp.status_code == 200:
+            services = resp.json().get("value", [])
+            exchange = next(
+                (s for s in services if "Exchange" in s.get("service", "")), None
+            )
+            if exchange:
+                svc_status = exchange.get("status", "unknown")
+                is_healthy = svc_status in ("serviceOperational", "serviceRestored")
+                result["checks"]["exchange_health"] = {
+                    "status":     "ok" if is_healthy else "warning",
+                    "ms":         health_ms,
+                    "label":      "Estado Exchange Online",
+                    "svc_status": svc_status,
+                    "detail":     exchange.get("statusDisplayName", svc_status),
+                }
+                if not is_healthy:
+                    result["overall"] = "warning"
+                    result["errors"].append(f"Exchange Online: {svc_status}")
+            else:
+                # Endpoint OK pero sin datos de Exchange — permiso insuficiente
+                result["checks"]["exchange_health"] = {
+                    "status": "skipped", "ms": health_ms,
+                    "label":  "Estado Exchange Online",
+                    "detail": "Permiso ServiceHealth.Read.All no configurado en Azure App",
+                }
+        elif resp.status_code == 403:
+            result["checks"]["exchange_health"] = {
+                "status": "skipped", "ms": health_ms,
+                "label":  "Estado Exchange Online",
+                "detail": "Sin permiso ServiceHealth.Read.All — añadir en Azure App Registration",
+            }
+        else:
+            result["checks"]["exchange_health"] = {
+                "status": "error", "ms": health_ms,
+                "label":  "Estado Exchange Online",
+                "error":  f"HTTP {resp.status_code}",
+            }
+            result["overall"] = "warning"
+
+    except Exception as e:
+        result["checks"]["exchange_health"] = {
+            "status": "error", "ms": 0,
+            "label":  "Estado Exchange Online",
+            "error":  str(e)[:150],
+        }
+        result["overall"] = "warning"
+        result["errors"].append(f"Service Health error: {e}")
+
+    # ── 3. Verificar que hay usuarios con buzón (mailbox activo) ───────────────
+    start = time.monotonic()
+    try:
+        resp = req_lib.get(
+            "https://graph.microsoft.com/v1.0/users?$select=displayName,mail,assignedLicenses"
+            "&$filter=assignedLicenses/$count ne 0&$count=true&$top=1",
+            headers={**headers, "ConsistencyLevel": "eventual"},
+            timeout=10,
+        )
+        users_ms = int((time.monotonic() - start) * 1000)
+
+        if resp.status_code == 200:
+            data       = resp.json()
+            user_count = data.get("@odata.count", len(data.get("value", [])))
+            result["checks"]["mailboxes"] = {
+                "status": "ok", "ms": users_ms,
+                "label":  "Buzones activos",
+                "count":  user_count,
+                "detail": f"{user_count} usuario(s) con licencia",
+            }
+        else:
+            result["checks"]["mailboxes"] = {
+                "status": "skipped", "ms": users_ms,
+                "label":  "Buzones activos",
+                "detail": f"HTTP {resp.status_code} — sin permiso User.Read.All",
+            }
+    except Exception as e:
+        result["checks"]["mailboxes"] = {
+            "status": "error", "ms": 0,
+            "label":  "Buzones activos",
+            "error":  str(e)[:150],
+        }
+
+    # ── 4. Ping ligero a Graph (latencia general M365) ────────────────────────
+    start = time.monotonic()
+    try:
+        resp = req_lib.get(
+            "https://graph.microsoft.com/v1.0/organization",
+            headers=headers, timeout=10,
+        )
+        ping_ms = int((time.monotonic() - start) * 1000)
+        if resp.status_code == 200:
+            org = resp.json().get("value", [{}])[0]
+            result["checks"]["graph_ping"] = {
+                "status":      "ok", "ms": ping_ms,
+                "label":       "Graph API latencia",
+                "tenant_name": org.get("displayName", "—"),
+            }
+        else:
+            result["checks"]["graph_ping"] = {
+                "status": "error", "ms": ping_ms,
+                "label":  "Graph API latencia",
+                "error":  f"HTTP {resp.status_code}",
+            }
+    except Exception as e:
+        result["checks"]["graph_ping"] = {
+            "status": "error", "ms": 0,
+            "label":  "Graph API latencia",
+            "error":  str(e)[:150],
+        }
+
+    # Registrar en SmtpCheck para el historial
+    overall_ok = result["overall"] == "ok"
+    best_ms = min(
+        (v.get("ms", 0) for v in result["checks"].values() if v.get("ms")),
+        default=0
+    )
+    SmtpCheck.objects.create(
+        status="ok" if overall_ok else "error",
+        response_ms=best_ms,
+        smtp_host="graph.microsoft.com (M365)",
+        smtp_port=443,
+        error_msg="; ".join(result["errors"])[:500] if result["errors"] else "",
+    )
+
+    return result
+
+# ── check_m365_smtp (solo verifica Graph API, no SMTP) ───────────────────────
 
 M365_SMTP_HOST = "smtp.office365.com"
 M365_SMTP_PORT = 587
-M365_IMAP_HOST = "outlook.office365.com"
-M365_IMAP_PORT = 993
 
 
 def check_m365_smtp(client=None) -> dict:
     """
-    Verifica conectividad SMTP de Microsoft 365.
-    No envía emails — solo verifica que el servidor responde y negocia TLS.
-    Retorna dict con: status, smtp_ms, graph_ms, error, details
+    Verifica Microsoft 365 vía Graph API.
+    El check SMTP a office365.com se omite en Railway (puerto bloqueado).
     """
-    import smtplib
-    import ssl
-    import socket
-    import time
-    from .models import SmtpCheck
-
     results = {
-        "client":   str(client) if client else "Global",
-        "smtp":     None,
-        "graph":    None,
-        "overall":  "ok",
-        "errors":   [],
+        "client":  str(client) if client else "Global",
+        "smtp":    {"host": M365_SMTP_HOST, "port": M365_SMTP_PORT,
+                    "status": "skipped", "ms": 0,
+                    "note": "Puerto 587 no disponible en Railway — usando Graph API"},
+        "graph":   None,
+        "overall": "ok",
+        "errors":  [],
     }
 
-    # ── 1. Verificar SMTP smtp.office365.com:587 ──────────────────────────────
-    start = time.monotonic()
-    try:
-        with smtplib.SMTP(M365_SMTP_HOST, M365_SMTP_PORT, timeout=10) as smtp:
-            smtp.ehlo()
-            # Verificar que STARTTLS está disponible (obligatorio en M365)
-            if smtp.has_extn("STARTTLS"):
-                smtp.starttls()
-                smtp.ehlo()
-                tls_ok = True
-            else:
-                tls_ok = False
-                results["errors"].append("STARTTLS no disponible")
-
-        smtp_ms = int((time.monotonic() - start) * 1000)
-        results["smtp"] = {
-            "host":       M365_SMTP_HOST,
-            "port":       M365_SMTP_PORT,
-            "status":     "ok",
-            "ms":         smtp_ms,
-            "tls":        tls_ok,
-        }
-        logger.info(f"M365 SMTP OK: {M365_SMTP_HOST}:{M365_SMTP_PORT} — {smtp_ms}ms")
-
-        # Guardar en SmtpCheck con el host de M365
-        SmtpCheck.objects.create(
-            status="ok",
-            response_ms=smtp_ms,
-            smtp_host=M365_SMTP_HOST,
-            smtp_port=M365_SMTP_PORT,
-        )
-
-    except (socket.timeout, TimeoutError):
-        smtp_ms = int((time.monotonic() - start) * 1000)
-        results["smtp"] = {"host": M365_SMTP_HOST, "port": M365_SMTP_PORT,
-                           "status": "timeout", "ms": smtp_ms}
-        results["overall"] = "warning"
-        results["errors"].append(f"SMTP timeout ({smtp_ms}ms)")
-        SmtpCheck.objects.create(status="timeout", response_ms=smtp_ms,
-                                  smtp_host=M365_SMTP_HOST, smtp_port=M365_SMTP_PORT,
-                                  error_msg="Timeout")
-        logger.warning(f"M365 SMTP timeout: {M365_SMTP_HOST}:{M365_SMTP_PORT}")
-
-    except Exception as e:
-        smtp_ms = int((time.monotonic() - start) * 1000)
-        results["smtp"] = {"host": M365_SMTP_HOST, "port": M365_SMTP_PORT,
-                           "status": "error", "ms": smtp_ms, "error": str(e)}
-        results["overall"] = "error"
-        results["errors"].append(f"SMTP error: {e}")
-        SmtpCheck.objects.create(status="error", response_ms=smtp_ms,
-                                  smtp_host=M365_SMTP_HOST, smtp_port=M365_SMTP_PORT,
-                                  error_msg=str(e)[:500])
-        logger.error(f"M365 SMTP error: {e}")
-
-    # ── 2. Verificar Graph API (si el cliente tiene tenant configurado) ────────
+    # Verificar Graph API si el cliente tiene tenant
     if client and hasattr(client, "m365_tenant") and client.m365_tenant.is_active:
-        tenant = client.m365_tenant  # definir antes del try para que el except lo vea
-        start = time.monotonic()
+        tenant = client.m365_tenant
+        start  = time.monotonic()
         try:
             import requests as req_lib
             from monitoring.services import get_graph_token
-            token  = get_graph_token(
+            token    = get_graph_token(
                 tenant.tenant_id,
                 tenant.azure_client_id,
                 tenant.azure_client_secret,
             )
-            # Llamada ligera — solo el perfil de la organización
-            resp = req_lib.get(
+            resp     = req_lib.get(
                 "https://graph.microsoft.com/v1.0/organization",
                 headers={"Authorization": f"Bearer {token}"},
                 timeout=10,
@@ -255,9 +428,9 @@ def check_m365_smtp(client=None) -> dict:
             if resp.status_code == 200:
                 org = resp.json().get("value", [{}])[0]
                 results["graph"] = {
-                    "status":        "ok",
-                    "ms":            graph_ms,
-                    "tenant_name":   org.get("displayName", "—"),
+                    "status":           "ok",
+                    "ms":               graph_ms,
+                    "tenant_name":      org.get("displayName", "—"),
                     "verified_domains": [
                         d["name"] for d in org.get("verifiedDomains", [])
                         if d.get("isDefault")
@@ -265,20 +438,17 @@ def check_m365_smtp(client=None) -> dict:
                 }
                 logger.info(f"M365 Graph OK: {client} — {graph_ms}ms")
             else:
-                results["graph"] = {"status": "error", "ms": graph_ms,
-                                    "error": f"HTTP {resp.status_code}"}
+                results["graph"]   = {"status": "error", "ms": graph_ms,
+                                       "error": f"HTTP {resp.status_code}"}
                 results["overall"] = "warning"
                 results["errors"].append(f"Graph API HTTP {resp.status_code}")
 
         except Exception as e:
-            import traceback
-            traceback.print_exc()  # ← agrega esta línea
             graph_ms = int((time.monotonic() - start) * 1000)
-            results["graph"] = {"status": "error", "ms": graph_ms, "error": str(e)}
-            if results["overall"] == "ok":
-                results["overall"] = "warning"
+            results["graph"]   = {"status": "error", "ms": graph_ms, "error": str(e)}
+            results["overall"] = "warning"
             results["errors"].append(f"Graph API error: {e}")
-            logger.warning(f"M365 Graph error para {client}: {e}")
+            logger.warning(f"M365 Graph error {client}: {e}")
     else:
         results["graph"] = {"status": "not_configured"}
 

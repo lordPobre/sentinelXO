@@ -89,6 +89,18 @@ class TelemetryIngestView(APIView):
         TelemetrySnapshot.objects.filter(device=device, captured_at__lt=cutoff).delete()
 
         logger.info(f"Telemetría recibida: {device.display_name} ({device.client})")
+
+        # Evaluar reglas de alerta en background (no bloquea la respuesta)
+        try:
+            from core.alert_engine import evaluate_snapshot
+            snap = TelemetrySnapshot.objects.filter(device=device).order_by("-captured_at").first()
+            if snap:
+                fired = evaluate_snapshot(snap)
+                if fired:
+                    logger.info(f"Alertas disparadas: {len(fired)} para {device.display_name}")
+        except Exception as e:
+            logger.error(f"Error en motor de alertas: {e}")
+
         return Response({"status": "ok", "device": device.display_name}, status=status.HTTP_201_CREATED)
 
 

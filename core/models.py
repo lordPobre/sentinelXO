@@ -355,3 +355,81 @@ class MonthlyReport(models.Model):
 
     def __str__(self):
         return f"Reporte {self.period_year}/{self.period_month:02d} — {self.client}"
+
+class AlertRule(models.Model):
+    """
+    Regla de alerta configurable por cliente.
+    Define umbrales para CPU, RAM, GPU y temperatura.
+    """
+    METRIC_CHOICES = [
+        ("cpu",       "CPU (%)"),
+        ("ram",       "RAM (%)"),
+        ("gpu_usage", "GPU Uso (%)"),
+        ("gpu_mem",   "GPU Memoria (%)"),
+        ("cpu_temp",  "Temperatura CPU (°C)"),
+        ("gpu_temp",  "Temperatura GPU (°C)"),
+    ]
+    SEVERITY_CHOICES = [
+        ("warning",  "Advertencia"),
+        ("critical", "Crítica"),
+    ]
+
+    client      = models.ForeignKey("Client", on_delete=models.CASCADE,
+                                    related_name="alert_rules", verbose_name="Cliente")
+    device      = models.ForeignKey("HardwareDevice", on_delete=models.CASCADE,
+                                    null=True, blank=True, related_name="alert_rules",
+                                    verbose_name="Dispositivo (vacío = todos)")
+    metric      = models.CharField("Métrica", max_length=20, choices=METRIC_CHOICES)
+    threshold   = models.FloatField("Umbral")
+    severity    = models.CharField("Severidad", max_length=10,
+                                   choices=SEVERITY_CHOICES, default="warning")
+    is_active   = models.BooleanField("Activa", default=True)
+    cooldown_minutes = models.PositiveIntegerField(
+        "Cooldown (min)", default=30,
+        help_text="Minutos mínimos entre alertas repetidas del mismo tipo")
+    notify_email = models.BooleanField("Notificar por email", default=True)
+    created_at  = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Regla de alerta"
+        verbose_name_plural = "Reglas de alerta"
+        ordering = ["client", "metric"]
+
+    def __str__(self):
+        dev = f" [{self.device.display_name}]" if self.device else " [todos]"
+        return f"{self.client}{dev} — {self.get_metric_display()} > {self.threshold}"
+
+
+class AlertEvent(models.Model):
+    """
+    Registro de una alerta disparada. Usado para cooldown y auditoría.
+    """
+    STATUS_CHOICES = [
+        ("firing",    "Activa"),
+        ("resolved",  "Resuelta"),
+        ("silenced",  "Silenciada"),
+    ]
+
+    rule        = models.ForeignKey(AlertRule, on_delete=models.CASCADE,
+                                    related_name="events", verbose_name="Regla")
+    device      = models.ForeignKey("HardwareDevice", on_delete=models.CASCADE,
+                                    related_name="alert_events", verbose_name="Dispositivo")
+    metric      = models.CharField("Métrica", max_length=20)
+    value       = models.FloatField("Valor medido")
+    threshold   = models.FloatField("Umbral")
+    severity    = models.CharField("Severidad", max_length=10)
+    status      = models.CharField("Estado", max_length=10,
+                                   choices=STATUS_CHOICES, default="firing")
+    notified    = models.BooleanField("Email enviado", default=False)
+    fired_at    = models.DateTimeField("Disparada", auto_now_add=True)
+    resolved_at = models.DateTimeField("Resuelta", null=True, blank=True)
+    message     = models.CharField("Mensaje", max_length=300, blank=True)
+
+    class Meta:
+        verbose_name = "Evento de alerta"
+        verbose_name_plural = "Eventos de alerta"
+        ordering = ["-fired_at"]
+
+    def __str__(self):
+        return f"[{self.severity.upper()}] {self.device} — {self.metric}={self.value} @ {self.fired_at:%d/%m %H:%M}"
+

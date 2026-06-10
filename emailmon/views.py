@@ -290,34 +290,46 @@ def brevo_webhook(request):
 def m365_check_now(request):
     """
     POST /email/m365/check/
-    Ejecuta verificación M365 en tiempo real para un cliente específico o global.
+    Ejecuta verificación M365 en tiempo real usando Graph API (sin SMTP).
     """
     if not request.user.is_staff:
         from django.http import HttpResponseForbidden
         return HttpResponseForbidden()
 
-    if request.method == "POST":
-        from .services import check_m365_smtp
-        from core.models import Client
+    if request.method != "POST":
+        from django.http import HttpResponseNotAllowed
+        return HttpResponseNotAllowed(["POST"])
 
-        client_id = request.POST.get("client_id")
-        client = None
-        if client_id:
-            try:
-                client = Client.objects.get(pk=client_id)
-            except Client.DoesNotExist:
-                pass
+    from core.models import Client
+    from .services import check_m365_graph_health
 
-        result = check_m365_smtp(client=client)
-        return render(request, "emailmon/partials/m365_status.html", {
-            "result": result,
-            "client": client,
-        })
+    client_id = request.POST.get("client_id")
+    client    = None
+    if client_id:
+        try:
+            client = Client.objects.get(pk=client_id)
+        except Client.DoesNotExist:
+            pass
 
-    return JsonResponse({"error": "Método no permitido"}, status=405)
+    if not client:
+        # Verificar todos los clientes con M365 configurado
+        clients = Client.objects.filter(is_active=True, m365_tenant__is_active=True)
+        results = []
+        for c in clients:
+            r = check_m365_graph_health(c)
+            results.append(r)
+        result = {
+            "client":  "Global",
+            "overall": "ok" if all(r["overall"] == "ok" for r in results) else "warning",
+            "results": results,
+            "errors":  [],
+        }
+    else:
+        result = check_m365_graph_health(client)
+
+    return render(request, "emailmon/partials/m365_status.html", {"result": result})
 
 
-@login_required
 def m365_dashboard(request):
     """Panel de monitoreo M365 — muestra estado SMTP y Graph API por cliente."""
     if not request.user.is_staff:

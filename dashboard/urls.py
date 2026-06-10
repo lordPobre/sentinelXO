@@ -1,11 +1,12 @@
 from django.urls import path
 from . import views
+from core import views_alerts as alerts_views
 
 app_name = "dashboard"
 
 urlpatterns = [
     path("",                                        views.home,                  name="home"),
-    # Admin Perseus
+    # Admin Sentinel XO
     path("admin/overview/",                         views.admin_overview,        name="admin-overview"),
     path("admin/clients/",                          views.admin_clients,         name="admin-clients"),
     path("admin/clients/<uuid:client_id>/",         views.admin_client_detail,   name="admin-client-detail"),
@@ -21,4 +22,12 @@ urlpatterns = [
                                                     views.htmx_incident_create,  name="htmx-incident-create"),
     path("htmx/incidents/<int:incident_id>/resolve/",
                                                     views.htmx_incident_resolve, name="htmx-incident-resolve"),
+
+    # Alertas
+    path("alerts/",                                     alerts_views.alerts_dashboard,   name="alerts"),
+    path("alerts/rules/create/",                        alerts_views.alert_rule_create,  name="alert-rule-create"),
+    path("alerts/rules/<int:rule_id>/toggle/",          alerts_views.alert_rule_toggle,  name="alert-rule-toggle"),
+    path("alerts/rules/<int:rule_id>/delete/",          alerts_views.alert_rule_delete,  name="alert-rule-delete"),
+    path("alerts/events/<int:event_id>/resolve/",       alerts_views.alert_event_resolve, name="alert-event-resolve"),
+    path("alerts/events/<int:event_id>/silence/",       alerts_views.alert_event_silence, name="alert-event-silence"),
 ]

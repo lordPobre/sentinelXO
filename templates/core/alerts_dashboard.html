@@ -1,0 +1,303 @@
+{% extends "base/layout.html" %}
+{% block title %}Alertas — Sentinel XO{% endblock %}
+{% block page_title %}Sistema de Alertas{% endblock %}
+{% block page_subtitle %}<div class="mono" style="font-size:10px;color:var(--text-3);margin-top:1px;">reglas · eventos · umbrales inteligentes</div>{% endblock %}
+
+{% block header_actions %}
+<button onclick="document.getElementById('modal-rule').style.display='flex'"
+        class="btn-primary">
+  <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v14M5 12h14"/>
+  </svg>
+  <span class="btn-txt">Nueva regla</span>
+</button>
+{% endblock %}
+
+{% block extra_head %}
+<style>
+  .alert-badge-crit { background:rgba(239,68,68,0.12); color:#ef4444; border:1px solid rgba(239,68,68,0.25); padding:3px 10px; border-radius:6px; font-size:11px; font-weight:600; }
+  .alert-badge-warn { background:rgba(245,158,11,0.12); color:#f59e0b; border:1px solid rgba(245,158,11,0.25); padding:3px 10px; border-radius:6px; font-size:11px; font-weight:600; }
+  .modal-backdrop { position:fixed;inset:0;background:rgba(0,0,0,0.65);backdrop-filter:blur(4px);z-index:1000;display:none;align-items:center;justify-content:center;padding:16px; }
+  .modal-box { background:#0d1117;border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:28px;width:100%;max-width:480px;position:relative; }
+  .form-row { margin-bottom:14px; }
+  .form-label { display:block;font-size:10px;font-weight:600;letter-spacing:0.07em;text-transform:uppercase;color:var(--text-4);margin-bottom:6px; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- KPIs -->
+<div class="kpi-grid-4" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px;">
+  <div class="kpi-card fu" style="{% if firing_critical %}border-color:rgba(239,68,68,0.3);{% endif %}">
+    {% if firing_critical %}<div style="position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(239,68,68,0.6),transparent);"></div>{% endif %}
+    <div class="kpi-label">Críticas activas</div>
+    <div class="kpi-value" style="color:{% if firing_critical %}var(--red){% else %}#f1f5f9{% endif %};">{{ firing_critical }}</div>
+    <div style="font-size:11px;color:var(--text-4);">requieren atención</div>
+  </div>
+  <div class="kpi-card fu-1">
+    <div class="kpi-label">Advertencias activas</div>
+    <div class="kpi-value" style="color:{% if firing_warning %}var(--amber){% else %}#f1f5f9{% endif %};">{{ firing_warning }}</div>
+    <div style="font-size:11px;color:var(--text-4);">por revisar</div>
+  </div>
+  <div class="kpi-card fu-2">
+    <div class="kpi-label">Resueltas hoy</div>
+    <div class="kpi-value" style="color:var(--green);">{{ resolved_today }}</div>
+    <div style="font-size:11px;color:var(--text-4);">en las últimas 24h</div>
+  </div>
+  <div class="kpi-card fu-3">
+    <div class="kpi-label">Reglas activas</div>
+    <div class="kpi-value" style="color:#60a5fa;">{{ total_rules }}</div>
+    <div style="font-size:11px;color:var(--text-4);">configuradas</div>
+  </div>
+</div>
+
+<!-- Alertas activas -->
+<div class="card fu" style="overflow:hidden;margin-bottom:14px;">
+  <div class="card-header">
+    <span class="card-title" style="display:flex;align-items:center;gap:8px;">
+      {% if events %}<span class="dot dot-off dot-pulse"></span>{% endif %}
+      Alertas Activas
+    </span>
+    <span class="mono" style="font-size:10px;color:var(--text-4);">{{ events|length }} activa{{ events|length|pluralize:"s" }}</span>
+  </div>
+  {% for event in events %}
+  <div id="event-row-{{ event.id }}" style="display:flex;align-items:center;gap:12px;padding:13px 18px;border-bottom:1px solid rgba(255,255,255,0.03);">
+    <span class="dot {% if event.severity == 'critical' %}dot-off dot-pulse{% else %}dot-warn{% endif %}" style="flex-shrink:0;margin-top:2px;"></span>
+    <div style="flex:1;min-width:0;">
+      <div style="font-size:13px;font-weight:600;color:#cbd5e1;">{{ event.message }}</div>
+      <div class="mono" style="font-size:10px;color:var(--text-4);margin-top:2px;">
+        {{ event.fired_at|date:"d/m/Y H:i:s" }}
+        {% if event.device %} · {{ event.device.client.company_name }}{% endif %}
+        {% if event.notified %} · <span style="color:#10b981;">✓ email enviado</span>{% endif %}
+      </div>
+    </div>
+    <div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;">
+      <span class="{% if event.severity == 'critical' %}alert-badge-crit{% else %}alert-badge-warn{% endif %}">
+        {{ event.severity|upper }}
+      </span>
+      <button onclick="resolveEvent({{ event.id }})" class="btn-ghost" style="padding:4px 10px;font-size:11px;color:var(--green);">✓ Resolver</button>
+      <button onclick="silenceEvent({{ event.id }})" class="btn-ghost" style="padding:4px 10px;font-size:11px;">Silenciar</button>
+    </div>
+  </div>
+  {% empty %}
+  <div style="padding:36px;text-align:center;">
+    <div style="font-size:26px;margin-bottom:10px;opacity:0.25;">✅</div>
+    <div style="font-size:13px;font-weight:600;color:#cbd5e1;">Sin alertas activas</div>
+    <div style="font-size:11px;color:var(--text-4);margin-top:4px;">Todos los sistemas dentro de los umbrales configurados</div>
+  </div>
+  {% endfor %}
+</div>
+
+<!-- Reglas + Historial -->
+<div class="grid-2col" style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+
+  <!-- Reglas configuradas -->
+  <div class="card" style="overflow:hidden;">
+    <div class="card-header">
+      <span class="card-title">Reglas de Alerta</span>
+      <span class="mono" style="font-size:10px;color:var(--text-4);">{{ rules|length }} regla{{ rules|length|pluralize:"s" }}</span>
+    </div>
+    {% for rule in rules %}
+    <div id="rule-row-{{ rule.id }}" style="display:flex;align-items:center;justify-content:space-between;padding:11px 18px;border-bottom:1px solid rgba(255,255,255,0.03);">
+      <div style="flex:1;min-width:0;">
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:3px;">
+          <span style="font-size:12px;font-weight:600;color:#cbd5e1;">{{ rule.get_metric_display }}</span>
+          <span style="font-size:11px;color:var(--text-4);">&gt;</span>
+          <span class="mono" style="font-size:12px;{% if rule.severity == 'critical' %}color:var(--red);{% else %}color:var(--amber);{% endif %}font-weight:700;">
+            {{ rule.threshold|floatformat:0 }}{% if 'temp' in rule.metric %}°C{% else %}%{% endif %}
+          </span>
+          <span class="badge {% if rule.severity == 'critical' %}badge-crit{% else %}badge-warn{% endif %}" style="font-size:9px;padding:1px 6px;">{{ rule.get_severity_display }}</span>
+        </div>
+        <div class="mono" style="font-size:10px;color:var(--text-4);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+          {{ rule.client.company_name }}
+          {% if rule.device %} · {{ rule.device.display_name }}{% else %} · todos{% endif %}
+          · {{ rule.cooldown_minutes }}min cooldown
+          {% if rule.notify_email %} · 📧{% endif %}
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:5px;flex-shrink:0;margin-left:8px;">
+        <button onclick="toggleRule({{ rule.id }}, this)"
+                class="btn-ghost" style="padding:3px 8px;font-size:11px;{% if not rule.is_active %}opacity:0.4;{% endif %}">
+          {% if rule.is_active %}ON{% else %}OFF{% endif %}
+        </button>
+        <button onclick="deleteRule({{ rule.id }}, this)"
+                class="btn-ghost" style="padding:3px 8px;font-size:11px;color:var(--red);">✕</button>
+      </div>
+    </div>
+    {% empty %}
+    <div style="padding:32px;text-align:center;font-size:12px;color:var(--text-4);">
+      Sin reglas configuradas.<br>
+      <button onclick="document.getElementById('modal-rule').style.display='flex'"
+              style="color:#2563eb;background:none;border:none;cursor:pointer;font-size:12px;margin-top:6px;">
+        Crear primera regla →
+      </button>
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- Historial -->
+  <div class="card" style="overflow:hidden;">
+    <div class="card-header">
+      <span class="card-title">Historial</span>
+      <span class="mono" style="font-size:10px;color:var(--text-4);">Últimas 100</span>
+    </div>
+    {% for event in all_events %}
+    <div style="display:flex;align-items:center;gap:10px;padding:9px 18px;border-bottom:1px solid rgba(255,255,255,0.03);">
+      <span class="dot {% if event.status == 'firing' %}{% if event.severity == 'critical' %}dot-off{% else %}dot-warn{% endif %}{% else %}dot-on{% endif %}" style="flex-shrink:0;"></span>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:11px;color:#94a3b8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+          {{ event.message|default:event.metric }}
+        </div>
+        <div class="mono" style="font-size:10px;color:var(--text-4);">
+          {{ event.fired_at|date:"d/m H:i" }}{% if event.resolved_at %} → {{ event.resolved_at|date:"H:i" }}{% endif %}
+        </div>
+      </div>
+      <span class="badge {% if event.status == 'firing' %}{% if event.severity == 'critical' %}badge-crit{% else %}badge-warn{% endif %}{% elif event.status == 'resolved' %}badge-ok{% else %}badge-gray{% endif %}" style="font-size:9px;padding:1px 6px;flex-shrink:0;">
+        {% if event.status == 'firing' %}Activa{% elif event.status == 'resolved' %}Resuelta{% else %}Silenciada{% endif %}
+      </span>
+    </div>
+    {% empty %}
+    <div style="padding:32px;text-align:center;font-size:12px;color:var(--text-4);">Sin historial aún.</div>
+    {% endfor %}
+  </div>
+</div>
+
+<!-- Modal nueva regla -->
+<div id="modal-rule" class="modal-backdrop" onclick="if(event.target===this)this.style.display='none'">
+  <div class="modal-box">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
+      <div style="font-size:15px;font-weight:700;color:#f1f5f9;">Nueva Regla de Alerta</div>
+      <button onclick="document.getElementById('modal-rule').style.display='none'"
+              style="background:none;border:none;color:var(--text-4);cursor:pointer;font-size:20px;line-height:1;">×</button>
+    </div>
+    <div class="form-row">
+      <label class="form-label">Cliente</label>
+      <select id="rule-client" class="px-input" onchange="loadDevices(this.value)">
+        <option value="">— Seleccionar cliente —</option>
+        {% for client in clients %}
+        <option value="{{ client.id }}">{{ client.company_name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="form-row">
+      <label class="form-label">Dispositivo (vacío = todos los equipos del cliente)</label>
+      <select id="rule-device" class="px-input">
+        <option value="">Todos los equipos</option>
+        {% for device in devices %}
+        <option value="{{ device.id }}" data-client="{{ device.client_id }}" style="display:none">
+          {{ device.display_name }}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+      <div class="form-row">
+        <label class="form-label">Métrica</label>
+        <select id="rule-metric" class="px-input" onchange="updateThresholdHint(this.value)">
+          {% for value, label in METRIC_CHOICES %}
+          <option value="{{ value }}">{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-row">
+        <label class="form-label">Umbral <span id="threshold-unit" style="color:var(--accent);">(%)</span></label>
+        <input id="rule-threshold" type="number" min="1" max="200" value="90" class="px-input">
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+      <div class="form-row">
+        <label class="form-label">Severidad</label>
+        <select id="rule-severity" class="px-input">
+          {% for value, label in SEVERITY_CHOICES %}
+          <option value="{{ value }}">{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-row">
+        <label class="form-label">Cooldown (minutos)</label>
+        <input id="rule-cooldown" type="number" min="5" max="1440" value="30" class="px-input">
+      </div>
+    </div>
+    <div class="form-row" style="display:flex;align-items:center;gap:8px;">
+      <input type="checkbox" id="rule-notify" checked style="accent-color:#2563eb;width:14px;height:14px;">
+      <label for="rule-notify" style="font-size:12px;color:var(--text-3);cursor:pointer;">
+        Notificar por email cuando se dispare la alerta
+      </label>
+    </div>
+    <div style="padding:10px 12px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.12);border-radius:8px;font-size:11px;color:var(--text-3);line-height:1.6;">
+      💡 El cooldown evita alertas repetitivas. Si la condición persiste, se notificará nuevamente al cumplirse el tiempo configurado.
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:18px;">
+      <button onclick="document.getElementById('modal-rule').style.display='none'" class="btn-ghost">Cancelar</button>
+      <button onclick="createRule()" class="btn-primary">Crear regla</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const CSRF = document.cookie.split(';').map(c=>c.trim()).find(c=>c.startsWith('csrftoken='))?.split('=')[1]||'';
+function post(url,data,cb){
+  fetch(url,{method:'POST',headers:{'X-CSRFToken':CSRF,'Content-Type':'application/x-www-form-urlencoded'},
+    body:new URLSearchParams(data),credentials:'same-origin'})
+  .then(r=>r.json()).then(cb).catch(e=>alert('Error: '+e));
+}
+function createRule(){
+  const cid=document.getElementById('rule-client').value;
+  if(!cid){alert('Selecciona un cliente');return;}
+  post("{% url 'dashboard:alert-rule-create' %}",{
+    client_id:cid,
+    device_id:document.getElementById('rule-device').value,
+    metric:document.getElementById('rule-metric').value,
+    threshold:document.getElementById('rule-threshold').value,
+    severity:document.getElementById('rule-severity').value,
+    cooldown_minutes:document.getElementById('rule-cooldown').value,
+    notify_email:document.getElementById('rule-notify').checked?'on':'',
+  },d=>{if(d.status==='ok')location.reload();else alert('Error: '+d.error);});
+}
+function toggleRule(id,btn){
+  post(`/dashboard/alerts/rules/${id}/toggle/`,{},d=>{
+    btn.textContent=d.is_active?'ON':'OFF';
+    btn.style.opacity=d.is_active?'1':'0.4';
+  });
+}
+function deleteRule(id,btn){
+  if(!confirm('¿Eliminar esta regla?'))return;
+  post(`/dashboard/alerts/rules/${id}/delete/`,{},d=>{
+    if(d.status==='ok')document.getElementById('rule-row-'+id)?.remove();
+  });
+}
+function resolveEvent(id){
+  post(`/dashboard/alerts/events/${id}/resolve/`,{},d=>{
+    if(d.status==='ok'){
+      const el=document.getElementById('event-row-'+id);
+      if(el){el.style.transition='opacity 0.4s';el.style.opacity='0';setTimeout(()=>el.remove(),400);}
+    }
+  });
+}
+function silenceEvent(id){
+  post(`/dashboard/alerts/events/${id}/silence/`,{},d=>{
+    if(d.status==='ok'){
+      const el=document.getElementById('event-row-'+id);
+      if(el){el.style.transition='opacity 0.4s';el.style.opacity='0';setTimeout(()=>el.remove(),400);}
+    }
+  });
+}
+function loadDevices(clientId){
+  const sel=document.getElementById('rule-device');
+  Array.from(sel.options).forEach(opt=>{
+    if(!opt.value)return;
+    opt.style.display=(opt.dataset.client===clientId)?'':'none';
+  });
+  sel.value='';
+}
+function updateThresholdHint(metric){
+  const unit=document.getElementById('threshold-unit');
+  const inp=document.getElementById('rule-threshold');
+  if(metric.includes('temp')){
+    unit.textContent='(°C)';inp.value='80';inp.max='200';
+  } else {
+    unit.textContent='(%)';inp.value='90';inp.max='100';
+  }
+}
+</script>
+{% endblock %}

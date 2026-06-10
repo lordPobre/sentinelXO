@@ -137,3 +137,25 @@ class MonthlyReportAdmin(admin.ModelAdmin):
     list_display = ["client", "period_year", "period_month", "status", "generated_at", "sent_at"]
     list_filter = ["status", "client"]
     readonly_fields = ["generated_at", "sent_at", "summary_data"]
+
+# ── Alertas ────────────────────────────────────────────────────────────────────
+from .models import AlertRule, AlertEvent
+
+@admin.register(AlertRule)
+class AlertRuleAdmin(admin.ModelAdmin):
+    list_display  = ("client", "device", "metric", "threshold", "severity",
+                     "cooldown_minutes", "notify_email", "is_active")
+    list_filter   = ("client", "severity", "metric", "is_active")
+    list_editable = ("threshold", "severity", "is_active", "notify_email")
+    ordering      = ("client", "metric")
+
+
+@admin.register(AlertEvent)
+class AlertEventAdmin(admin.ModelAdmin):
+    list_display  = ("fired_at", "device", "metric", "value", "threshold",
+                     "severity", "status", "notified")
+    list_filter   = ("severity", "status", "metric", "notified")
+    readonly_fields = ("fired_at", "device", "rule", "metric", "value",
+                       "threshold", "severity", "notified", "message")
+    ordering      = ("-fired_at",)
+
