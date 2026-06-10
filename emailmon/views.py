@@ -110,13 +110,15 @@ def live_status(request):
         return HttpResponseForbidden()
 
     from django.utils import timezone
-    from .services import check_smtp_connectivity
+    from .services import check_resend_api
 
-    # Auto-check SMTP si no hay checks o el último fue hace más de 1 hora
-    latest_check = SmtpCheck.objects.first()
+    # Auto-check API cada 5 min
+    latest_check = SmtpCheck.objects.filter(
+        smtp_host__icontains="resend"
+    ).order_by("-checked_at").first()
     five_min_ago = timezone.now() - timezone.timedelta(minutes=5)
     if not latest_check or latest_check.checked_at < five_min_ago:
-        latest_check = check_smtp_connectivity()
+        latest_check = check_resend_api()
 
     since_24h = timezone.now() - timezone.timedelta(hours=24)
 
@@ -344,25 +346,34 @@ def m365_dashboard(request):
         m365_tenant__is_active=True,
     ).prefetch_related("m365_licenses", "m365_tenant")
 
-    # Últimos checks de smtp.office365.com
     from .models import SmtpCheck
+    import json
     since_24h = timezone.now() - timezone.timedelta(hours=24)
-    # Calcular totales ANTES del slice
-    m365_qs = SmtpCheck.objects.filter(
-        smtp_host="smtp.office365.com",
+
+    # Checks via Graph API (nuevo método, sin SMTP)
+    graph_qs  = SmtpCheck.objects.filter(
+        smtp_host__icontains="graph.microsoft.com",
         checked_at__gte=since_24h,
     )
-    total  = m365_qs.count()
-    ok     = m365_qs.filter(status="ok").count()
+    total  = graph_qs.count()
+    ok     = graph_qs.filter(status="ok").count()
     uptime = round((ok / total * 100), 1) if total > 0 else None
+    latest = SmtpCheck.objects.filter(
+        smtp_host__icontains="graph.microsoft.com"
+    ).order_by("-checked_at").first()
 
-    # Slice solo para la tabla de display
-    m365_checks = m365_qs.order_by("-checked_at")[:24]
-    latest = SmtpCheck.objects.filter(smtp_host="smtp.office365.com").first()
+    # Si no hay checks Graph aún, mostrar el más reciente de cualquier tipo
+    if not latest:
+        latest = SmtpCheck.objects.order_by("-checked_at").first()
 
-    import json
+    # Historial para la tabla (Graph API + cualquier check reciente)
+    m365_checks = SmtpCheck.objects.filter(
+        smtp_host__icontains="graph.microsoft.com"
+    ).order_by("-checked_at")[:24]
+
+    # Gráfico — últimos 48 checks Graph API
     chart_checks = list(SmtpCheck.objects.filter(
-        smtp_host="smtp.office365.com"
+        smtp_host__icontains="graph.microsoft.com"
     ).order_by("-checked_at")[:48])
     chart_checks.reverse()
     chart_data = {
@@ -372,10 +383,11 @@ def m365_dashboard(request):
     }
 
     return render(request, "emailmon/m365_dashboard.html", {
-        "m365_clients":   m365_clients,
-        "m365_checks":    m365_checks,
-        "uptime":         uptime,
-        "latest":         latest,
+        "m365_clients":    m365_clients,
+        "m365_checks":     m365_checks,
+        "uptime":          uptime,
+        "latest":          latest,
         "chart_data_json": json.dumps(chart_data),
-        "section":        "email",
+        "section":         "email",
+        "via_graph":       True,
     })

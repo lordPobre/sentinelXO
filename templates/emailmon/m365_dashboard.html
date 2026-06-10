@@ -1,7 +1,7 @@
 {% extends "base/layout.html" %}
 {% block title %}Microsoft 365 — Sentinel XO{% endblock %}
 {% block page_title %}Monitor Microsoft 365{% endblock %}
-{% block page_subtitle %}<div class="mono" style="font-size:10px;color:var(--text-3);margin-top:1px;">SMTP · Graph API · conectividad por cliente</div>{% endblock %}
+{% block page_subtitle %}<div class="mono" style="font-size:10px;color:var(--text-3);margin-top:1px;">Graph API · Exchange Online · conectividad por cliente</div>{% endblock %}
 
 {% block header_actions %}
 <button class="btn-primary"
@@ -19,17 +19,17 @@
 <!-- KPIs -->
 <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px;">
   <div class="kpi-card kpi-accent fu">
-    <div class="kpi-label">SMTP M365 (24h)</div>
+    <div class="kpi-label">Graph API M365 (24h)</div>
     {% if uptime is not None %}
     <div class="kpi-value" style="{% if uptime >= 99 %}color:var(--green);{% elif uptime >= 95 %}color:var(--amber);{% else %}color:var(--red);{% endif %}">{{ uptime }}%</div>
     {% else %}
     <div class="kpi-value" style="color:var(--text-4);font-size:18px;padding-top:4px;">Sin datos</div>
     {% endif %}
-    <div style="font-size:11px;color:var(--text-4);">smtp.office365.com:587</div>
+    <div style="font-size:11px;color:var(--text-4);">graph.microsoft.com (HTTPS)</div>
   </div>
 
   <div class="kpi-card fu-1">
-    <div class="kpi-label">Último check SMTP</div>
+    <div class="kpi-label">Último check M365</div>
     {% if latest %}
     <div style="display:flex;align-items:center;gap:8px;margin-top:8px;margin-bottom:4px;">
       <span class="dot {% if latest.status == 'ok' %}dot-on dot-pulse{% elif latest.status == 'timeout' %}dot-warn{% else %}dot-off{% endif %}"></span>
@@ -61,7 +61,7 @@
 {% if chart_data_json %}
 <div class="chart-card fu-1" style="margin-bottom:14px;">
   <div class="chart-title">
-    Tiempo de respuesta — smtp.office365.com:587
+    Tiempo de respuesta — Graph API M365
     <span class="mono" style="font-size:10px;color:var(--text-4);">Últimas verificaciones</span>
   </div>
   <div style="position:relative;height:90px;">
@@ -74,7 +74,7 @@
 <div class="card fu-2" style="overflow:hidden;margin-bottom:14px;">
   <div class="card-header">
     <span class="card-title">Estado M365 por cliente</span>
-    <span class="mono" style="font-size:10px;color:var(--text-4);">Graph API + SMTP</span>
+    <span class="mono" style="font-size:10px;color:var(--text-4);">Graph API (HTTPS)</span>
   </div>
   {% for client in m365_clients %}
   <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid rgba(255,255,255,0.03);">
@@ -130,8 +130,8 @@
 <!-- Historial de checks SMTP M365 -->
 <div class="card fu-3" style="overflow:hidden;">
   <div class="card-header">
-    <span class="card-title">Historial SMTP — smtp.office365.com</span>
-    <span class="mono" style="font-size:10px;color:var(--text-4);">Últimas 24 verificaciones</span>
+    <span class="card-title">Historial checks — Graph API M365</span>
+    <span class="mono" style="font-size:10px;color:var(--text-4);">Últimas 24 · vía HTTPS</span>
   </div>
   {% for check in m365_checks %}
   <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 18px;border-bottom:1px solid rgba(255,255,255,0.03);">
