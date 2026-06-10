@@ -12,36 +12,57 @@ from .models import AlertRule, AlertEvent, Client, HardwareDevice
 @login_required
 def alerts_dashboard(request):
     """Vista principal del panel de alertas."""
+    # Verificar que las tablas existen (pueden no existir si la migración no se aplicó)
+    try:
+        from django.db import connection
+        tables = connection.introspection.table_names()
+        if "core_alertrule" not in tables or "core_alertevent" not in tables:
+            return render(request, "core/alerts_dashboard.html", {
+                "section": "alerts",
+                "events": [], "rules": [], "all_events": [],
+                "clients": [], "devices": [],
+                "firing_critical": 0, "firing_warning": 0,
+                "resolved_today": 0, "total_rules": 0,
+                "METRIC_CHOICES": AlertRule.METRIC_CHOICES,
+                "SEVERITY_CHOICES": AlertRule.SEVERITY_CHOICES,
+                "migration_pending": True,
+            })
+    except Exception:
+        pass
+
     # Staff ve todos los clientes, cliente ve solo el suyo
     if request.user.is_staff:
-        clients    = Client.objects.filter(is_active=True).prefetch_related("devices")
-        events     = AlertEvent.objects.filter(status="firing").select_related(
-            "device", "device__client", "rule").order_by("-fired_at")[:50]
-        rules      = AlertRule.objects.filter(is_active=True).select_related(
+        clients       = Client.objects.filter(is_active=True).prefetch_related("devices")
+        events_qs     = AlertEvent.objects.filter(status="firing").select_related(
+            "device", "device__client", "rule").order_by("-fired_at")
+        rules         = AlertRule.objects.filter(is_active=True).select_related(
             "client", "device").order_by("client", "metric")
-        all_events = AlertEvent.objects.select_related(
+        all_events    = AlertEvent.objects.select_related(
             "device", "device__client").order_by("-fired_at")[:100]
     else:
         portal = request.user.client_portals.first()
         if not portal:
             from django.http import Http404
             raise Http404
-        clients    = Client.objects.filter(pk=portal.pk)
-        events     = AlertEvent.objects.filter(
+        clients       = Client.objects.filter(pk=portal.pk)
+        events_qs     = AlertEvent.objects.filter(
             device__client=portal, status="firing").select_related(
-            "device", "rule").order_by("-fired_at")[:50]
-        rules      = AlertRule.objects.filter(
+            "device", "rule").order_by("-fired_at")
+        rules         = AlertRule.objects.filter(
             client=portal, is_active=True).select_related("device").order_by("metric")
-        all_events = AlertEvent.objects.filter(
+        all_events    = AlertEvent.objects.filter(
             device__client=portal).select_related("device").order_by("-fired_at")[:100]
 
-    # Contadores para KPIs
-    firing_critical = events.filter(severity="critical").count()
-    firing_warning  = events.filter(severity="warning").count()
+    # Contadores ANTES del slice
+    firing_critical = events_qs.filter(severity="critical").count()
+    firing_warning  = events_qs.filter(severity="warning").count()
     resolved_today  = AlertEvent.objects.filter(
         status="resolved",
         resolved_at__date=timezone.now().date(),
     ).count()
+
+    # Slice para el template
+    events = events_qs[:50]
 
     # Dispositivos disponibles para el formulario de reglas
     if request.user.is_staff:
