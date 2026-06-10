@@ -17,63 +17,22 @@
 <a href="{% url 'dashboard:realtime' device.client.id %}" class="btn-ghost">← Flota</a>
 
 <!-- Reporte PDF del dispositivo -->
-<div style="position:relative;display:inline-block;" id="dev-report-wrap">
-  <button id="dev-report-btn" class="btn-ghost" style="display:flex;align-items:center;gap:6px;">
-    <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-            d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-    </svg>
-    Reporte PDF
-    <svg width="10" height="10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
-    </svg>
-  </button>
-  <div id="dev-report-menu"
-       style="display:none;position:absolute;right:0;top:calc(100% + 6px);z-index:9999;
-              background:var(--surface-2);border:1px solid var(--border);
-              border-radius:10px;padding:6px;min-width:210px;
-              box-shadow:0 8px 24px rgba(0,0,0,0.25);">
-    <div style="font-size:9px;font-weight:600;color:var(--text-4);
-                letter-spacing:0.06em;padding:4px 10px 6px;text-transform:uppercase;">
-      Mes actual
-    </div>
-    <a href="{% url 'reports:device-report' device.id %}?granularity=daily"
-       style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:7px;
-              color:var(--text-1);text-decoration:none;font-size:12px;">
-      <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-              d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
-      </svg>
-      Promedios diarios
-    </a>
-    <a href="{% url 'reports:device-report' device.id %}?granularity=weekly"
-       style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:7px;
-              color:var(--text-1);text-decoration:none;font-size:12px;">
-      <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-              d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
-      </svg>
-      Promedios semanales
-    </a>
-  </div>
-</div>
-<script>
-  (function() {
-    var btn  = document.getElementById('dev-report-btn');
-    var menu = document.getElementById('dev-report-menu');
-    var wrap = document.getElementById('dev-report-wrap');
-    if (!btn || !menu) return;
-    btn.addEventListener('click', function(e) {
-      e.stopPropagation();
-      menu.style.display = (menu.style.display === 'none' || menu.style.display === '') ? 'block' : 'none';
-    });
-    document.addEventListener('click', function(e) {
-      if (wrap && !wrap.contains(e.target)) {
-        menu.style.display = 'none';
-      }
-    });
-  })();
-</script>
+<a href="{% url 'reports:device-report' device.id %}?granularity=daily"
+   class="btn-ghost" style="display:flex;align-items:center;gap:5px;font-size:12px;">
+  <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+          d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+  </svg>
+  Reporte Diario
+</a>
+<a href="{% url 'reports:device-report' device.id %}?granularity=weekly"
+   class="btn-ghost" style="display:flex;align-items:center;gap:5px;font-size:12px;">
+  <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+          d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+  </svg>
+  Reporte Semanal
+</a>
 {% endblock %}
 
 {% block extra_head %}
@@ -551,4 +510,6 @@ function initCharts() {
   });
 }
 </script>
+
+
 {% endblock %}
