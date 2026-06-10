@@ -110,22 +110,21 @@ def live_status(request):
         return HttpResponseForbidden()
 
     from django.utils import timezone
-    from .services import check_resend_api
-
-    # Auto-check API cada 5 min
+    # live_status usa el último check de Resend (envío) — sin auto-check que contamine M365
     latest_check = SmtpCheck.objects.filter(
         smtp_host__icontains="resend"
     ).order_by("-checked_at").first()
-    five_min_ago = timezone.now() - timezone.timedelta(minutes=5)
-    if not latest_check or latest_check.checked_at < five_min_ago:
-        latest_check = check_resend_api()
 
     since_24h = timezone.now() - timezone.timedelta(hours=24)
 
-    checks_24h    = SmtpCheck.objects.filter(checked_at__gte=since_24h)
-    total_checks  = checks_24h.count()
-    ok_checks     = checks_24h.filter(status="ok").count()
-    smtp_uptime   = round((ok_checks / total_checks * 100), 1) if total_checks > 0 else None
+    # Uptime = checks de Resend (envío de emails)
+    checks_24h   = SmtpCheck.objects.filter(
+        smtp_host__icontains="resend",
+        checked_at__gte=since_24h,
+    )
+    total_checks = checks_24h.count()
+    ok_checks    = checks_24h.filter(status="ok").count()
+    smtp_uptime  = round((ok_checks / total_checks * 100), 1) if total_checks > 0 else None
 
     logs_24h      = EmailLog.objects.filter(sent_at__gte=since_24h)
     sent_24h      = logs_24h.filter(status="sent").count()
@@ -350,30 +349,27 @@ def m365_dashboard(request):
     import json
     since_24h = timezone.now() - timezone.timedelta(hours=24)
 
-    # Checks via Graph API (nuevo método, sin SMTP)
+    # Checks M365 via Graph API — host exacto "graph.microsoft.com (M365)"
+    M365_HOST = "graph.microsoft.com (M365)"
     graph_qs  = SmtpCheck.objects.filter(
-        smtp_host__icontains="graph.microsoft.com",
+        smtp_host=M365_HOST,
         checked_at__gte=since_24h,
     )
     total  = graph_qs.count()
     ok     = graph_qs.filter(status="ok").count()
     uptime = round((ok / total * 100), 1) if total > 0 else None
     latest = SmtpCheck.objects.filter(
-        smtp_host__icontains="graph.microsoft.com"
+        smtp_host=M365_HOST,
     ).order_by("-checked_at").first()
 
-    # Si no hay checks Graph aún, mostrar el más reciente de cualquier tipo
-    if not latest:
-        latest = SmtpCheck.objects.order_by("-checked_at").first()
-
-    # Historial para la tabla (Graph API + cualquier check reciente)
+    # Historial para la tabla
     m365_checks = SmtpCheck.objects.filter(
-        smtp_host__icontains="graph.microsoft.com"
+        smtp_host=M365_HOST,
     ).order_by("-checked_at")[:24]
 
-    # Gráfico — últimos 48 checks Graph API
+    # Gráfico
     chart_checks = list(SmtpCheck.objects.filter(
-        smtp_host__icontains="graph.microsoft.com"
+        smtp_host=M365_HOST,
     ).order_by("-checked_at")[:48])
     chart_checks.reverse()
     chart_data = {
