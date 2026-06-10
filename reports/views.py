@@ -46,3 +46,46 @@ def report_generate_now(request, client_id):
     except Exception as e:
         messages.error(request, f"Error generando reporte de {client}: {e}")
     return redirect("dashboard:admin-client-detail", client_id=client_id)
+
+
+@login_required
+def device_report_download(request, device_id):
+    """
+    GET /reports/device/<device_id>/?year=2026&month=6&granularity=daily
+    Genera y descarga el reporte PDF individual de un dispositivo.
+    """
+    from django.utils import timezone
+    from core.models import HardwareDevice
+    from .device_report import build_device_report_pdf
+
+    device = get_object_or_404(HardwareDevice, pk=device_id, is_active=True)
+
+    # Solo staff o usuarios del portal del cliente
+    if not request.user.is_staff:
+        if not request.user.client_portals.filter(pk=device.client_id).exists():
+            from django.http import HttpResponseForbidden
+            return HttpResponseForbidden("Sin acceso")
+
+    now = timezone.now()
+    try:
+        year        = int(request.GET.get("year",        now.year))
+        month       = int(request.GET.get("month",       now.month))
+        granularity = request.GET.get("granularity", "daily")
+        if granularity not in ("daily", "weekly"):
+            granularity = "daily"
+    except (ValueError, TypeError):
+        year, month, granularity = now.year, now.month, "daily"
+
+    try:
+        pdf_bytes, _ = build_device_report_pdf(device, year, month, granularity)
+    except Exception as e:
+        return HttpResponse(f"Error generando reporte: {e}", status=500)
+
+    gran_str = "diario" if granularity == "daily" else "semanal"
+    filename = (
+        f"reporte_{device.display_name.replace(' ', '_')}_"
+        f"{year}_{month:02d}_{gran_str}.pdf"
+    )
+    response = HttpResponse(pdf_bytes, content_type="application/pdf")
+    response["Content-Disposition"] = f'attachment; filename="{filename}"' 
+    return response

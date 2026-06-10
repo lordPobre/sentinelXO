@@ -6,7 +6,7 @@ from django.utils import timezone
 
 
 class Client(models.Model):
-    """Empresa cliente de Perseus Technology."""
+    """Empresa cliente de Sentinel XO."""
     PLAN_CHOICES = [
         ("basic", "Basic"),
         ("professional", "Professional"),
@@ -130,6 +130,12 @@ class TelemetrySnapshot(models.Model):
     cpu_freq_mhz   = models.FloatField("CPU Freq (MHz)", null=True, blank=True)
     cpu_cores      = models.IntegerField("Núcleos físicos", null=True, blank=True)
     cpu_threads    = models.IntegerField("Hilos lógicos", null=True, blank=True)
+    # GPU (opcional — solo si el equipo tiene GPU detectable)
+    gpu_name                = models.CharField("GPU", max_length=200, blank=True, default="")
+    gpu_usage_percent       = models.FloatField("GPU %", null=True, blank=True)
+    gpu_memory_used_percent = models.FloatField("VRAM %", null=True, blank=True)
+    gpu_memory_total_gb     = models.FloatField("VRAM total (GB)", null=True, blank=True)
+    gpu_temp_celsius        = models.FloatField("Temp GPU (°C)", null=True, blank=True)
 
     class Meta:
         ordering = ["-captured_at"]

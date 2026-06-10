@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Perseus Technology — Agente de Telemetría v3.0
-Monitorea: CPU, RAM, disco, red, temperatura
+Sentinel XO — Agente de Telemetría v4.0
+Monitorea: CPU, RAM, disco, red, temperatura, GPU (NVIDIA/AMD/Intel)
 """
 import os, sys, platform, socket, time, json, logging, random
 from datetime import datetime, timezone
@@ -12,9 +12,9 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
 )
-logger = logging.getLogger("perseus-agent")
+logger = logging.getLogger("sentinel-agent")
 
-# ─── Cargar .env ──────────────────────────────────────────────────────────────
+# ── Cargar .env ────────────────────────────────────────────────────────────────
 _env_file = Path(__file__).parent / ".env"
 if _env_file.exists():
     with open(_env_file) as f:
@@ -24,11 +24,11 @@ if _env_file.exists():
                 key, _, value = line.partition("=")
                 os.environ.setdefault(key.strip(), value.strip())
 
-PERSEUS_TOKEN   = os.environ.get("PERSEUS_TOKEN", "")
-PERSEUS_API_URL = os.environ.get("PERSEUS_API_URL", "http://127.0.0.1:8000/api/v1/telemetry/")
-INTERVAL        = int(os.environ.get("PERSEUS_INTERVAL", "5"))
-TIMEOUT         = int(os.environ.get("PERSEUS_TIMEOUT", "10"))
-IS_WINDOWS      = platform.system() == "Windows"
+SENTINEL_TOKEN   = os.environ.get("SENTINEL_TOKEN", "")
+SENTINEL_API_URL = os.environ.get("SENTINEL_API_URL", "http://127.0.0.1:8000/api/v1/telemetry/")
+INTERVAL         = int(os.environ.get("SENTINEL_INTERVAL", "5"))
+TIMEOUT          = int(os.environ.get("SENTINEL_TIMEOUT", "10"))
+IS_WINDOWS       = platform.system() == "Windows"
 
 
 def get_local_ip():
@@ -42,19 +42,19 @@ def get_local_ip():
 
 def get_temperatures():
     """
-    Obtiene temperaturas del sistema.
-    - Windows: usa wmi (pip install wmi)
-    - Linux/macOS: usa psutil.sensors_temperatures()
+    Temperaturas del sistema.
+    Windows: OpenHardwareMonitor (WMI) → fallback MSAcpi
+    Linux/macOS: psutil.sensors_temperatures()
     Retorna lista de {label, current, high, critical}
     """
     temps = []
 
     if IS_WINDOWS:
+        # Método principal: OpenHardwareMonitor expuesto por WMI
         try:
             import wmi
             w = wmi.WMI(namespace="root\\OpenHardwareMonitor")
-            sensors = w.Sensor()
-            for s in sensors:
+            for s in w.Sensor():
                 if s.SensorType == "Temperature":
                     temps.append({
                         "label":    s.Name,
@@ -63,7 +63,10 @@ def get_temperatures():
                         "critical": None,
                     })
         except Exception:
-            # Fallback: WMI estándar (menos detallado pero siempre disponible)
+            pass
+
+        # Fallback: zona ACPI si OHM no está corriendo
+        if not temps:
             try:
                 import wmi
                 w = wmi.WMI()
@@ -76,9 +79,8 @@ def get_temperatures():
                         "critical": None,
                     })
             except Exception:
-                pass  # wmi no instalado o no disponible
+                pass
     else:
-        # Linux / macOS
         try:
             import psutil
             sensors = psutil.sensors_temperatures()
@@ -91,9 +93,123 @@ def get_temperatures():
                         "critical": entry.critical,
                     })
         except (AttributeError, Exception):
-            pass  # no disponible en esta plataforma
+            pass
 
     return temps
+
+
+def get_gpu_stats():
+    """
+    Estadísticas de GPU. Soporta:
+      - NVIDIA: pynvml  (pip install pynvml)
+      - AMD/Intel/cualquier: OpenHardwareMonitor via WMI en Windows
+      - Linux NVIDIA: también pynvml
+    Retorna dict con gpu_name, gpu_usage_percent, gpu_memory_used_percent,
+    gpu_memory_total_gb, gpu_temp_celsius  — o None si no hay GPU detectable.
+    """
+
+    # ── NVIDIA con pynvml (Windows y Linux) ──────────────────────────────────
+    try:
+        import pynvml
+        pynvml.nvmlInit()
+        handle = pynvml.nvmlDeviceGetHandleByIndex(0)  # primera GPU
+
+        name    = pynvml.nvmlDeviceGetName(handle)
+        if isinstance(name, bytes):
+            name = name.decode()
+
+        util    = pynvml.nvmlDeviceGetUtilizationRates(handle)
+        mem     = pynvml.nvmlDeviceGetMemoryInfo(handle)
+
+        try:
+            temp = pynvml.nvmlDeviceGetTemperature(handle, pynvml.NVML_TEMPERATURE_GPU)
+        except Exception:
+            temp = None
+
+        mem_total_gb = round(mem.total / 1024**3, 2)
+        mem_pct      = round(mem.used / mem.total * 100, 1) if mem.total else None
+
+        pynvml.nvmlShutdown()
+        return {
+            "gpu_name":                name,
+            "gpu_usage_percent":       round(util.gpu, 1),
+            "gpu_memory_used_percent": mem_pct,
+            "gpu_memory_total_gb":     mem_total_gb,
+            "gpu_temp_celsius":        float(temp) if temp is not None else None,
+        }
+    except Exception:
+        pass
+
+    # ── OpenHardwareMonitor en Windows (AMD, Intel, NVIDIA alternativo) ───────
+    if IS_WINDOWS:
+        try:
+            import wmi
+            w = wmi.WMI(namespace="root\\OpenHardwareMonitor")
+            sensors = w.Sensor()
+
+            gpu_name    = None
+            gpu_usage   = None
+            gpu_mem_pct = None
+            gpu_mem_gb  = None
+            gpu_temp    = None
+            gpu_mem_used_gb  = None
+
+            for s in sensors:
+                hw = s.Parent if hasattr(s, "Parent") else ""
+                # Detectar nombre de GPU desde hardware
+                try:
+                    for hw_item in w.Hardware():
+                        if hw_item.HardwareType in ("GpuNvidia", "GpuAti"):
+                            gpu_name = hw_item.Name
+                            break
+                except Exception:
+                    pass
+
+                name_lower = s.Name.lower()
+                stype      = s.SensorType
+
+                if stype == "Load" and "gpu core" in name_lower:
+                    gpu_usage = round(float(s.Value), 1)
+                elif stype == "Temperature" and "gpu core" in name_lower:
+                    gpu_temp = round(float(s.Value), 1)
+                elif stype == "SmallData" and "gpu memory used" in name_lower:
+                    # OHM reporta VRAM en MB
+                    gpu_mem_used_gb = round(float(s.Value) / 1024, 2)
+                elif stype == "SmallData" and "gpu memory total" in name_lower:
+                    gpu_mem_gb = round(float(s.Value) / 1024, 2)
+
+            if gpu_usage is not None or gpu_temp is not None:
+                mem_pct = None
+                if gpu_mem_used_gb and gpu_mem_gb and gpu_mem_gb > 0:
+                    mem_pct = round(gpu_mem_used_gb / gpu_mem_gb * 100, 1)
+                return {
+                    "gpu_name":                gpu_name or "GPU",
+                    "gpu_usage_percent":       gpu_usage,
+                    "gpu_memory_used_percent": mem_pct,
+                    "gpu_memory_total_gb":     gpu_mem_gb,
+                    "gpu_temp_celsius":        gpu_temp,
+                }
+        except Exception:
+            pass
+
+    # ── Linux: intentar GPUtil como alternativa ───────────────────────────────
+    if not IS_WINDOWS:
+        try:
+            import GPUtil
+            gpus = GPUtil.getGPUs()
+            if gpus:
+                g = gpus[0]
+                return {
+                    "gpu_name":                g.name,
+                    "gpu_usage_percent":       round(g.load * 100, 1),
+                    "gpu_memory_used_percent": round(g.memoryUtil * 100, 1),
+                    "gpu_memory_total_gb":     round(g.memoryTotal / 1024, 2),
+                    "gpu_temp_celsius":        float(g.temperature),
+                }
+        except Exception:
+            pass
+
+    return None  # sin GPU detectable
 
 
 def get_network_stats():
@@ -102,8 +218,8 @@ def get_network_stats():
         import psutil
         net = psutil.net_io_counters()
         return {
-            "bytes_sent": net.bytes_sent,
-            "bytes_recv": net.bytes_recv,
+            "bytes_sent":   net.bytes_sent,
+            "bytes_recv":   net.bytes_recv,
             "packets_sent": net.packets_sent,
             "packets_recv": net.packets_recv,
         }
@@ -118,10 +234,10 @@ def collect():
         logger.error("Falta psutil: pip install psutil")
         sys.exit(1)
 
-    cpu     = psutil.cpu_percent(interval=1)
+    cpu      = psutil.cpu_percent(interval=1)
     cpu_freq = psutil.cpu_freq()
-    ram     = psutil.virtual_memory()
-    disks   = []
+    ram      = psutil.virtual_memory()
+    disks    = []
 
     for p in psutil.disk_partitions(all=False):
         if not p.fstype or p.fstype in ("cdfs", "udf"):
@@ -129,8 +245,8 @@ def collect():
         try:
             u = psutil.disk_usage(p.mountpoint)
             disks.append({
-                "mountpoint": p.mountpoint,
-                "total_gb":   round(u.total / 1024**3, 2),
+                "mountpoint":   p.mountpoint,
+                "total_gb":     round(u.total / 1024**3, 2),
                 "used_percent": round(u.percent, 1),
             })
         except (PermissionError, OSError):
@@ -138,6 +254,7 @@ def collect():
 
     temperatures = get_temperatures()
     network      = get_network_stats()
+    gpu          = get_gpu_stats()
 
     payload = {
         "timestamp":        datetime.now(timezone.utc).isoformat(),
@@ -157,6 +274,10 @@ def collect():
         "ip_address":       get_local_ip(),
     }
 
+    # Agregar GPU solo si se detectó
+    if gpu:
+        payload.update(gpu)
+
     return payload
 
 
@@ -165,26 +286,31 @@ def send(payload):
         import urllib.request
         data = json.dumps(payload).encode()
         req  = urllib.request.Request(
-            PERSEUS_API_URL, data=data,
+            SENTINEL_API_URL, data=data,
             headers={
-                "Authorization": f"Token {PERSEUS_TOKEN}",
+                "Authorization": f"Token {SENTINEL_TOKEN}",
                 "Content-Type":  "application/json",
-                "User-Agent":    f"Perseus-Agent/3.0 ({platform.system()})",
+                "User-Agent":    f"Sentinel XO-Agent/4.0 ({platform.system()})",
             },
             method="POST",
         )
         with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
             body = json.loads(r.read().decode())
-            temp_str = ""
+
+            # Log detallado
+            parts = [
+                f"OK → {body.get('device','?')}",
+                f"cpu={payload['cpu_percent']}%",
+                f"ram={payload['ram_used_percent']}%",
+            ]
             if payload.get("temperatures"):
                 t = payload["temperatures"][0]
-                temp_str = f"  temp={t['current']}°C"
-            logger.info(
-                f"OK → {body.get('device','?')}"
-                f"  cpu={payload['cpu_percent']}%"
-                f"  ram={payload['ram_used_percent']}%"
-                f"{temp_str}"
-            )
+                parts.append(f"temp={t['current']}°C")
+            if payload.get("gpu_name"):
+                parts.append(f"gpu={payload.get('gpu_usage_percent','?')}%")
+                if payload.get("gpu_temp_celsius"):
+                    parts.append(f"gpu_temp={payload['gpu_temp_celsius']}°C")
+            logger.info("  ".join(parts))
             return True
     except Exception as e:
         logger.warning(f"Error al enviar: {e}")
@@ -192,21 +318,31 @@ def send(payload):
 
 
 def main():
-    if not PERSEUS_TOKEN:
-        logger.error("PERSEUS_TOKEN no configurado en .env")
+    if not SENTINEL_TOKEN:
+        logger.error("SENTINEL_TOKEN no configurado en .env")
         sys.exit(1)
 
-    logger.info(f"Perseus Agent v3.0 | host={platform.node()} | intervalo={INTERVAL}s")
-    logger.info(f"Enviando a: {PERSEUS_API_URL}")
+    logger.info(f"Sentinel XO Agent v4.0 | host={platform.node()} | intervalo={INTERVAL}s")
+    logger.info(f"Enviando a: {SENTINEL_API_URL}")
 
-    # Verificar temperatura disponible
+    # Diagnóstico inicial
     temps = get_temperatures()
     if temps:
-        logger.info(f"Temperatura disponible: {len(temps)} sensor(es)")
+        logger.info(f"Temperatura: {len(temps)} sensor(es) disponibles")
     else:
-        logger.info("Temperatura: no disponible en este sistema")
+        logger.info("Temperatura: no disponible")
         if IS_WINDOWS:
-            logger.info("  → Para activarla: pip install wmi + instalar OpenHardwareMonitor")
+            logger.info("  → Instalar OpenHardwareMonitor + pip install wmi")
+
+    gpu = get_gpu_stats()
+    if gpu:
+        logger.info(f"GPU detectada: {gpu['gpu_name']}")
+        if gpu.get("gpu_memory_total_gb"):
+            logger.info(f"  VRAM: {gpu['gpu_memory_total_gb']} GB")
+    else:
+        logger.info("GPU: no detectada o sin librerías")
+        logger.info("  → NVIDIA: pip install pynvml")
+        logger.info("  → AMD/Intel (Windows): instalar OpenHardwareMonitor")
 
     time.sleep(random.uniform(0, min(INTERVAL, 3)))
 

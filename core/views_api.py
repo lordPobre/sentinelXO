@@ -61,6 +61,11 @@ class TelemetryIngestView(APIView):
             cpu_freq_mhz=data.get("cpu_freq_mhz"),
             cpu_cores=data.get("cpu_cores"),
             cpu_threads=data.get("cpu_threads"),
+            gpu_name=data.get("gpu_name", ""),
+            gpu_usage_percent=data.get("gpu_usage_percent"),
+            gpu_memory_used_percent=data.get("gpu_memory_used_percent"),
+            gpu_memory_total_gb=data.get("gpu_memory_total_gb"),
+            gpu_temp_celsius=data.get("gpu_temp_celsius"),
         )
 
         update_fields = ["last_seen"]
