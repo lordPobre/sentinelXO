@@ -378,12 +378,34 @@ def m365_dashboard(request):
         "status": [c.status for c in chart_checks],
     }
 
+    # Calcular porcentajes de envío y recepción de las últimas 24h
+    checks_with_details = graph_qs.exclude(check_details={})
+    send_total = checks_with_details.count()
+    send_ok    = sum(1 for c in checks_with_details
+                     if c.check_details.get("send_status") == "ok")
+    recv_ok    = sum(1 for c in checks_with_details
+                     if c.check_details.get("recv_status") == "ok")
+
+    send_pct = round(send_ok / send_total * 100, 1) if send_total > 0 else None
+    recv_pct = round(recv_ok / send_total * 100, 1) if send_total > 0 else None
+
+    # Último detalle de envío y recepción
+    last_with_details = graph_qs.exclude(check_details={}).order_by("-checked_at").first()
+    last_send = last_with_details.check_details.get("send_status") if last_with_details else None
+    last_recv = last_with_details.check_details.get("recv_status") if last_with_details else None
+    last_recv_detail = last_with_details.check_details.get("last_recv", "") if last_with_details else ""
+
     return render(request, "emailmon/m365_dashboard.html", {
-        "m365_clients":    m365_clients,
-        "m365_checks":     m365_checks,
-        "uptime":          uptime,
-        "latest":          latest,
-        "chart_data_json": json.dumps(chart_data),
-        "section":         "email",
-        "via_graph":       True,
+        "m365_clients":     m365_clients,
+        "m365_checks":      m365_checks,
+        "uptime":           uptime,
+        "latest":           latest,
+        "chart_data_json":  json.dumps(chart_data),
+        "section":          "email",
+        "via_graph":        True,
+        "send_pct":         send_pct,
+        "recv_pct":         recv_pct,
+        "last_send":        last_send,
+        "last_recv":        last_recv,
+        "last_recv_detail": last_recv_detail,
     })

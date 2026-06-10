@@ -269,16 +269,27 @@ def check_m365_graph_health(client) -> dict:
             )
             if exchange:
                 svc_status = exchange.get("status", "unknown")
-                is_healthy = svc_status in ("serviceOperational", "serviceRestored")
+                is_healthy  = svc_status in ("serviceOperational", "serviceRestored")
+                is_degraded = "Degradation" in svc_status or "degradation" in svc_status
+                is_incident = "Incident" in svc_status or "incident" in svc_status
+
+                if is_healthy:
+                    chk_status = "ok"
+                elif is_degraded:
+                    chk_status = "warning"  # degradación = advertencia, no error
+                else:
+                    chk_status = "error"
+
                 result["checks"]["exchange_health"] = {
-                    "status":     "ok" if is_healthy else "warning",
+                    "status":     chk_status,
                     "ms":         health_ms,
                     "label":      "Estado Exchange Online",
                     "svc_status": svc_status,
                     "detail":     exchange.get("statusDisplayName", svc_status),
                 }
                 if not is_healthy:
-                    result["overall"] = "warning"
+                    # Solo escalar a error si hay incidente, degradación es solo warning
+                    result["overall"] = "error" if is_incident else "warning"
                     result["errors"].append(f"Exchange Online: {svc_status}")
             else:
                 # Endpoint OK pero sin datos de Exchange — permiso insuficiente
@@ -371,21 +382,210 @@ def check_m365_graph_health(client) -> dict:
             "error":  str(e)[:150],
         }
 
+    # ── 5. Envío real — sendMail vía Graph API ────────────────────────────────
+    # Requiere permiso Mail.Send en la app Azure
+    # Envía un email de prueba al propio contacto del cliente
+    start = time.monotonic()
+    try:
+        test_recipient = client.contact_email or ""
+        if test_recipient:
+            company = getattr(settings, "SENTINEL_COMPANY_NAME", "Sentinel XO")
+            from django.utils import timezone as tz
+            mail_payload = {
+                "message": {
+                    "subject": f"[{company}] Check de conectividad SMTP — {tz.now().strftime('%H:%M')}",
+                    "body": {
+                        "contentType": "Text",
+                        "content": (
+                            "Este es un email de verificacion automatica enviado por " + company + "\n\n"
+                            "Si recibes este mensaje, el envio de correo desde M365 funciona correctamente.\n"
+                            "Hora del check: " + tz.now().strftime("%d/%m/%Y %H:%M:%S") + "\n\n"
+                            "(No es necesario responder este mensaje)"
+                        ),
+                    },
+                    "toRecipients": [{"emailAddress": {"address": test_recipient}}],
+                },
+                "saveToSentItems": "false",
+            }
+            # Necesitamos un usuario desde el cual enviar — usamos el primero con licencia
+            users_resp = req_lib.get(
+                "https://graph.microsoft.com/v1.0/users?$filter=assignedLicenses/$count ne 0"
+                "&$count=true&$select=id,mail&$top=1",
+                headers={**headers, "ConsistencyLevel": "eventual"},
+                timeout=10,
+            )
+            sender_id = None
+            if users_resp.status_code == 200:
+                users_val = users_resp.json().get("value", [])
+                if users_val:
+                    sender_id = users_val[0].get("id")
+
+            if sender_id:
+                send_resp = req_lib.post(
+                    f"https://graph.microsoft.com/v1.0/users/{sender_id}/sendMail",
+                    headers={**headers, "Content-Type": "application/json"},
+                    json=mail_payload,
+                    timeout=15,
+                )
+                send_ms = int((time.monotonic() - start) * 1000)
+                if send_resp.status_code == 202:
+                    result["checks"]["smtp_send"] = {
+                        "status": "ok", "ms": send_ms,
+                        "label":  "Envío SMTP (sendMail)",
+                        "detail": f"Email enviado a {test_recipient}",
+                    }
+                    logger.info(f"M365 sendMail OK para {client} → {test_recipient} ({send_ms}ms)")
+                elif send_resp.status_code == 403:
+                    result["checks"]["smtp_send"] = {
+                        "status": "skipped", "ms": send_ms,
+                        "label":  "Envío SMTP (sendMail)",
+                        "detail": "Sin permiso Mail.Send — añadir en Azure App Registration",
+                    }
+                else:
+                    err_detail = send_resp.json().get("error", {}).get("message", f"HTTP {send_resp.status_code}")
+                    result["checks"]["smtp_send"] = {
+                        "status": "error", "ms": send_ms,
+                        "label":  "Envío SMTP (sendMail)",
+                        "error":  err_detail[:150],
+                    }
+                    if result["overall"] == "ok":
+                        result["overall"] = "warning"
+                    result["errors"].append(f"sendMail: {err_detail[:100]}")
+            else:
+                result["checks"]["smtp_send"] = {
+                    "status": "skipped", "ms": 0,
+                    "label":  "Envío SMTP (sendMail)",
+                    "detail": "Sin usuarios con licencia encontrados",
+                }
+        else:
+            result["checks"]["smtp_send"] = {
+                "status": "skipped", "ms": 0,
+                "label":  "Envío SMTP (sendMail)",
+                "detail": "Sin email de contacto configurado para el cliente",
+            }
+    except Exception as e:
+        result["checks"]["smtp_send"] = {
+            "status": "error", "ms": 0,
+            "label":  "Envío SMTP (sendMail)",
+            "error":  str(e)[:150],
+        }
+        logger.error(f"M365 sendMail error para {client}: {e}")
+
+    # ── 6. Recepción real — leer últimos mensajes del buzón ───────────────────
+    # Requiere permiso Mail.ReadBasic.All en la app Azure
+    start = time.monotonic()
+    try:
+        # Obtener el primer usuario con licencia
+        users_resp = req_lib.get(
+            "https://graph.microsoft.com/v1.0/users?$filter=assignedLicenses/$count ne 0"
+            "&$count=true&$select=id,mail,displayName&$top=1",
+            headers={**headers, "ConsistencyLevel": "eventual"},
+            timeout=10,
+        )
+        recv_ms = int((time.monotonic() - start) * 1000)
+
+        if users_resp.status_code == 200:
+            users_val = users_resp.json().get("value", [])
+            if users_val:
+                user_id    = users_val[0].get("id")
+                user_email = users_val[0].get("mail", "—")
+                # Leer los últimos 5 emails recibidos
+                msgs_resp = req_lib.get(
+                    f"https://graph.microsoft.com/v1.0/users/{user_id}/messages"
+                    "?$select=receivedDateTime,subject&$top=5&$orderby=receivedDateTime desc",
+                    headers=headers,
+                    timeout=10,
+                )
+                recv_ms = int((time.monotonic() - start) * 1000)
+                if msgs_resp.status_code == 200:
+                    messages  = msgs_resp.json().get("value", [])
+                    last_recv = messages[0].get("receivedDateTime", "") if messages else None
+                    # Parsear fecha del último email recibido
+                    last_recv_str = "—"
+                    hours_ago     = None
+                    if last_recv:
+                        try:
+                            from datetime import datetime, timezone as dt_tz
+                            dt = datetime.fromisoformat(last_recv.replace("Z", "+00:00"))
+                            from django.utils import timezone as dj_tz
+                            hours_ago = (dj_tz.now() - dt).total_seconds() / 3600
+                            last_recv_str = dt.strftime("%d/%m %H:%M")
+                        except Exception:
+                            last_recv_str = last_recv[:16]
+
+                    result["checks"]["smtp_recv"] = {
+                        "status":    "ok", "ms": recv_ms,
+                        "label":     "Recepción SMTP (buzón)",
+                        "detail":    f"{len(messages)} emails · último: {last_recv_str}",
+                        "mailbox":   user_email,
+                        "msg_count": len(messages),
+                        "hours_ago": hours_ago,
+                    }
+                    logger.info(f"M365 recepción OK para {client}: {len(messages)} msgs, último {last_recv_str}")
+                elif msgs_resp.status_code == 403:
+                    result["checks"]["smtp_recv"] = {
+                        "status": "skipped", "ms": recv_ms,
+                        "label":  "Recepción SMTP (buzón)",
+                        "detail": "Sin permiso Mail.ReadBasic.All — añadir en Azure App Registration",
+                    }
+                else:
+                    result["checks"]["smtp_recv"] = {
+                        "status": "error", "ms": recv_ms,
+                        "label":  "Recepción SMTP (buzón)",
+                        "error":  f"HTTP {msgs_resp.status_code}",
+                    }
+            else:
+                result["checks"]["smtp_recv"] = {
+                    "status": "skipped", "ms": recv_ms,
+                    "label":  "Recepción SMTP (buzón)",
+                    "detail": "Sin usuarios con licencia",
+                }
+        else:
+            result["checks"]["smtp_recv"] = {
+                "status": "skipped", "ms": recv_ms,
+                "label":  "Recepción SMTP (buzón)",
+                "detail": f"HTTP {users_resp.status_code}",
+            }
+    except Exception as e:
+        result["checks"]["smtp_recv"] = {
+            "status": "error", "ms": 0,
+            "label":  "Recepción SMTP (buzón)",
+            "error":  str(e)[:150],
+        }
+        logger.error(f"M365 recepción error para {client}: {e}")
+
     # Registrar en SmtpCheck para el historial
     overall_ok = result["overall"] == "ok"
     best_ms = min(
         (v.get("ms", 0) for v in result["checks"].values() if v.get("ms")),
         default=0
     )
-    err_summary = "; ".join(result["errors"])[:500] if result["errors"] else ""
-    if err_summary:
+    err_summary  = "; ".join(result["errors"])[:500] if result["errors"] else ""
+    overall_str  = result["overall"]
+    # "warning" = degradación de servicio MS — no es un fallo nuestro, guardar como "ok"
+    smtpcheck_status = "ok" if overall_str in ("ok", "warning") else "error"
+    if overall_str == "warning":
+        logger.warning(f"M365 advertencia para {client}: {err_summary}")
+    elif overall_str == "error":
         logger.error(f"M365 check fallido para {client}: {err_summary}")
+
+    # Guardar detalle de envío y recepción para el KPI
+    send_check = result["checks"].get("smtp_send", {})
+    recv_check = result["checks"].get("smtp_recv", {})
     SmtpCheck.objects.create(
-        status="ok" if overall_ok else "error",
+        status=smtpcheck_status,
         response_ms=best_ms,
         smtp_host="graph.microsoft.com (M365)",
         smtp_port=443,
         error_msg=err_summary,
+        check_details={
+            "send_status": send_check.get("status", "skipped"),
+            "send_ms":     send_check.get("ms", 0),
+            "recv_status": recv_check.get("status", "skipped"),
+            "recv_ms":     recv_check.get("ms", 0),
+            "recv_count":  recv_check.get("msg_count", 0),
+            "last_recv":   recv_check.get("detail", ""),
+        },
     )
 
     return result

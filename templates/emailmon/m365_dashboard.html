@@ -18,16 +18,43 @@
 
 <!-- KPIs -->
 <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px;">
-  <div class="kpi-card kpi-accent fu">
-    <div class="kpi-label">Graph API M365 (24h)</div>
-    {% if uptime is not None %}
-    <div class="kpi-value" style="{% if uptime >= 99 %}color:var(--green);{% elif uptime >= 95 %}color:var(--amber);{% else %}color:var(--red);{% endif %}">{{ uptime }}%</div>
+  <!-- KPI Envío SMTP -->
+  <div class="kpi-card fu" style="{% if send_pct is not None and send_pct >= 99 %}border-color:rgba(16,185,129,0.25);{% elif send_pct is not None and send_pct < 90 %}border-color:rgba(239,68,68,0.25);{% endif %}">
+    {% if send_pct is not None and send_pct >= 99 %}<div style="position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(16,185,129,0.5),transparent);"></div>{% endif %}
+    <div class="kpi-label">Envío SMTP (24h)</div>
+    {% if send_pct is not None %}
+    <div class="kpi-value" style="{% if send_pct >= 99 %}color:var(--green);{% elif send_pct >= 90 %}color:var(--amber);{% else %}color:var(--red);{% endif %}">{{ send_pct }}%</div>
+    <div class="bar-track" style="margin-bottom:6px;"><div class="bar-fill {% if send_pct >= 99 %}bar-green{% elif send_pct >= 90 %}bar-amber{% else %}bar-red{% endif %}" style="width:{{ send_pct }}%;"></div></div>
+    <div style="font-size:11px;color:var(--text-4);">
+      {% if last_send == 'ok' %}<span style="color:var(--green);">✓ Último envío OK</span>
+      {% elif last_send == 'skipped' %}Sin permiso Mail.Send
+      {% elif last_send %}✗ Último envío falló
+      {% else %}Presiona "Verificar ahora"{% endif %}
+    </div>
     {% else %}
     <div class="kpi-value" style="color:var(--text-4);font-size:18px;padding-top:4px;">Sin datos</div>
+    <div style="font-size:11px;color:var(--text-4);">Presiona "Verificar ahora"</div>
     {% endif %}
-    <div style="font-size:11px;color:var(--text-4);">graph.microsoft.com (HTTPS)</div>
   </div>
 
+  <!-- KPI Recepción SMTP -->
+  <div class="kpi-card fu" style="{% if recv_pct is not None and recv_pct >= 99 %}border-color:rgba(16,185,129,0.25);{% elif recv_pct is not None and recv_pct < 90 %}border-color:rgba(239,68,68,0.25);{% endif %}">
+    {% if recv_pct is not None and recv_pct >= 99 %}<div style="position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(16,185,129,0.5),transparent);"></div>{% endif %}
+    <div class="kpi-label">Recepción SMTP (24h)</div>
+    {% if recv_pct is not None %}
+    <div class="kpi-value" style="{% if recv_pct >= 99 %}color:var(--green);{% elif recv_pct >= 90 %}color:var(--amber);{% else %}color:var(--red);{% endif %}">{{ recv_pct }}%</div>
+    <div class="bar-track" style="margin-bottom:6px;"><div class="bar-fill {% if recv_pct >= 99 %}bar-green{% elif recv_pct >= 90 %}bar-amber{% else %}bar-red{% endif %}" style="width:{{ recv_pct }}%;"></div></div>
+    <div style="font-size:11px;color:var(--text-4);">
+      {% if last_recv == 'ok' %}<span style="color:var(--green);">✓ {{ last_recv_detail }}</span>
+      {% elif last_recv == 'skipped' %}Sin permiso Mail.ReadBasic.All
+      {% elif last_recv %}✗ Último check falló
+      {% else %}Presiona "Verificar ahora"{% endif %}
+    </div>
+    {% else %}
+    <div class="kpi-value" style="color:var(--text-4);font-size:18px;padding-top:4px;">Sin datos</div>
+    <div style="font-size:11px;color:var(--text-4);">Presiona "Verificar ahora"</div>
+    {% endif %}
+  </div>
   <div class="kpi-card fu-1">
     <div class="kpi-label">Último check M365</div>
     {% if latest %}
@@ -39,6 +66,9 @@
     </div>
     {% if latest.response_ms %}
     <div class="mono" style="font-size:11px;color:var(--text-4);">{{ latest.response_ms }}ms · {{ latest.checked_at|date:"d/m H:i:s" }}</div>
+    {% endif %}
+    {% if latest.error_msg %}
+    <div style="font-size:10px;color:var(--red);font-family:'JetBrains Mono',monospace;margin-top:5px;word-break:break-word;line-height:1.4;">{{ latest.error_msg|truncatechars:150 }}</div>
     {% endif %}
     {% else %}
     <div style="font-size:13px;color:var(--text-4);margin-top:12px;">Sin verificaciones</div>

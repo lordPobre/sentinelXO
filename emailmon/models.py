@@ -4,7 +4,7 @@ from django.utils import timezone
 
 
 class EmailLog(models.Model):
-    """Registro de cada email enviado por el sistema Perseus."""
+    """Registro de cada email enviado por el sistema Sentinel XO."""
     STATUS_CHOICES = [
         ("sent",    "Enviado"),
         ("failed",  "Error"),
@@ -55,6 +55,7 @@ class SmtpCheck(models.Model):
     error_msg     = models.TextField("Error", blank=True)
     smtp_host     = models.CharField("Host SMTP", max_length=200)
     smtp_port     = models.IntegerField("Puerto SMTP")
+    check_details = models.JSONField("Detalle checks", default=dict, blank=True)
 
     class Meta:
         verbose_name = "Verificación SMTP"
