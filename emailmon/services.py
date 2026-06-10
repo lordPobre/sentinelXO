@@ -241,11 +241,13 @@ def check_m365_graph_health(client) -> dict:
         result["checks"]["auth"] = {"status": "ok", "ms": token_ms,
                                      "label": "Autenticación Azure AD"}
     except Exception as e:
+        err_str = str(e)
+        logger.error(f"M365 Auth error para {client}: {err_str}")
         result["checks"]["auth"] = {"status": "error", "ms": 0,
                                      "label": "Autenticación Azure AD",
-                                     "error": str(e)[:200]}
+                                     "error": err_str[:200]}
         result["overall"] = "error"
-        result["errors"].append(f"Auth fallida: {e}")
+        result["errors"].append(f"Auth fallida: {err_str[:200]}")
         return result  # sin token no podemos continuar
 
     headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
@@ -375,12 +377,15 @@ def check_m365_graph_health(client) -> dict:
         (v.get("ms", 0) for v in result["checks"].values() if v.get("ms")),
         default=0
     )
+    err_summary = "; ".join(result["errors"])[:500] if result["errors"] else ""
+    if err_summary:
+        logger.error(f"M365 check fallido para {client}: {err_summary}")
     SmtpCheck.objects.create(
         status="ok" if overall_ok else "error",
         response_ms=best_ms,
         smtp_host="graph.microsoft.com (M365)",
         smtp_port=443,
-        error_msg="; ".join(result["errors"])[:500] if result["errors"] else "",
+        error_msg=err_summary,
     )
 
     return result
