@@ -93,9 +93,12 @@ def _send_alert_email(event) -> bool:
     emoji     = SEVERITY_EMOJIS.get(event.severity, "⚠️")
     sev_label = "Advertencia" if event.severity == "warning" else "Crítica"
 
-    recipients = []
-    if client.contact_email:
-        recipients.append(client.contact_email)
+    # Si el cliente tiene activado "solo incidentes", no enviar alertas automáticas
+    if getattr(client, "notify_incidents_only", False):
+        logger.info(f"Alerta automática omitida para {client} (notify_incidents_only=True)")
+        return False
+
+    recipients = client.get_alert_recipients()
     if not recipients:
         return False
 
@@ -263,9 +266,11 @@ def evaluate_smtp_failure(client, smtp_host: str, error_msg: str) -> None:
         return
 
     # Notificar por email directamente (sin regla de dispositivo)
-    recipients = []
-    if client.contact_email:
-        recipients.append(client.contact_email)
+    # Si el cliente tiene activado "solo incidentes", no enviar alertas SMTP automáticas
+    if getattr(client, "notify_incidents_only", False):
+        return
+
+    recipients = client.get_alert_recipients()
     if not recipients:
         return
 

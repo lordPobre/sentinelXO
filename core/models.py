@@ -22,6 +22,17 @@ class Client(models.Model):
     plan = models.CharField("Plan", max_length=20, choices=PLAN_CHOICES, default="basic")
     is_active = models.BooleanField("Activo", default=True)
     notes = models.TextField("Notas internas", blank=True)
+    alert_emails = models.TextField(
+        "Emails adicionales para alertas",
+        blank=True,
+        help_text="Un email por línea. Recibirán todas las alertas y verificaciones del cliente."
+    )
+    notify_incidents_only = models.BooleanField(
+        "Solo notificar incidentes manuales",
+        default=False,
+        help_text="Si está activo, solo se envían emails al crear/resolver incidentes. "
+                  "Las alertas automáticas (CPU, RAM, temperatura, SMTP) no envían email."
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     # Usuarios del lado cliente que pueden ver su dashboard
@@ -33,6 +44,18 @@ class Client(models.Model):
     class Meta:
         verbose_name = "Cliente"
         verbose_name_plural = "Clientes"
+
+    def get_alert_recipients(self) -> list:
+        """Retorna todos los emails que deben recibir alertas de este cliente."""
+        recipients = []
+        if self.contact_email:
+            recipients.append(self.contact_email)
+        if self.alert_emails:
+            for email in self.alert_emails.splitlines():
+                email = email.strip()
+                if email and "@" in email and email not in recipients:
+                    recipients.append(email)
+        return recipients
         ordering = ["company_name"]
 
     def __str__(self):

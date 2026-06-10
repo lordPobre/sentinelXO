@@ -1,5 +1,5 @@
 """
-Notificaciones por email para incidentes Perseus Technology.
+Notificaciones por email para incidentes Sentinel XO.
 Se llama automáticamente al crear un incidente desde el dashboard.
 """
 import logging
@@ -39,25 +39,21 @@ def _get_recipients(incident) -> list[str]:
     - Dominio / Email / Licencia → contacto del cliente (jefe / responsable TI)
     Siempre incluye el email del cliente.
     """
-    recipients = []
+    # Usar el método centralizado del modelo — incluye contact_email + alert_emails
+    recipients = list(incident.client.get_alert_recipients())
 
-    # Email principal del cliente (siempre incluido)
-    if incident.client.contact_email:
-        recipients.append(incident.client.contact_email)
-
-    # Si hay un dispositivo asociado y tiene un usuario asignado
+    # Usuarios del portal también reciben si es incidente de hardware
     if incident.device and incident.category == "hardware":
-        # Los usuarios del portal del cliente también reciben la notificación
         for user in incident.client.portal_users.filter(email__isnull=False):
             if user.email and user.email not in recipients:
                 recipients.append(user.email)
 
-    return list(set(recipients))  # eliminar duplicados
+    return list(set(recipients))
 
 
 def _build_subject(incident) -> str:
     emoji = SEVERITY_EMOJIS.get(incident.severity, "⚠️")
-    company = getattr(settings, "PERSEUS_COMPANY_NAME", "Perseus Technology")
+    company = getattr(settings, "SENTINEL_COMPANY_NAME", "Sentinel XO")
     return (
         f"{emoji} [{company}] Incidente {incident.get_severity_display()}: "
         f"{incident.title[:60]}"
@@ -65,8 +61,8 @@ def _build_subject(incident) -> str:
 
 
 def _build_body(incident) -> str:
-    company      = getattr(settings, "PERSEUS_COMPANY_NAME", "Perseus Technology")
-    support      = getattr(settings, "PERSEUS_SUPPORT_EMAIL", "soporte@perseustechnology.dev")
+    company      = getattr(settings, "SENTINEL_COMPANY_NAME", "Sentinel XO")
+    support      = getattr(settings, "SENTINEL_SUPPORT_EMAIL", "soporte@sentinelxo.dev")
     category     = CATEGORY_LABELS.get(incident.category, incident.category)
     severity     = SEVERITY_LABELS.get(incident.severity, incident.severity)
     created_at   = incident.created_at.strftime("%d/%m/%Y a las %H:%M")
@@ -106,7 +102,7 @@ def _build_body(incident) -> str:
 
     body = f"""Estimado equipo de {incident.client.company_name},
 
-Se ha registrado un nuevo incidente en el sistema de monitoreo Perseus Technology.
+Se ha registrado un nuevo incidente en el sistema de monitoreo Sentinel XO.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   INCIDENTE DETECTADO
@@ -210,8 +206,8 @@ def notify_incident_resolved(incident) -> bool:
     if not recipients:
         return False
 
-    company = getattr(settings, "PERSEUS_COMPANY_NAME", "Perseus Technology")
-    support = getattr(settings, "PERSEUS_SUPPORT_EMAIL", "soporte@perseustechnology.dev")
+    company = getattr(settings, "SENTINEL_COMPANY_NAME", "Sentinel XO")
+    support = getattr(settings, "SENTINEL_SUPPORT_EMAIL", "soporte@sentinelxo.dev")
     resolved_at = incident.resolved_at.strftime("%d/%m/%Y a las %H:%M") if incident.resolved_at else "—"
 
     subject = f"✅ [{company}] Incidente resuelto: {incident.title[:60]}"
