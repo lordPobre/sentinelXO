@@ -418,10 +418,24 @@ def check_m365_graph_health(client) -> dict:
                 timeout=10,
             )
             sender_id = None
-            if users_resp.status_code == 200:
+            sender_mailbox = getattr(tenant, "sender_mailbox", "").strip()
+
+            # Prioridad 1: buzón configurado explícitamente en el tenant
+            if sender_mailbox:
+                lookup = req_lib.get(
+                    f"https://graph.microsoft.com/v1.0/users/{sender_mailbox}?$select=id,mail",
+                    headers=headers, timeout=10,
+                )
+                if lookup.status_code == 200:
+                    sender_id = lookup.json().get("id")
+                    logger.info(f"M365 sendMail usando buzón configurado: {sender_mailbox}")
+
+            # Prioridad 2: primer usuario con licencia (fallback)
+            if not sender_id and users_resp.status_code == 200:
                 users_val = users_resp.json().get("value", [])
                 if users_val:
                     sender_id = users_val[0].get("id")
+                    logger.info(f"M365 sendMail usando primer usuario con licencia (fallback)")
 
             if sender_id:
                 send_resp = req_lib.post(

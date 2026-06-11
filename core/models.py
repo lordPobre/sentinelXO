@@ -244,10 +244,16 @@ class M365Tenant(models.Model):
     sync_error = models.TextField("Último error de sync", blank=True)
     is_active = models.BooleanField("Activo", default=True)
     verify_email = models.EmailField(
-        "Email para verificación sendMail",
+        "Email de destino para verificación",
         blank=True,
         help_text="Email al que se enviará el test de envío en cada verificación. "
                   "Si está vacío, no se envía el email de prueba."
+    )
+    sender_mailbox = models.EmailField(
+        "Buzón remitente (sendMail)",
+        blank=True,
+        help_text="Buzón del tenant desde el que se envía el email de verificación. "
+                  "Ej: it@vcchile.cl — debe ser un usuario con licencia Exchange activa."
     )
 
     class Meta:
