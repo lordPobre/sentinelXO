@@ -1,16 +1,19 @@
 import logging
+import io
+from core.models import Client, MonthlyReport
+from .generator import build_report_pdf
+from django.core.mail import EmailMessage
+from django.conf import settings
 from celery import shared_task
 from django.utils import timezone
+from dateutil.relativedelta import relativedelta
+from emailmon.services import send_tracked_email
 
 logger = logging.getLogger("perseus")
 
 
 @shared_task(name="reports.generate_monthly_reports_all")
 def generate_monthly_reports_all():
-    """Tarea del día 1 de cada mes: genera y envía reportes a todos los clientes activos."""
-    from core.models import Client
-    from dateutil.relativedelta import relativedelta
-
     now = timezone.now()
     last_month = now - relativedelta(months=1)
 
@@ -26,13 +29,6 @@ def generate_monthly_reports_all():
 
 @shared_task(name="reports.generate_monthly_report_client")
 def generate_monthly_report_client(client_id: str, year: int, month: int):
-    """Genera el reporte PDF de un cliente para un mes dado y lo envía por email."""
-    from core.models import Client, MonthlyReport
-    from .generator import build_report_pdf
-    from django.core.mail import EmailMessage
-    from django.conf import settings
-    import io
-
     try:
         client = Client.objects.get(pk=client_id)
     except Client.DoesNotExist:
@@ -57,8 +53,6 @@ def generate_monthly_report_client(client_id: str, year: int, month: int):
         report.generated_at = timezone.now()
         report.save(update_fields=["status", "generated_at", "summary_data"])
 
-        # Enviar por email (con registro en EmailLog)
-        from emailmon.services import send_tracked_email
         month_name = timezone.datetime(year, month, 1).strftime("%B %Y")
         filename = f"reporte_mantenimiento_{client.company_name.lower().replace(' ', '_')}_{year}_{month:02d}.pdf"
         send_tracked_email(

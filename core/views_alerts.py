@@ -11,8 +11,6 @@ from .models import AlertRule, AlertEvent, Client, HardwareDevice
 
 @login_required
 def alerts_dashboard(request):
-    """Vista principal del panel de alertas."""
-    # Verificar que las tablas existen (pueden no existir si la migración no se aplicó)
     try:
         from django.db import connection
         tables = connection.introspection.table_names()
@@ -30,7 +28,6 @@ def alerts_dashboard(request):
     except Exception:
         pass
 
-    # Staff ve todos los clientes, cliente ve solo el suyo
     if request.user.is_staff:
         clients       = Client.objects.filter(is_active=True).prefetch_related("devices")
         events_qs     = AlertEvent.objects.filter(status="firing").select_related(
@@ -53,7 +50,6 @@ def alerts_dashboard(request):
         all_events    = AlertEvent.objects.filter(
             device__client=portal).select_related("device").order_by("-fired_at")[:100]
 
-    # Contadores ANTES del slice
     firing_critical = events_qs.filter(severity="critical").count()
     firing_warning  = events_qs.filter(severity="warning").count()
     resolved_today  = AlertEvent.objects.filter(
@@ -61,10 +57,8 @@ def alerts_dashboard(request):
         resolved_at__date=timezone.now().date(),
     ).count()
 
-    # Slice para el template
     events = events_qs[:50]
 
-    # Dispositivos disponibles para el formulario de reglas
     if request.user.is_staff:
         devices = HardwareDevice.objects.filter(is_active=True).select_related("client")
     else:
@@ -91,7 +85,6 @@ def alerts_dashboard(request):
 @login_required
 @require_POST
 def alert_rule_create(request):
-    """Crea una nueva regla de alerta vía POST."""
     try:
         client_id  = request.POST.get("client_id")
         device_id  = request.POST.get("device_id") or None
@@ -124,7 +117,6 @@ def alert_rule_create(request):
 @login_required
 @require_POST
 def alert_rule_toggle(request, rule_id):
-    """Activa/desactiva una regla."""
     rule = get_object_or_404(AlertRule, pk=rule_id)
     rule.is_active = not rule.is_active
     rule.save(update_fields=["is_active"])
@@ -134,7 +126,6 @@ def alert_rule_toggle(request, rule_id):
 @login_required
 @require_POST
 def alert_rule_delete(request, rule_id):
-    """Elimina una regla."""
     rule = get_object_or_404(AlertRule, pk=rule_id)
     rule.delete()
     return JsonResponse({"status": "ok"})
@@ -143,7 +134,6 @@ def alert_rule_delete(request, rule_id):
 @login_required
 @require_POST
 def alert_event_resolve(request, event_id):
-    """Marca un evento de alerta como resuelto."""
     event = get_object_or_404(AlertEvent, pk=event_id)
     event.status      = "resolved"
     event.resolved_at = timezone.now()
@@ -154,7 +144,6 @@ def alert_event_resolve(request, event_id):
 @login_required
 @require_POST
 def alert_event_silence(request, event_id):
-    """Silencia un evento (no crea más alertas para este)."""
     event = get_object_or_404(AlertEvent, pk=event_id)
     event.status = "silenced"
     event.save(update_fields=["status"])

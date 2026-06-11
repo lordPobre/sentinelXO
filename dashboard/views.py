@@ -197,6 +197,19 @@ def htmx_incident_create(request, client_id):
             except Exception as e:
                 logger.warning(f"Error enviando notificación de incidente: {e}")
 
+        # Generar diagnóstico IA en background (no bloquea la respuesta HTMX)
+        try:
+            import threading
+            from core.views_ai import diagnose_incident
+            def run_diagnosis():
+                diag = diagnose_incident(incident)
+                if diag:
+                    incident.ai_diagnosis = diag
+                    incident.save(update_fields=["ai_diagnosis"])
+            threading.Thread(target=run_diagnosis, daemon=True).start()
+        except Exception as e:
+            logger.warning(f"Error iniciando diagnóstico IA: {e}")
+
         return render(request, "dashboard/partials/incident_row.html",
                       {"incident": incident})
     return HttpResponse(status=405)

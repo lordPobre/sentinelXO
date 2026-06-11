@@ -538,4 +538,207 @@ function initCharts() {
 </script>
 
 
+
+<!-- ── PANEL DE ANÁLISIS IA ──────────────────────────────────────────────── -->
+<div class="chart-card" style="margin-top:14px;" id="ai-panel">
+  <div class="chart-title" style="justify-content:space-between;">
+    <div style="display:flex;align-items:center;gap:8px;">
+      <span style="font-size:16px;">🧠</span>
+      <span>Análisis Predictivo IA</span>
+    </div>
+    <button id="ai-btn" onclick="runAiAnalysis()"
+            class="btn-ghost" style="padding:4px 12px;font-size:11px;display:flex;align-items:center;gap:6px;">
+      <svg width="11" height="11" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M13 10V3L4 14h7v7l9-11h-7z"/>
+      </svg>
+      Analizar ahora
+    </button>
+  </div>
+
+  <div id="ai-content" style="padding:0 4px;">
+    <!-- Estado inicial -->
+    <div id="ai-idle" style="padding:24px;text-align:center;">
+      <div style="font-size:32px;margin-bottom:10px;opacity:0.3;">🔍</div>
+      <div style="font-size:13px;font-weight:600;color:#cbd5e1;margin-bottom:6px;">
+        Análisis predictivo disponible
+      </div>
+      <div style="font-size:11px;color:var(--text-4);margin-bottom:14px;">
+        Claude analiza el historial de telemetría y detecta patrones, tendencias y riesgos.
+      </div>
+      <button onclick="runAiAnalysis()" class="btn-primary" style="font-size:12px;">
+        <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M13 10V3L4 14h7v7l9-11h-7z"/>
+        </svg>
+        Ejecutar análisis
+      </button>
+    </div>
+
+    <!-- Loading -->
+    <div id="ai-loading" style="display:none;padding:28px;text-align:center;">
+      <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:8px;">
+        <svg width="16" height="16" fill="none" stroke="#2563eb" viewBox="0 0 24 24"
+             style="animation:spin 1s linear infinite;flex-shrink:0;">
+          <path stroke-linecap="round" stroke-width="2"
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+        </svg>
+        <span style="font-size:12px;color:#60a5fa;">Claude está analizando los datos...</span>
+      </div>
+      <div style="font-size:10px;color:var(--text-4);">
+        Procesando {{ snapshots }} lecturas de telemetría
+      </div>
+    </div>
+
+    <!-- Resultado -->
+    <div id="ai-result" style="display:none;padding:4px 0 8px;">
+    </div>
+
+    <!-- Error -->
+    <div id="ai-error" style="display:none;padding:20px;text-align:center;">
+      <div style="font-size:11px;color:var(--red);" id="ai-error-msg"></div>
+      <button onclick="runAiAnalysis()" class="btn-ghost" style="margin-top:10px;font-size:11px;">
+        Reintentar
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+const AI_URL = "/api/v1/devices/{{ device.id }}/ai-analysis/";
+
+function runAiAnalysis() {
+  document.getElementById("ai-idle").style.display    = "none";
+  document.getElementById("ai-result").style.display  = "none";
+  document.getElementById("ai-error").style.display   = "none";
+  document.getElementById("ai-loading").style.display = "block";
+  document.getElementById("ai-btn").disabled = true;
+
+  fetch(AI_URL, {credentials: "same-origin"})
+    .then(r => r.json())
+    .then(data => {
+      document.getElementById("ai-loading").style.display = "none";
+      document.getElementById("ai-btn").disabled = false;
+
+      if (data.error === "insufficient_data") {
+        document.getElementById("ai-error-msg").textContent = data.message;
+        document.getElementById("ai-error").style.display = "block";
+        return;
+      }
+      if (data.error) {
+        document.getElementById("ai-error-msg").textContent = data.message || "Error inesperado.";
+        document.getElementById("ai-error").style.display = "block";
+        return;
+      }
+
+      renderAiResult(data);
+    })
+    .catch(e => {
+      document.getElementById("ai-loading").style.display = "none";
+      document.getElementById("ai-btn").disabled = false;
+      document.getElementById("ai-error-msg").textContent = "Error de conexión: " + e.message;
+      document.getElementById("ai-error").style.display = "block";
+    });
+}
+
+function renderAiResult(data) {
+  const a  = data.analysis;
+  const el = document.getElementById("ai-result");
+
+  const estadoColor = {
+    "ok":         "#10b981",
+    "advertencia":"#f59e0b",
+    "critico":    "#ef4444",
+  }[a.estado_general] || "#64748b";
+
+  const sevColor = {
+    "info":     "rgba(37,99,235,0.12)",
+    "warning":  "rgba(245,158,11,0.10)",
+    "critical": "rgba(239,68,68,0.10)",
+  };
+  const sevBorder = {
+    "info":     "rgba(37,99,235,0.2)",
+    "warning":  "rgba(245,158,11,0.25)",
+    "critical": "rgba(239,68,68,0.25)",
+  };
+  const sevText = {
+    "info":     "#60a5fa",
+    "warning":  "#f59e0b",
+    "critical": "#ef4444",
+  };
+
+  let insightsHtml = (a.insights || []).map(ins => `
+    <div style="display:flex;gap:10px;padding:10px 14px;background:${sevColor[ins.severidad]||sevColor.info};
+                border:1px solid ${sevBorder[ins.severidad]||sevBorder.info};border-radius:8px;margin-bottom:6px;">
+      <span style="font-size:18px;flex-shrink:0;line-height:1.3;">${ins.icono}</span>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:12px;font-weight:600;color:${sevText[ins.severidad]||sevText.info};
+                    margin-bottom:2px;">${ins.titulo}</div>
+        <div style="font-size:11px;color:var(--text-3);line-height:1.4;">${ins.detalle}</div>
+      </div>
+      <span class="badge" style="font-size:8px;padding:2px 6px;flex-shrink:0;align-self:flex-start;
+            background:${sevColor[ins.severidad]};border:1px solid ${sevBorder[ins.severidad]};
+            color:${sevText[ins.severidad]};">
+        ${ins.tipo}
+      </span>
+    </div>
+  `).join("");
+
+  el.innerHTML = `
+    <!-- Resumen estado -->
+    <div style="display:flex;align-items:center;gap:10px;padding:12px 14px;
+                background:rgba(255,255,255,0.02);border-bottom:1px solid rgba(255,255,255,0.05);
+                margin-bottom:12px;">
+      <div style="width:10px;height:10px;border-radius:50%;background:${estadoColor};
+                  box-shadow:0 0 8px ${estadoColor};flex-shrink:0;"></div>
+      <div style="flex:1;">
+        <div style="font-size:13px;font-weight:600;color:#f1f5f9;">${a.resumen}</div>
+        <div style="font-size:10px;color:var(--text-4);margin-top:2px;">
+          Basado en ${data.samples} lecturas · ${new Date().toLocaleTimeString("es-CL")}
+        </div>
+      </div>
+      <span style="font-size:11px;font-weight:700;color:${estadoColor};
+                   padding:3px 10px;background:rgba(0,0,0,0.2);border-radius:6px;
+                   border:1px solid ${estadoColor}33;">
+        ${a.estado_general.toUpperCase()}
+      </span>
+    </div>
+
+    <!-- Insights -->
+    <div style="padding:0 10px;">
+      ${insightsHtml}
+
+      <!-- Predicción -->
+      <div style="margin-top:10px;padding:10px 14px;background:rgba(37,99,235,0.06);
+                  border:1px solid rgba(37,99,235,0.15);border-radius:8px;">
+        <div style="font-size:10px;font-weight:600;color:#60a5fa;letter-spacing:0.05em;
+                    text-transform:uppercase;margin-bottom:4px;">🔮 Predicción 24-48h</div>
+        <div style="font-size:11px;color:var(--text-2);line-height:1.5;">${a.prediccion}</div>
+      </div>
+
+      <!-- Acción prioritaria -->
+      ${a.accion_prioritaria && a.accion_prioritaria !== "Sin acciones urgentes" ? `
+      <div style="margin-top:8px;padding:10px 14px;background:rgba(245,158,11,0.07);
+                  border:1px solid rgba(245,158,11,0.2);border-radius:8px;">
+        <div style="font-size:10px;font-weight:600;color:#f59e0b;letter-spacing:0.05em;
+                    text-transform:uppercase;margin-bottom:4px;">⚡ Acción prioritaria</div>
+        <div style="font-size:11px;color:var(--text-2);line-height:1.5;">${a.accion_prioritaria}</div>
+      </div>` : `
+      <div style="margin-top:8px;padding:8px 14px;background:rgba(16,185,129,0.06);
+                  border:1px solid rgba(16,185,129,0.15);border-radius:8px;">
+        <div style="font-size:11px;color:#10b981;">✓ Sin acciones urgentes requeridas</div>
+      </div>`}
+
+      <!-- Footer -->
+      <div style="margin-top:10px;display:flex;justify-content:flex-end;">
+        <button onclick="runAiAnalysis()" class="btn-ghost" style="font-size:10px;padding:4px 10px;">
+          ↺ Actualizar análisis
+        </button>
+      </div>
+    </div>
+  `;
+
+  el.style.display = "block";
+}
+</script>
 {% endblock %}

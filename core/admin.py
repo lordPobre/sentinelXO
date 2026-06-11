@@ -2,6 +2,7 @@ from django.contrib import admin
 from django.utils.html import format_html, mark_safe
 from .models import (Client, HardwareDevice, TelemetrySnapshot, Domain,
                      M365Tenant, M365License, MaintenanceIncident, MonthlyReport)
+from .models import AlertRule, AlertEvent
 
 
 @admin.register(Client)
@@ -102,12 +103,10 @@ class DomainAdmin(admin.ModelAdmin):
             color, days,
         )
 
-
 @admin.register(M365Tenant)
 class M365TenantAdmin(admin.ModelAdmin):
     list_display = ["client", "tenant_id", "last_synced", "is_active"]
     readonly_fields = ["last_synced", "sync_error"]
-
 
 @admin.register(M365License)
 class M365LicenseAdmin(admin.ModelAdmin):
@@ -116,7 +115,6 @@ class M365LicenseAdmin(admin.ModelAdmin):
         "total_licenses", "utilization_percent", "capability_status",
     ]
     list_filter = ["capability_status", "client"]
-
 
 @admin.register(MaintenanceIncident)
 class MaintenanceIncidentAdmin(admin.ModelAdmin):
@@ -131,15 +129,11 @@ class MaintenanceIncidentAdmin(admin.ModelAdmin):
             incident.resolve()
         self.message_user(request, f"{queryset.count()} incidentes marcados como resueltos.")
 
-
 @admin.register(MonthlyReport)
 class MonthlyReportAdmin(admin.ModelAdmin):
     list_display = ["client", "period_year", "period_month", "status", "generated_at", "sent_at"]
     list_filter = ["status", "client"]
     readonly_fields = ["generated_at", "sent_at", "summary_data"]
-
-# ── Alertas ────────────────────────────────────────────────────────────────────
-from .models import AlertRule, AlertEvent
 
 @admin.register(AlertRule)
 class AlertRuleAdmin(admin.ModelAdmin):
@@ -148,7 +142,6 @@ class AlertRuleAdmin(admin.ModelAdmin):
     list_filter   = ("client", "severity", "metric", "is_active")
     list_editable = ("threshold", "severity", "is_active", "notify_email")
     ordering      = ("client", "metric")
-
 
 @admin.register(AlertEvent)
 class AlertEventAdmin(admin.ModelAdmin):

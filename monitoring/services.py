@@ -2,22 +2,17 @@
 Servicios de monitoreo: WHOIS para dominios y Microsoft Graph para M365.
 """
 import logging
+import whois
+import requests
+import msal
+import dns.resolver
 from datetime import timezone as dt_tz
 from django.utils import timezone
+from core.models import Domain,M365License
 
 logger = logging.getLogger("perseus")
 
-
-# ─── Dominios ────────────────────────────────────────────────────────────────
-
 def check_domain_whois(fqdn: str) -> dict:
-    """
-    Consulta WHOIS para obtener la fecha de vencimiento de un dominio.
-    Retorna dict con: expiry_date, registrar, resolves_dns, error.
-    """
-    import whois
-    import dns.resolver
-
     result = {
         "fqdn": fqdn,
         "expiry_date": None,
@@ -26,7 +21,6 @@ def check_domain_whois(fqdn: str) -> dict:
         "error": "",
     }
 
-    # Verificar resolución DNS
     try:
         dns.resolver.resolve(fqdn, "A")
         result["resolves_dns"] = True
@@ -37,7 +31,6 @@ def check_domain_whois(fqdn: str) -> dict:
         except Exception:
             result["resolves_dns"] = False
 
-    # Consulta WHOIS
     try:
         w = whois.whois(fqdn)
         expiry = w.expiration_date
@@ -54,12 +47,8 @@ def check_domain_whois(fqdn: str) -> dict:
 
     return result
 
-
 def refresh_domain(domain) -> bool:
-    """Actualiza el estado de un Domain instance. Retorna True si hubo cambios."""
-    from core.models import Domain
     data = check_domain_whois(domain.fqdn)
-
     domain.last_checked = timezone.now()
     domain.resolves_dns = data["resolves_dns"]
 
@@ -77,10 +66,6 @@ def refresh_domain(domain) -> bool:
     ])
     return True
 
-
-# ─── Microsoft 365 ────────────────────────────────────────────────────────────
-
-# Mapa de SKU a nombres legibles
 SKU_FRIENDLY_NAMES = {
     "SPE_E3": "Microsoft 365 E3",
     "SPE_E5": "Microsoft 365 E5",
@@ -100,8 +85,7 @@ SKU_FRIENDLY_NAMES = {
 
 
 def get_graph_token(tenant_id: str, client_id: str, client_secret: str) -> str:
-    """Obtiene un access token de Microsoft Graph vía Client Credentials."""
-    import msal
+    
     authority = f"https://login.microsoftonline.com/{tenant_id}"
     app = msal.ConfidentialClientApplication(
         client_id, authority=authority, client_credential=client_secret
@@ -115,11 +99,7 @@ def get_graph_token(tenant_id: str, client_id: str, client_secret: str) -> str:
 
 
 def fetch_m365_licenses(tenant_id: str, client_id: str, client_secret: str) -> list[dict]:
-    """
-    Llama a Graph API y retorna lista de licencias con:
-    sku_part_number, friendly_name, total, consumed, status
-    """
-    import requests
+    
     token = get_graph_token(tenant_id, client_id, client_secret)
     headers = {"Authorization": f"Bearer {token}"}
     resp = requests.get(
@@ -127,8 +107,6 @@ def fetch_m365_licenses(tenant_id: str, client_id: str, client_secret: str) -> l
         headers=headers, timeout=15
     )
     resp.raise_for_status()
-
-    # SKUs internos de Microsoft que no son licencias reales
     SKIP_SKUS = {
         "FLOW_FREE", "POWER_BI_STANDARD", "TEAMS_EXPLORATORY",
         "MICROSOFT_REMOTE_ASSIST", "WINDOWS_STORE", "DEVELOPERPACK",
@@ -141,8 +119,6 @@ def fetch_m365_licenses(tenant_id: str, client_id: str, client_secret: str) -> l
     for sku in skus:
         sku_number = sku.get("skuPartNumber", "")
         total = sku["prepaidUnits"]["enabled"]
-
-        # Filtrar SKUs internos y licencias con más de 10000 unidades
         if sku_number in SKIP_SKUS:
             continue
         if total >= 10000:
@@ -161,12 +137,6 @@ def fetch_m365_licenses(tenant_id: str, client_id: str, client_secret: str) -> l
 
 
 def sync_m365_client(client) -> bool:
-    """
-    Sincroniza las licencias M365 de un cliente.
-    Crea o actualiza objetos M365License. Retorna True si exitoso.
-    """
-    from core.models import M365License
-
     if not hasattr(client, "m365_tenant") or not client.m365_tenant.is_active:
         return False
 

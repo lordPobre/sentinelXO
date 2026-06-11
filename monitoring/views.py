@@ -14,7 +14,6 @@ def domain_list(request):
 
 @login_required
 def domain_refresh_htmx(request, domain_id):
-    """HTMX endpoint: refresca un dominio y devuelve el fragmento actualizado."""
     domain = get_object_or_404(Domain, pk=domain_id)
     try:
         refresh_domain(domain)
@@ -26,7 +25,6 @@ def domain_refresh_htmx(request, domain_id):
 
 @login_required
 def m365_sync_htmx(request, client_id):
-    """HTMX endpoint: sincroniza licencias M365 de un cliente."""
     client = get_object_or_404(Client, pk=client_id)
     if sync_m365_client(client):
         messages.success(request, f"Licencias M365 de {client} sincronizadas.")

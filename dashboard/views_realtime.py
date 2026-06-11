@@ -14,25 +14,18 @@ import json
 
 @login_required
 def rt_device_card(request, device_id):
-    """
-    Fragmento HTMX: estado en tiempo real de UN dispositivo.
-    Polleado cada 5s desde el dashboard del cliente.
-    """
     device = get_object_or_404(HardwareDevice, pk=device_id, is_active=True)
-    snap   = device.snapshots.first()   # el más reciente (orden: -captured_at)
-
-    # Calcular historial de CPU para la mini-sparkline (últimas 20 capturas)
+    snap   = device.snapshots.first() 
     history = list(
         device.snapshots
         .values_list("cpu_percent", "ram_used_percent", "captured_at")
         .order_by("-captured_at")[:20]
     )
-    history.reverse()   # cronológico para el gráfico
+    history.reverse()   
 
     cpu_history = [h[0] for h in history]
     ram_history = [h[1] for h in history]
 
-    # Calcular uptime del día
     today_start = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
     total_today = device.snapshots.filter(captured_at__gte=today_start).count()
     online_today = device.snapshots.filter(
@@ -54,14 +47,9 @@ def rt_device_card(request, device_id):
 
 @login_required
 def rt_fleet_overview(request, client_id):
-    """
-    Fragmento HTMX: tarjetas de TODOS los dispositivos de un cliente.
-    Polleado cada 5s desde el portal del cliente.
-    """
     client  = get_object_or_404(Client, pk=client_id)
     devices = client.devices.filter(is_active=True).prefetch_related("snapshots")
 
-    # Métricas globales para los KPIs
     total    = devices.count()
     online   = sum(1 for d in devices if d.is_online)
     warning  = sum(1 for d in devices if d.status == "warning")
@@ -82,10 +70,6 @@ def rt_fleet_overview(request, client_id):
 
 @login_required
 def rt_kpi_bar(request, client_id):
-    """
-    Fragmento HTMX: barra de KPIs superior del portal cliente.
-    Polleado cada 10s.
-    """
     client  = get_object_or_404(Client, pk=client_id)
     devices = client.devices.filter(is_active=True)
 

@@ -4,7 +4,6 @@ from django.utils import timezone
 
 
 class EmailLog(models.Model):
-    """Registro de cada email enviado por el sistema Sentinel XO."""
     STATUS_CHOICES = [
         ("sent",    "Enviado"),
         ("failed",  "Error"),
@@ -25,7 +24,6 @@ class EmailLog(models.Model):
     status      = models.CharField("Estado", max_length=10, choices=STATUS_CHOICES, default="sent")
     error_msg   = models.TextField("Error", blank=True)
     sent_at     = models.DateTimeField("Enviado", auto_now_add=True)
-    # Referencia opcional al cliente relacionado
     client      = models.ForeignKey(
         "core.Client", on_delete=models.SET_NULL,
         null=True, blank=True, related_name="email_logs"
@@ -42,7 +40,6 @@ class EmailLog(models.Model):
 
 
 class SmtpCheck(models.Model):
-    """Resultado de cada verificación de conectividad SMTP."""
     STATUS_CHOICES = [
         ("ok",      "OK"),
         ("timeout", "Timeout"),

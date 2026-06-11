@@ -8,18 +8,22 @@ import smtplib
 import socket
 import time
 import logging
+import smtplib
+import ssl
+import requests as req_lib
+import time
+from monitoring.services import get_graph_token
+from django.utils import timezone
 from django.conf import settings
 from django.core.mail import EmailMessage
+from core.alert_engine import evaluate_smtp_failure
+from core.models import Client
 from .models import EmailLog, SmtpCheck
 
 logger = logging.getLogger("perseus")
 
 
 def check_smtp_connectivity() -> SmtpCheck:
-    """
-    Intenta conectarse al servidor SMTP y mide el tiempo de respuesta.
-    No envía ningún email — solo verifica que el puerto responde.
-    """
     host = getattr(settings, "EMAIL_HOST", "smtp-relay.brevo.com")
     port = getattr(settings, "EMAIL_PORT", 587)
     timeout = 10
@@ -28,7 +32,6 @@ def check_smtp_connectivity() -> SmtpCheck:
     try:
         with smtplib.SMTP(host, port, timeout=timeout) as smtp:
             smtp.ehlo()
-            # Intentar STARTTLS si está disponible
             if smtp.has_extn("STARTTLS"):
                 smtp.starttls()
                 smtp.ehlo()
@@ -51,10 +54,8 @@ def check_smtp_connectivity() -> SmtpCheck:
             error_msg=f"Timeout después de {timeout}s",
         )
         logger.warning(f"SMTP timeout: {host}:{port}")
-        # Disparar alerta inteligente
         try:
-            from core.alert_engine import evaluate_smtp_failure
-            from core.models import Client
+            
             for client in Client.objects.filter(is_active=True):
                 evaluate_smtp_failure(client, f"{host}:{port}", f"Timeout después de {timeout}s")
         except Exception as _ae:
@@ -70,7 +71,6 @@ def check_smtp_connectivity() -> SmtpCheck:
             error_msg=str(e)[:500],
         )
         logger.error(f"SMTP error: {host}:{port} — {e}")
-        # Disparar alerta inteligente
         try:
             from core.alert_engine import evaluate_smtp_failure
             from core.models import Client
@@ -90,10 +90,6 @@ def send_tracked_email(
     client=None,
     attachments: list = None,
 ) -> bool:
-    """
-    Envía un email y registra el resultado en EmailLog.
-    Retorna True si se envió correctamente.
-    """
     success = True
     error_msg = ""
 
@@ -114,7 +110,6 @@ def send_tracked_email(
         error_msg = str(e)[:500]
         logger.error(f"Error enviando email → {', '.join(to)}: {e}")
 
-    # Registrar cada destinatario por separado
     for recipient in to:
         EmailLog.objects.create(
             recipient=recipient,
@@ -129,13 +124,6 @@ def send_tracked_email(
 
 
 def send_test_email(to: str) -> dict:
-    """
-    Envía un email de prueba y retorna el resultado completo.
-    Usado desde el panel de administrador.
-    """
-    from django.utils import timezone
-
-    # 1. Verificar SMTP primero
     check = check_smtp_connectivity()
 
     if check.status != "ok":
@@ -146,7 +134,6 @@ def send_test_email(to: str) -> dict:
             "error": check.error_msg,
         }
 
-    # 2. Enviar email de prueba
     subject = f"[Sentinel XO] Email de prueba — {timezone.now().strftime('%d/%m/%Y %H:%M')}"
     body = (
         f"Este es un email de prueba del sistema Sentinel XO.\n\n"
@@ -165,27 +152,12 @@ def send_test_email(to: str) -> dict:
         "error": "" if success else "Error al enviar",
     }
 
-
-# ─── Verificación SMTP Microsoft 365 ─────────────────────────────────────────
-
 M365_SMTP_HOST = "smtp.office365.com"
 M365_SMTP_PORT = 587
 M365_IMAP_HOST = "outlook.office365.com"
 M365_IMAP_PORT = 993
 
-
 def check_m365_smtp(client=None) -> dict:
-    """
-    Verifica conectividad SMTP de Microsoft 365.
-    No envía emails — solo verifica que el servidor responde y negocia TLS.
-    Retorna dict con: status, smtp_ms, graph_ms, error, details
-    """
-    import smtplib
-    import ssl
-    import socket
-    import time
-    from .models import SmtpCheck
-
     results = {
         "client":   str(client) if client else "Global",
         "smtp":     None,
@@ -194,12 +166,10 @@ def check_m365_smtp(client=None) -> dict:
         "errors":   [],
     }
 
-    # ── 1. Verificar SMTP smtp.office365.com:587 ──────────────────────────────
     start = time.monotonic()
     try:
         with smtplib.SMTP(M365_SMTP_HOST, M365_SMTP_PORT, timeout=10) as smtp:
             smtp.ehlo()
-            # Verificar que STARTTLS está disponible (obligatorio en M365)
             if smtp.has_extn("STARTTLS"):
                 smtp.starttls()
                 smtp.ehlo()
@@ -218,7 +188,6 @@ def check_m365_smtp(client=None) -> dict:
         }
         logger.info(f"M365 SMTP OK: {M365_SMTP_HOST}:{M365_SMTP_PORT} — {smtp_ms}ms")
 
-        # Guardar en SmtpCheck con el host de M365
         SmtpCheck.objects.create(
             status="ok",
             response_ms=smtp_ms,
@@ -248,19 +217,15 @@ def check_m365_smtp(client=None) -> dict:
                                   error_msg=str(e)[:500])
         logger.error(f"M365 SMTP error: {e}")
 
-    # ── 2. Verificar Graph API (si el cliente tiene tenant configurado) ────────
     if client and hasattr(client, "m365_tenant") and client.m365_tenant.is_active:
-        tenant = client.m365_tenant  # definir antes del try para que el except lo vea
+        tenant = client.m365_tenant  
         start = time.monotonic()
         try:
-            import requests as req_lib
-            from monitoring.services import get_graph_token
             token  = get_graph_token(
                 tenant.tenant_id,
                 tenant.azure_client_id,
                 tenant.azure_client_secret,
             )
-            # Llamada ligera — solo el perfil de la organización
             resp = req_lib.get(
                 "https://graph.microsoft.com/v1.0/organization",
                 headers={"Authorization": f"Bearer {token}"},

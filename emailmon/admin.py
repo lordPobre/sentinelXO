@@ -2,7 +2,6 @@ from django.contrib import admin
 from django.utils.html import format_html
 from .models import EmailLog, SmtpCheck
 
-
 @admin.register(EmailLog)
 class EmailLogAdmin(admin.ModelAdmin):
     list_display = ["sent_at", "status_badge", "recipient", "subject_short", "category", "client"]

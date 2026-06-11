@@ -1,21 +1,20 @@
 import logging
 from celery import shared_task
+from .services import check_smtp_connectivity
+from core.models import MaintenanceIncident, Client
+from django.conf import settings
+from django.utils import timezone
+from .models import EmailLog, SmtpCheck
+from .services import check_m365_smtp
 
 logger = logging.getLogger("perseus")
 
 
 @shared_task(name="emailmon.check_smtp_hourly")
 def check_smtp_hourly():
-    """Tarea horaria: verifica SMTP y crea incidente si falla."""
-    from .services import check_smtp_connectivity
-    from core.models import MaintenanceIncident, Client
-    from django.conf import settings
-
     check = check_smtp_connectivity()
 
     if check.status != "ok":
-        # Crear incidente global (sin cliente específico) si SMTP falla
-        # Buscar si ya hay un incidente abierto de SMTP para no duplicar
         existing = MaintenanceIncident.objects.filter(
             title__startswith="SMTP",
             is_resolved=False,
@@ -39,10 +38,6 @@ def check_smtp_hourly():
 
 @shared_task(name="emailmon.cleanup_old_logs")
 def cleanup_old_logs():
-    """Mensual: limpia logs de email de más de 90 días."""
-    from django.utils import timezone
-    from .models import EmailLog, SmtpCheck
-
     cutoff = timezone.now() - timezone.timedelta(days=90)
     deleted_logs  = EmailLog.objects.filter(sent_at__lt=cutoff).delete()[0]
     deleted_checks = SmtpCheck.objects.filter(checked_at__lt=cutoff).delete()[0]
@@ -52,19 +47,10 @@ def cleanup_old_logs():
 
 @shared_task(name="emailmon.check_m365_all_clients")
 def check_m365_all_clients():
-    """
-    Cada hora: verifica conectividad SMTP M365 y Graph API
-    para todos los clientes con M365 configurado.
-    """
-    from core.models import Client
-    from .services import check_m365_smtp
-
-    # 1. Verificar SMTP global de M365 (una sola vez, no por cliente)
     global_result = check_m365_smtp(client=None)
     logger.info(f"M365 SMTP global: {global_result['overall']} — "
                 f"smtp={global_result['smtp'].get('ms','?')}ms")
 
-    # 2. Verificar Graph API por cliente con M365 configurado
     clients = Client.objects.filter(
         is_active=True,
         m365_tenant__is_active=True,
@@ -75,7 +61,6 @@ def check_m365_all_clients():
         result = check_m365_smtp(client=client)
         results[result["overall"]] = results.get(result["overall"], 0) + 1
 
-        # Si hay error de Graph API, crear incidente
         if result["graph"] and result["graph"].get("status") == "error":
             from core.models import MaintenanceIncident
             if not MaintenanceIncident.objects.filter(

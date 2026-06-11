@@ -18,4 +18,56 @@
             hx-swap="outerHTML">✓ Resolver</button>
     {% endif %}
   </div>
+
+{% if incident.ai_diagnosis %}
+<div id="ai-diag-{{ incident.id }}"
+     style="margin:0 18px 12px;padding:12px 14px;
+            background:rgba(37,99,235,0.05);border:1px solid rgba(37,99,235,0.15);
+            border-radius:10px;">
+  <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">
+    <span style="font-size:13px;">🧠</span>
+    <span style="font-size:10px;font-weight:600;color:#60a5fa;letter-spacing:0.05em;text-transform:uppercase;">
+      Diagnóstico IA
+    </span>
+    <span class="badge badge-blue" style="font-size:8px;padding:1px 6px;">
+      {{ incident.ai_diagnosis.prioridad_real|upper }}
+    </span>
+  </div>
+  <div style="font-size:12px;font-weight:600;color:#cbd5e1;margin-bottom:6px;">
+    {{ incident.ai_diagnosis.causa_probable }}
+  </div>
+  {% if incident.ai_diagnosis.evidencias %}
+  <div style="margin-bottom:8px;">
+    {% for ev in incident.ai_diagnosis.evidencias %}
+    <div style="font-size:11px;color:var(--text-4);padding:2px 0;">
+      · {{ ev }}
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px;">
+    <div>
+      <div style="font-size:9px;font-weight:600;color:#60a5fa;text-transform:uppercase;
+                  letter-spacing:0.05em;margin-bottom:4px;">Pasos de resolución</div>
+      {% for paso in incident.ai_diagnosis.pasos_resolucion %}
+      <div style="font-size:11px;color:var(--text-3);padding:2px 0;">
+        {{ forloop.counter }}. {{ paso }}
+      </div>
+      {% endfor %}
+    </div>
+    <div>
+      <div style="font-size:9px;font-weight:600;color:#10b981;text-transform:uppercase;
+                  letter-spacing:0.05em;margin-bottom:4px;">Prevención</div>
+      <div style="font-size:11px;color:var(--text-3);">
+        {{ incident.ai_diagnosis.prevencion }}
+      </div>
+      {% if incident.ai_diagnosis.tiempo_estimado %}
+      <div style="font-size:10px;color:var(--text-4);margin-top:6px;">
+        ⏱ {{ incident.ai_diagnosis.tiempo_estimado }}
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endif %}
 </div>

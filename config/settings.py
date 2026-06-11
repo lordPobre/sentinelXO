@@ -11,7 +11,6 @@ SECRET_KEY = os.environ.get("SECRET_KEY", "dev-insecure-key-change-in-production
 DEBUG = os.environ.get("DEBUG", "False") == "True"
 ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS", "localhost 127.0.0.1").split()
 
-# Railway — agregar dominio público y healthcheck automáticamente
 RAILWAY_PUBLIC_DOMAIN = os.environ.get("RAILWAY_PUBLIC_DOMAIN", "")
 if RAILWAY_PUBLIC_DOMAIN:
     ALLOWED_HOSTS.append(RAILWAY_PUBLIC_DOMAIN)
@@ -19,7 +18,6 @@ if RAILWAY_PUBLIC_DOMAIN:
 else:
     CSRF_TRUSTED_ORIGINS = os.environ.get("CSRF_TRUSTED_ORIGINS", "").split()
 
-# Railway usa este host para verificar el healthcheck
 ALLOWED_HOSTS.append("healthcheck.railway.app")
 
 INSTALLED_APPS = [
@@ -73,7 +71,6 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "config.wsgi.application"
 
-# --- Base de datos ---
 DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///db.sqlite3")
 if DATABASE_URL.startswith("sqlite"):
     db_path = DATABASE_URL.replace("sqlite:///", "")
@@ -87,7 +84,6 @@ else:
     
     DATABASES = {"default": dj_database_url.config(default=DATABASE_URL)}
 
-# --- Auth ---
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
@@ -98,23 +94,19 @@ LOGIN_URL = "/auth/login/"
 LOGIN_REDIRECT_URL = "/dashboard/"
 LOGOUT_REDIRECT_URL = "/auth/login/"
 
-# --- Internacionalización ---
 LANGUAGE_CODE = "es-cl"
 TIME_ZONE = "America/Santiago"
 USE_I18N = True
 USE_TZ = True
 
-# --- Archivos estáticos ---
 STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
-# Solo incluir static/ si existe (evita warning en producción)
 _static_dir = BASE_DIR / "static"
 STATICFILES_DIRS = [_static_dir] if _static_dir.exists() else []
 STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-# --- Django REST Framework ---
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "rest_framework.authentication.TokenAuthentication",
@@ -133,7 +125,6 @@ REST_FRAMEWORK = {
     },
 }
 
-# --- Celery ---
 CELERY_BROKER_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 CELERY_RESULT_BACKEND = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 CELERY_TIMEZONE = TIME_ZONE
@@ -141,7 +132,6 @@ CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
 CELERY_TASK_SERIALIZER = "json"
 CELERY_ACCEPT_CONTENT = ["json"]
 
-# --- Email ---
 EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend" if DEBUG else "django.core.mail.backends.smtp.EmailBackend"
 EMAIL_HOST = os.environ.get("EMAIL_HOST", "smtp-relay.brevo.com")
 EMAIL_PORT = int(os.environ.get("EMAIL_PORT", 587))
@@ -150,14 +140,11 @@ EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "")
 EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD", "")
 DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "soporte@perseustechnology.dev")
 
-# --- Brevo ---
-BREVO_WEBHOOK_SECRET = os.environ.get("BREVO_WEBHOOK_SECRET", "")  # Clave para verificar webhooks
+BREVO_WEBHOOK_SECRET = os.environ.get("BREVO_WEBHOOK_SECRET", "") 
 
-# --- Sentinel XO config ---
 SENTINEL_COMPANY_NAME = os.environ.get("SENTINEL_COMPANY_NAME", "Sentinel XO")
 SENTINEL_SUPPORT_EMAIL = os.environ.get("SENTINEL_SUPPORT_EMAIL", "soporte@perseustechnology.dev")
 
-# --- Logging básico ---
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,

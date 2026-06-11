@@ -9,7 +9,6 @@ class DiskUsageSerializer(serializers.Serializer):
 
 
 class TelemetryIngestSerializer(serializers.Serializer):
-    """Payload que envía el agente Python al hacer POST /api/v1/telemetry/"""
     timestamp        = serializers.DateTimeField()
     hostname         = serializers.CharField(max_length=200)
     os               = serializers.CharField(max_length=100, required=False, default="")
@@ -25,7 +24,6 @@ class TelemetryIngestSerializer(serializers.Serializer):
     cpu_freq_mhz     = serializers.FloatField(required=False, allow_null=True, default=None)
     cpu_cores        = serializers.IntegerField(required=False, allow_null=True, default=None)
     cpu_threads      = serializers.IntegerField(required=False, allow_null=True, default=None)
-    # GPU — opcionales, el agente los omite si no hay GPU detectable
     gpu_name                = serializers.CharField(max_length=200, required=False, allow_blank=True, default="")
     gpu_usage_percent       = serializers.FloatField(required=False, allow_null=True, default=None)
     gpu_memory_used_percent = serializers.FloatField(required=False, allow_null=True, default=None)

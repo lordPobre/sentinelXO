@@ -1,11 +1,15 @@
-#!/usr/bin/env python3
 """
 Sentinel XO — Agente de Telemetría v4.0
 Monitorea: CPU, RAM, disco, red, temperatura, GPU (NVIDIA/AMD/Intel)
 """
+import wmi
+import psutil
+import pynvml
+import GPUtil
 import os, sys, platform, socket, time, json, logging, random
 from datetime import datetime, timezone
 from pathlib import Path
+
 
 logging.basicConfig(
     level=logging.INFO,
@@ -14,7 +18,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger("sentinel-agent")
 
-# ── Cargar .env ────────────────────────────────────────────────────────────────
 _env_file = Path(__file__).parent / ".env"
 if _env_file.exists():
     with open(_env_file) as f:
@@ -41,18 +44,10 @@ def get_local_ip():
 
 
 def get_temperatures():
-    """
-    Temperaturas del sistema.
-    Windows: OpenHardwareMonitor (WMI) → fallback MSAcpi
-    Linux/macOS: psutil.sensors_temperatures()
-    Retorna lista de {label, current, high, critical}
-    """
     temps = []
 
     if IS_WINDOWS:
-        # Método principal: OpenHardwareMonitor expuesto por WMI
         try:
-            import wmi
             w = wmi.WMI(namespace="root\\OpenHardwareMonitor")
             for s in w.Sensor():
                 if s.SensorType == "Temperature":
@@ -64,11 +59,8 @@ def get_temperatures():
                     })
         except Exception:
             pass
-
-        # Fallback: zona ACPI si OHM no está corriendo
         if not temps:
             try:
-                import wmi
                 w = wmi.WMI()
                 for item in w.MSAcpi_ThermalZoneTemperature():
                     celsius = (item.CurrentTemperature / 10.0) - 273.15
@@ -82,7 +74,6 @@ def get_temperatures():
                 pass
     else:
         try:
-            import psutil
             sensors = psutil.sensors_temperatures()
             for name, entries in sensors.items():
                 for entry in entries:
@@ -99,25 +90,12 @@ def get_temperatures():
 
 
 def get_gpu_stats():
-    """
-    Estadísticas de GPU. Soporta:
-      - NVIDIA: pynvml  (pip install pynvml)
-      - AMD/Intel/cualquier: OpenHardwareMonitor via WMI en Windows
-      - Linux NVIDIA: también pynvml
-    Retorna dict con gpu_name, gpu_usage_percent, gpu_memory_used_percent,
-    gpu_memory_total_gb, gpu_temp_celsius  — o None si no hay GPU detectable.
-    """
-
-    # ── NVIDIA con pynvml (Windows y Linux) ──────────────────────────────────
     try:
-        import pynvml
         pynvml.nvmlInit()
         handle = pynvml.nvmlDeviceGetHandleByIndex(0)  # primera GPU
-
         name    = pynvml.nvmlDeviceGetName(handle)
         if isinstance(name, bytes):
             name = name.decode()
-
         util    = pynvml.nvmlDeviceGetUtilizationRates(handle)
         mem     = pynvml.nvmlDeviceGetMemoryInfo(handle)
 
@@ -140,10 +118,8 @@ def get_gpu_stats():
     except Exception:
         pass
 
-    # ── OpenHardwareMonitor en Windows (AMD, Intel, NVIDIA alternativo) ───────
     if IS_WINDOWS:
         try:
-            import wmi
             w = wmi.WMI(namespace="root\\OpenHardwareMonitor")
             sensors = w.Sensor()
 
@@ -156,7 +132,6 @@ def get_gpu_stats():
 
             for s in sensors:
                 hw = s.Parent if hasattr(s, "Parent") else ""
-                # Detectar nombre de GPU desde hardware
                 try:
                     for hw_item in w.Hardware():
                         if hw_item.HardwareType in ("GpuNvidia", "GpuAti"):
@@ -173,7 +148,6 @@ def get_gpu_stats():
                 elif stype == "Temperature" and "gpu core" in name_lower:
                     gpu_temp = round(float(s.Value), 1)
                 elif stype == "SmallData" and "gpu memory used" in name_lower:
-                    # OHM reporta VRAM en MB
                     gpu_mem_used_gb = round(float(s.Value) / 1024, 2)
                 elif stype == "SmallData" and "gpu memory total" in name_lower:
                     gpu_mem_gb = round(float(s.Value) / 1024, 2)
@@ -192,10 +166,8 @@ def get_gpu_stats():
         except Exception:
             pass
 
-    # ── Linux: intentar GPUtil como alternativa ───────────────────────────────
     if not IS_WINDOWS:
         try:
-            import GPUtil
             gpus = GPUtil.getGPUs()
             if gpus:
                 g = gpus[0]
@@ -213,7 +185,6 @@ def get_gpu_stats():
 
 
 def get_network_stats():
-    """Bytes enviados/recibidos desde el arranque."""
     try:
         import psutil
         net = psutil.net_io_counters()

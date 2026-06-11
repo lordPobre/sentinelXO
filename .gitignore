@@ -65,3 +65,7 @@ celerybeat.pid
 agent/dist/
 agent/build/
 agent/*.spec
+agent/.env
+
+cleanup_db.py
+test_m365.py

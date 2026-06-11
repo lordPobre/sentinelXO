@@ -337,7 +337,9 @@ class MaintenanceIncident(models.Model):
     category = models.CharField("Categoría", max_length=20,
                                 choices=CATEGORY_CHOICES, default="other")
     title = models.CharField("Título", max_length=300)
-    description = models.TextField("Descripción", blank=True)
+    description    = models.TextField("Descripción", blank=True)
+    ai_diagnosis   = models.JSONField("Diagnóstico IA", null=True, blank=True,
+                                       help_text="Diagnóstico automático generado por Claude al crear el incidente")
     severity = models.CharField("Severidad", max_length=10,
                                 choices=SEVERITY_CHOICES, default="medium")
     notify_email = models.BooleanField("Notificar por email", default=True)

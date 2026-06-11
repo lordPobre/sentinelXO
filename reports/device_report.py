@@ -13,6 +13,9 @@ from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer, Table,
                                  TableStyle, PageBreak)
 from reportlab.graphics.shapes import Drawing, Rect
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+from django.db.models.functions import TruncDate
+from django.db.models import Avg, Count
+from django.db.models.functions import TruncWeek
 
 PAGE_W, PAGE_H = A4
 ML = MR = 15*mm
@@ -20,7 +23,6 @@ MT = 15*mm
 MB = 22*mm
 CW = PAGE_W - ML - MR
 
-# ── Paleta (misma que generator.py) ───────────────────────────────────────────
 C_DARK   = colors.HexColor("#0f172a")
 C_BLUE   = colors.HexColor("#2563eb")
 C_SLATE8 = colors.HexColor("#1e293b")
@@ -38,8 +40,6 @@ MESES = {
     7:"julio", 8:"agosto", 9:"septiembre", 10:"octubre", 11:"noviembre", 12:"diciembre"
 }
 
-
-# ── Helpers ────────────────────────────────────────────────────────────────────
 def ps(name, **kw):
     d = dict(fontName="Helvetica", fontSize=9, textColor=C_SLATE5, leading=13)
     d.update(kw)
@@ -56,7 +56,6 @@ def td(txt, bold=False, color=C_SLATE8, size=8.5, align=TA_LEFT):
         fontSize=size, textColor=color, leading=12, alignment=align))
 
 def metric_bar(pct, bar_color, width=60):
-    """Barra de progreso horizontal."""
     if pct is None:
         return td("—", color=C_SLATE5)
     pct = max(0, min(100, pct))
@@ -67,7 +66,6 @@ def metric_bar(pct, bar_color, width=60):
     return d
 
 def bar_with_label(pct, bar_color, width=60):
-    """Barra + número en tabla interna."""
     if pct is None:
         return td("—", color=C_SLATE5)
     pct_rounded = round(pct, 1)
@@ -78,7 +76,6 @@ def bar_with_label(pct, bar_color, width=60):
     ], colWidths=[width + 40])
 
 def temp_cell(val):
-    """Celda de temperatura con color."""
     if val is None:
         return td("—", color=C_SLATE5)
     val = round(val, 1)
@@ -132,37 +129,24 @@ def footer_cb(company, support):
         canvas.restoreState()
     return _footer
 
-
-# ── Lógica de agrupación ───────────────────────────────────────────────────────
 def _avg(values):
     vals = [v for v in values if v is not None]
     return round(sum(vals) / len(vals), 1) if vals else None
 
 def _extract_cpu_temp(temperatures):
-    """Extrae temperatura de CPU desde el JSON de temperaturas."""
     if not temperatures:
         return None
     keywords = ["cpu", "processor", "package", "core", "tdie", "tctl"]
-    # Primero buscar coincidencia específica de CPU
     for t in temperatures:
         label = t.get("label", "").lower()
         if any(k in label for k in keywords):
             v = t.get("current")
             if v is not None:
                 return float(v)
-    # Si no, primera temperatura disponible
     first = temperatures[0].get("current")
     return float(first) if first is not None else None
 
 def build_daily_averages(snapshots_qs, start_date, end_date, has_gpu):
-    """
-    Agrupa snapshots por día y calcula promedios.
-    Retorna lista de dicts ordenada por fecha.
-    """
-    from django.db.models.functions import TruncDate
-    from django.db.models import Avg
-
-    # Promedios básicos agrupados por día
     daily = (
         snapshots_qs
         .filter(captured_at__date__gte=start_date, captured_at__date__lte=end_date)
@@ -179,12 +163,9 @@ def build_daily_averages(snapshots_qs, start_date, end_date, has_gpu):
         .order_by("day")
     )
 
-    # Temperatura CPU viene del JSON — hay que hacerlo en Python
-    # Primero traer snapshots agrupados por día con su temperatura
     result = []
     for row in daily:
         day = row["day"]
-        # Obtener temps de ese día para calcular promedio CPU temp
         day_snaps = snapshots_qs.filter(captured_at__date=day).values_list("temperatures", flat=True)
         cpu_temps = [_extract_cpu_temp(t) for t in day_snaps]
         avg_cpu_temp = _avg(cpu_temps)
@@ -202,12 +183,6 @@ def build_daily_averages(snapshots_qs, start_date, end_date, has_gpu):
     return result
 
 def build_weekly_averages(snapshots_qs, start_date, end_date, has_gpu):
-    """
-    Agrupa snapshots por semana ISO y calcula promedios.
-    """
-    from django.db.models.functions import TruncWeek
-    from django.db.models import Avg
-
     weekly = (
         snapshots_qs
         .filter(captured_at__date__gte=start_date, captured_at__date__lte=end_date)
@@ -249,13 +224,10 @@ def build_weekly_averages(snapshots_qs, start_date, end_date, has_gpu):
         })
     return result
 
-# Import Count con alias para evitar conflicto de nombre
 def models_Count(field):
-    from django.db.models import Count
+    
     return Count(field)
 
-
-# ── Función principal ──────────────────────────────────────────────────────────
 def build_device_report_pdf(device, year: int, month: int,
                              granularity: str = "daily") -> tuple[bytes, dict]:
     """
@@ -287,15 +259,12 @@ def build_device_report_pdf(device, year: int, month: int,
         captured_at__lt=period_end,
     )
     total_snaps = snapshots.count()
-
-    # Detectar si el dispositivo tiene GPU en este período
     has_gpu = snapshots.filter(gpu_name__gt="").exists()
     gpu_name = ""
     if has_gpu:
         snap_with_gpu = snapshots.filter(gpu_name__gt="").values_list("gpu_name", flat=True).first()
         gpu_name = snap_with_gpu or ""
 
-    # Construir datos agrupados
     start_date = period_start.date()
     end_date   = (period_end - timedelta(days=1)).date()
 
@@ -306,7 +275,6 @@ def build_device_report_pdf(device, year: int, month: int,
         rows = build_daily_averages(snapshots, start_date, end_date, has_gpu)
         period_label = "Día"
 
-    # Promedios globales del período
     def global_avg(key):
         vals = [r[key] for r in rows if r.get(key) is not None]
         return round(sum(vals) / len(vals), 1) if vals else None
@@ -331,13 +299,11 @@ def build_device_report_pdf(device, year: int, month: int,
         "avg_gpu_temp":  g_gpu_temp,
     }
 
-    # ── BUILD PDF ──────────────────────────────────────────────────────────────
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=A4,
         leftMargin=ML, rightMargin=MR, topMargin=MT, bottomMargin=MB)
     story = []
 
-    # ── HEADER ────────────────────────────────────────────────────────────────
     gran_label = "Reporte Diario" if granularity == "daily" else "Reporte Semanal"
     hdr = Table([[
         Paragraph(
@@ -364,7 +330,6 @@ def build_device_report_pdf(device, year: int, month: int,
     story.append(accent)
     story.append(Spacer(1, 4))
 
-    # ── INFO DISPOSITIVO ──────────────────────────────────────────────────────
     def info_cell(label, value, size=9, bold=False):
         return Table([
             [Paragraph(label, ps(f"il{label[:4]}", fontName="Helvetica-Bold",
@@ -394,7 +359,6 @@ def build_device_report_pdf(device, year: int, month: int,
     story.append(dev_info)
     story.append(Spacer(1, 22))
 
-    # ── KPIs del período ──────────────────────────────────────────────────────
     story += section_header("Resumen del Período",
         f"{total_snaps:,} muestras registradas en {month_name} {year}")
 
@@ -454,8 +418,6 @@ def build_device_report_pdf(device, year: int, month: int,
     ]))
     story.append(kpi_row)
     story.append(Spacer(1, 22))
-
-    # ── TABLA DE PROMEDIOS CPU + RAM + TEMP CPU ────────────────────────────────
     story += section_header(
         f"Rendimiento {'Diario' if granularity == 'daily' else 'Semanal'} — CPU y RAM",
         f"Promedios {'por día' if granularity == 'daily' else 'por semana'} · "
@@ -490,7 +452,6 @@ def build_device_report_pdf(device, year: int, month: int,
             ps("nd", fontSize=9, textColor=C_SLATE5)))
     story.append(Spacer(1, 18))
 
-    # ── TABLA GPU (solo si hay datos) ─────────────────────────────────────────
     if has_gpu and any(r.get("avg_gpu_usage") is not None for r in rows):
         story += section_header(
             f"Rendimiento {'Diario' if granularity == 'daily' else 'Semanal'} — GPU",
@@ -520,7 +481,6 @@ def build_device_report_pdf(device, year: int, month: int,
         story.append(t)
         story.append(Spacer(1, 18))
 
-    # ── NOTAS FINALES ─────────────────────────────────────────────────────────
     notes = []
     if not has_gpu:
         notes.append("• GPU no detectada en este dispositivo durante el período reportado. "
