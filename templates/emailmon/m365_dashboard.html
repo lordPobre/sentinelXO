@@ -4,11 +4,21 @@
 {% block page_subtitle %}<div class="mono" style="font-size:10px;color:var(--text-3);margin-top:1px;">Graph API · Exchange Online · conectividad por cliente</div>{% endblock %}
 
 {% block header_actions %}
-<button class="btn-primary"
+<button id="btn-verify-now" class="btn-primary"
         hx-post="{% url 'emailmon:m365-check' %}"
         hx-target="#m365-global-result"
-        hx-swap="innerHTML">
-  <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+        hx-swap="innerHTML"
+        hx-indicator="#verify-spinner">
+  <span id="verify-spinner" class="htmx-indicator">
+    <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="animation:spin 1s linear infinite;">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+    </svg>
+  </span>
+  <span class="htmx-idle">
+    <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+    </svg>
+  </span>
   Verificar ahora
 </button>
 <a href="{% url 'emailmon:dashboard' %}" class="btn-ghost">← Email</a>
@@ -222,4 +232,22 @@ if (ctx && chartData.labels.length) {
 }
 </script>
 {% endif %}
+<style>
+@keyframes spin { to { transform: rotate(360deg); } }
+.htmx-idle { display: inline-flex; align-items: center; }
+.htmx-request .htmx-idle { display: none; }
+.htmx-indicator { display: none; }
+.htmx-request .htmx-indicator { display: inline-flex; align-items: center; }
+</style>
+<script>
+// Recargar la página completa 1.5s después de que el check termine
+// para actualizar KPIs de envío/recepción e historial
+document.body.addEventListener("htmx:afterSwap", function(evt) {
+  if (evt.detail.target && evt.detail.target.id === "m365-global-result") {
+    setTimeout(function() {
+      window.location.reload();
+    }, 1500);
+  }
+});
+</script>
 {% endblock %}
