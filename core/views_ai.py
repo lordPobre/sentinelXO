@@ -7,7 +7,7 @@ import os
 import logging
 import urllib.request
 import urllib.error
-from datetime import timedelta
+from datetime import timedelta, datetime
 from django.utils import timezone
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
@@ -415,7 +415,7 @@ def generate_narrative_summary(client, year: int, month: int, summary: dict) -> 
     from django.conf import settings
     from dateutil.relativedelta import relativedelta
 
-    period_start = timezone.make_aware(__import__("datetime").datetime(year, month, 1))
+    period_start = timezone.make_aware(datetime(year, month, 1))
     period_end   = period_start + relativedelta(months=1)
     month_name   = {
         1:"enero",2:"febrero",3:"marzo",4:"abril",5:"mayo",6:"junio",

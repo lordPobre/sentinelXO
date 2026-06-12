@@ -290,10 +290,17 @@ def build_report_pdf(client, year: int, month: int) -> tuple[bytes, dict]:
     story.append(Spacer(1, 22))
 
     # ── RESUMEN NARRATIVO IA ─────────────────────────────────────────────────
+    import logging
+    logger = logging.getLogger("sentinel.reports")
     try:
         from core.views_ai import generate_narrative_summary
         narrative = generate_narrative_summary(client, year, month, summary)
-    except Exception:
+        if narrative is None:
+            logger.warning(f"Narrativa IA retornó None para {client.company_name} {year}/{month}")
+        else:
+            logger.info(f"Narrativa IA OK para {client.company_name}: {len(narrative)} chars")
+    except Exception as e:
+        logger.error(f"Excepción generando narrativa IA para {client.company_name}: {e!r}")
         narrative = None
 
     if narrative:
