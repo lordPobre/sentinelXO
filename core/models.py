@@ -204,6 +204,14 @@ class Domain(models.Model):
     notes = models.TextField("Notas", blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
+    # Certificado SSL
+    ssl_expiry_date  = models.DateField("Vencimiento SSL", null=True, blank=True)
+    ssl_issuer       = models.CharField("Emisor SSL", max_length=200, blank=True)
+    ssl_status       = models.CharField("Estado SSL", max_length=20,
+                                        choices=STATUS_CHOICES, default="unknown")
+    ssl_protocol     = models.CharField("Protocolo TLS", max_length=20, blank=True)
+    ssl_error        = models.CharField("Error SSL", max_length=300, blank=True)
+
     class Meta:
         verbose_name = "Dominio"
         verbose_name_plural = "Dominios"
@@ -218,6 +226,27 @@ class Domain(models.Model):
         if not self.expiry_date:
             return None
         return (self.expiry_date - timezone.now().date()).days
+
+    @property
+    def days_until_ssl_expiry(self):
+        if not self.ssl_expiry_date:
+            return None
+        return (self.ssl_expiry_date - timezone.now().date()).days
+
+    def refresh_ssl_status(self):
+        days = self.days_until_ssl_expiry
+        if self.ssl_error:
+            self.ssl_status = "unknown"
+        elif days is None:
+            self.ssl_status = "unknown"
+        elif days < 0:
+            self.ssl_status = "expired"
+        elif days < 15:
+            self.ssl_status = "critical"
+        elif days < 30:
+            self.ssl_status = "warning"
+        else:
+            self.ssl_status = "ok"
 
     def refresh_status(self):
         days = self.days_until_expiry
@@ -489,6 +518,8 @@ class SecurityCheck(models.Model):
     # Detalle / errores
     check_details = models.JSONField("Detalle", default=dict, blank=True)
     error_msg     = models.TextField("Error", blank=True)
+    ai_summary    = models.JSONField("Análisis IA", null=True, blank=True,
+                                     help_text="Reporte de seguridad narrativo generado por Claude")
 
     class Meta:
         verbose_name = "Chequeo de seguridad"

@@ -22,12 +22,26 @@
         {% if domain.expiry_date %}Vence {{ domain.expiry_date|date:"d/m/Y" }}{% else %}Sin fecha{% endif %}
         · Revisado {{ domain.last_checked|date:"d/m H:i"|default:"nunca" }}
       </div>
+      {% if domain.ssl_expiry_date or domain.ssl_error %}
+      <div style="font-size:10px;color:var(--text-4);margin-top:1px;">
+        {% if domain.ssl_error %}<span style="color:var(--red);">SSL: {{ domain.ssl_error|truncatechars:60 }}</span>
+        {% else %}SSL: {{ domain.ssl_issuer|default:"—" }} · vence {{ domain.ssl_expiry_date|date:"d/m/Y" }}{% endif %}
+      </div>
+      {% endif %}
+
     </div>
     <div style="display:flex;align-items:center;gap:8px;">
       {% if not domain.resolves_dns %}<span class="badge badge-crit">DNS falla</span>{% endif %}
-      <span class="badge {% if domain.status == 'critical' or domain.status == 'expired' %}badge-crit{% elif domain.status == 'warning' %}badge-warn{% elif domain.status == 'ok' %}badge-ok{% else %}badge-gray{% endif %}">
+      <span class="badge {% if domain.status == 'critical' or domain.status == 'expired' %}badge-crit{% elif domain.status == 'warning' %}badge-warn{% elif domain.status == 'ok' %}badge-ok{% else %}badge-gray{% endif %}" title="Vencimiento dominio">
         {% if domain.days_until_expiry is not None %}{% if domain.days_until_expiry < 0 %}Vencido{% else %}{{ domain.days_until_expiry }}d{% endif %}{% else %}—{% endif %}
       </span>
+      {% if domain.ssl_status != 'unknown' or domain.ssl_error %}
+      <span class="badge {% if domain.ssl_status == 'critical' or domain.ssl_status == 'expired' %}badge-crit{% elif domain.ssl_status == 'warning' %}badge-warn{% elif domain.ssl_status == 'ok' %}badge-ok{% else %}badge-gray{% endif %}"
+            title="{% if domain.ssl_error %}{{ domain.ssl_error }}{% elif domain.ssl_issuer %}Emisor: {{ domain.ssl_issuer }} · {{ domain.ssl_protocol }}{% endif %}">
+        🔒{% if domain.ssl_error %} Error{% elif domain.days_until_ssl_expiry is not None %}{% if domain.days_until_ssl_expiry < 0 %} Vencido{% else %} {{ domain.days_until_ssl_expiry }}d{% endif %}{% else %} —{% endif %}
+      </span>
+      {% endif %}
+
       <button class="btn-ghost" style="padding:4px 10px;font-size:11px;"
               hx-post="{% url 'monitoring:domain-refresh' domain.id %}"
               hx-target="#domain-row-{{ domain.id }}" hx-swap="outerHTML">↻</button>

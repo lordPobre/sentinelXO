@@ -1,0 +1,103 @@
+{% if error %}
+<div style="padding:16px;text-align:center;">
+  <div style="font-size:12px;color:var(--red);margin-bottom:8px;">{{ error }}</div>
+  <button class="btn-ghost" style="font-size:11px;"
+          hx-post="{% url 'dashboard:security-ai-analysis' client.id %}"
+          hx-target="#sec-ai-{{ client.id }}" hx-swap="innerHTML">
+    Reintentar
+  </button>
+</div>
+
+{% elif not latest.ai_summary %}
+<div style="padding:24px;text-align:center;">
+  <div style="font-size:28px;margin-bottom:8px;opacity:0.3;">🧠</div>
+  <div style="font-size:12px;color:var(--text-4);margin-bottom:12px;">
+    Análisis de seguridad con IA disponible
+  </div>
+  <button class="btn-primary" style="font-size:12px;"
+          hx-post="{% url 'dashboard:security-ai-analysis' client.id %}"
+          hx-target="#sec-ai-{{ client.id }}" hx-swap="innerHTML"
+          hx-indicator="#sec-ai-spinner-{{ client.id }}">
+    <span id="sec-ai-spinner-{{ client.id }}" class="htmx-indicator">
+      <svg width="11" height="11" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="animation:spin 1s linear infinite;">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+      </svg>
+    </span>
+    <span class="htmx-idle">🧠</span>
+    Generar reporte de seguridad
+  </button>
+</div>
+
+{% else %}
+{% with a=latest.ai_summary %}
+<div>
+  <!-- Header riesgo -->
+  <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;
+              background:rgba(255,255,255,0.02);border-radius:8px;margin-bottom:10px;">
+    <div style="width:10px;height:10px;border-radius:50%;flex-shrink:0;
+                {% if a.nivel_riesgo == 'bajo' %}background:#10b981;box-shadow:0 0 8px #10b981;
+                {% elif a.nivel_riesgo == 'medio' %}background:#f59e0b;box-shadow:0 0 8px #f59e0b;
+                {% elif a.nivel_riesgo == 'alto' %}background:#ef4444;box-shadow:0 0 8px #ef4444;
+                {% else %}background:#dc2626;box-shadow:0 0 8px #dc2626;{% endif %}"></div>
+    <div style="flex:1;">
+      <div style="font-size:12px;font-weight:600;color:#f1f5f9;">{{ a.resumen }}</div>
+    </div>
+    <span style="font-size:10px;font-weight:700;padding:3px 10px;border-radius:6px;
+                 {% if a.nivel_riesgo == 'bajo' %}color:#10b981;background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.25);
+                 {% elif a.nivel_riesgo == 'medio' %}color:#f59e0b;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.25);
+                 {% elif a.nivel_riesgo == 'alto' %}color:#ef4444;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.25);
+                 {% else %}color:#dc2626;background:rgba(220,38,38,0.15);border:1px solid rgba(220,38,38,0.3);{% endif %}">
+      RIESGO {{ a.nivel_riesgo|upper }}
+    </span>
+  </div>
+
+  <!-- Hallazgos -->
+  {% if a.hallazgos %}
+  <div style="font-size:9px;font-weight:600;color:var(--text-4);letter-spacing:0.05em;text-transform:uppercase;margin-bottom:6px;">
+    Hallazgos
+  </div>
+  {% for h in a.hallazgos %}
+  <div style="display:flex;gap:10px;padding:9px 12px;margin-bottom:5px;border-radius:8px;
+              {% if h.severidad == 'critical' %}background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.15);
+              {% elif h.severidad == 'warning' %}background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.15);
+              {% else %}background:rgba(37,99,235,0.05);border:1px solid rgba(37,99,235,0.12);{% endif %}">
+    <span style="font-size:14px;flex-shrink:0;">
+      {% if h.categoria == 'identidad' %}🔐{% elif h.categoria == 'certificados' %}🔒{% elif h.categoria == 'fortaleza' %}✅{% else %}⚙️{% endif %}
+    </span>
+    <div style="flex:1;min-width:0;">
+      <div style="font-size:11px;font-weight:600;color:#cbd5e1;margin-bottom:2px;">{{ h.titulo }}</div>
+      <div style="font-size:10px;color:var(--text-3);line-height:1.4;">{{ h.detalle }}</div>
+    </div>
+  </div>
+  {% endfor %}
+  {% endif %}
+
+  <!-- Recomendaciones -->
+  {% if a.recomendaciones %}
+  <div style="font-size:9px;font-weight:600;color:var(--text-4);letter-spacing:0.05em;text-transform:uppercase;margin:10px 0 6px;">
+    Recomendaciones
+  </div>
+  {% for r in a.recomendaciones %}
+  <div style="display:flex;align-items:flex-start;gap:8px;padding:7px 0;border-bottom:1px solid rgba(255,255,255,0.03);">
+    <span class="badge {% if r.prioridad == 'critica' %}badge-crit{% elif r.prioridad == 'alta' %}badge-warn{% else %}badge-gray{% endif %}"
+          style="font-size:8px;padding:1px 6px;flex-shrink:0;margin-top:1px;">
+      {{ r.prioridad|upper }}
+    </span>
+    <div style="flex:1;min-width:0;">
+      <div style="font-size:11px;color:#cbd5e1;">{{ r.accion }}</div>
+      {% if r.impacto %}<div style="font-size:10px;color:var(--text-4);margin-top:1px;">→ {{ r.impacto }}</div>{% endif %}
+    </div>
+  </div>
+  {% endfor %}
+  {% endif %}
+
+  <div style="margin-top:10px;display:flex;justify-content:flex-end;">
+    <button class="btn-ghost" style="font-size:10px;padding:4px 10px;"
+            hx-post="{% url 'dashboard:security-ai-analysis' client.id %}?force=true"
+            hx-target="#sec-ai-{{ client.id }}" hx-swap="innerHTML">
+      ↺ Regenerar análisis
+    </button>
+  </div>
+</div>
+{% endwith %}
+{% endif %}

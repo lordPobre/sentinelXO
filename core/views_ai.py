@@ -539,3 +539,115 @@ INSTRUCCIONES:
     except Exception as e:
         logger.error(f"Error generando narrativa IA para {client.company_name}: {e}")
         return None
+
+
+def generate_security_analysis(client, security_check) -> dict | None:
+    """
+    Genera un análisis de postura de seguridad con IA, combinando:
+      - Microsoft Secure Score
+      - Cobertura de MFA
+      - Estado de certificados SSL de los dominios del cliente
+      - Patrones recientes de alertas
+
+    Retorna un dict JSON con nivel de riesgo, hallazgos y recomendaciones,
+    o None si falla.
+    """
+    from django.conf import settings
+
+    company = getattr(settings, "SENTINEL_COMPANY_NAME", "Sentinel XO")
+
+    # ── Certificados SSL de los dominios del cliente ───────────────────────────
+    domains_ssl = []
+    for d in client.domains.all():
+        domains_ssl.append({
+            "dominio":          d.fqdn,
+            "dias_venc_dominio": d.days_until_expiry,
+            "ssl_estado":        d.ssl_status,
+            "ssl_dias_venc":     d.days_until_ssl_expiry,
+            "ssl_emisor":        d.ssl_issuer or None,
+            "ssl_error":         d.ssl_error or None,
+        })
+
+    # ── Contexto de seguridad ────────────────────────────────────────────────
+    context = {
+        "cliente": client.company_name,
+        "secure_score": {
+            "actual": security_check.secure_score,
+            "maximo": security_check.secure_score_max,
+            "porcentaje": security_check.secure_score_percent,
+        } if security_check.secure_score is not None else None,
+        "mfa": {
+            "registrados": security_check.mfa_registered,
+            "total":       security_check.mfa_total,
+            "porcentaje":  security_check.mfa_percent,
+            "sin_mfa":     security_check.check_details.get("mfa", {}).get("no_mfa_users", []),
+        } if security_check.mfa_total is not None else None,
+        "dominios_ssl": domains_ssl,
+        "notify_incidents_only": getattr(client, "notify_incidents_only", False),
+    }
+
+    prompt = f"""Eres el analista de ciberseguridad de {company}, una plataforma MSP de monitoreo de infraestructura TI.
+
+Analiza la postura de seguridad del siguiente cliente y genera un reporte ejecutivo en español:
+
+{json.dumps(context, ensure_ascii=False, indent=2, default=str)}
+
+Genera un análisis JSON con EXACTAMENTE esta estructura (sin markdown, solo JSON puro):
+{{
+  "nivel_riesgo": "bajo|medio|alto|critico",
+  "resumen": "Resumen ejecutivo de 1-2 oraciones sobre la postura general de seguridad (máximo 200 caracteres)",
+  "hallazgos": [
+    {{
+      "titulo": "Título corto del hallazgo (máximo 60 caracteres)",
+      "detalle": "Explicación clara del riesgo o fortaleza (máximo 150 caracteres)",
+      "severidad": "info|warning|critical",
+      "categoria": "identidad|certificados|configuracion|fortaleza"
+    }}
+  ],
+  "recomendaciones": [
+    {{
+      "accion": "Acción concreta a tomar (máximo 120 caracteres)",
+      "prioridad": "baja|media|alta|critica",
+      "impacto": "Qué mejora esto (máximo 80 caracteres)"
+    }}
+  ]
+}}
+
+Reglas:
+- Genera entre 2 y 5 hallazgos
+- Genera entre 1 y 4 recomendaciones, ordenadas por prioridad
+- Si el Secure Score es bajo (<50%), o la cobertura MFA es baja (<70%), o hay certificados SSL vencidos/críticos, el nivel_riesgo debe reflejarlo
+- Si todo está en buen estado, dilo con confianza pero igual sugiere mejoras incrementales
+- Sé específico citando los datos reales (porcentajes, nombres de dominios, usuarios sin MFA si los hay — sin exponer emails completos, usa solo el nombre de usuario antes del @)
+- Solo JSON, sin texto adicional"""
+
+    api_key = (getattr(settings, "ANTHROPIC_API_KEY", "") or os.environ.get("ANTHROPIC_API_KEY", "")).strip()
+
+    try:
+        payload = json.dumps({
+            "model":      CLAUDE_MODEL,
+            "max_tokens": 1000,
+            "messages":   [{"role": "user", "content": prompt}],
+        }).encode("utf-8")
+
+        req = urllib.request.Request(CLAUDE_API_URL, data=payload, method="POST")
+        req.add_header("Content-Type", "application/json")
+        req.add_header("anthropic-version", "2023-06-01")
+        req.add_header("x-api-key", api_key)
+
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            result  = json.loads(resp.read().decode())
+            raw_txt = result["content"][0]["text"].strip()
+            if raw_txt.startswith("```"):
+                raw_txt = raw_txt.split("```")[1]
+                if raw_txt.startswith("json"):
+                    raw_txt = raw_txt[4:]
+            raw_txt = raw_txt.strip()
+            analysis = json.loads(raw_txt)
+            logger.info(f"Análisis de seguridad IA generado para {client.company_name}: "
+                        f"riesgo={analysis.get('nivel_riesgo')}")
+            return analysis
+
+    except Exception as e:
+        logger.error(f"Error generando análisis de seguridad IA para {client.company_name}: {e}")
+        return None
