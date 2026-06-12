@@ -309,17 +309,13 @@
     }
 
     @media (max-width: 768px) {
-      /* Grids de 4 columnas → 2 en tablet */
       div[style*="grid-template-columns:repeat(4"] { grid-template-columns: repeat(2,1fr) !important; }
-      /* Grids de 3 columnas → 2 en tablet */  
       div[style*="grid-template-columns:repeat(3"] { grid-template-columns: repeat(2,1fr) !important; }
-      /* Grids de 2 columnas fijas → 1 columna */
       div[style*="grid-template-columns:1fr 1fr"] { grid-template-columns: 1fr !important; }
       div[style*="grid-template-columns:1fr 1.1fr"] { grid-template-columns: 1fr !important; }
       div[style*="grid-template-columns:1.4fr 1fr"] { grid-template-columns: 1fr !important; }
       div[style*="grid-template-columns:0.65fr"] { grid-template-columns: 1fr !important; }
       div[style*="grid-template-columns:1.35fr"] { grid-template-columns: 1fr !important; }
-      /* Tablas con scroll */
       .px-table { font-size: 11px; }
       .px-table th, .px-table td { padding: 8px 10px; }
     }

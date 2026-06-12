@@ -20,6 +20,7 @@ MT = 15*mm
 MB = 22*mm
 CW = PAGE_W - ML - MR
 
+# ── Paleta ─────────────────────────────────────────────────────────────────
 C_DARK   = colors.HexColor("#0f172a")
 C_BLUE   = colors.HexColor("#2563eb")
 C_SLATE8 = colors.HexColor("#1e293b")
@@ -45,6 +46,7 @@ MESES = {
     7:"julio", 8:"agosto", 9:"septiembre", 10:"octubre", 11:"noviembre", 12:"diciembre"
 }
 
+# ── Helpers ─────────────────────────────────────────────────────────────────
 def ps(name, **kw):
     d = dict(fontName="Helvetica", fontSize=9, textColor=C_SLATE5, leading=13)
     d.update(kw)
@@ -127,6 +129,8 @@ def footer_cb(canvas, doc):
     canvas.drawRightString(PAGE_W - MR, 12*mm, f"Página {doc.page}")
     canvas.restoreState()
 
+
+# ── Función principal ────────────────────────────────────────────────────────
 def build_report_pdf(client, year: int, month: int) -> tuple[bytes, dict]:
     from core.models import TelemetrySnapshot
     from dateutil.relativedelta import relativedelta
@@ -139,6 +143,7 @@ def build_report_pdf(client, year: int, month: int) -> tuple[bytes, dict]:
     company = getattr(settings, "SENTINEL_COMPANY_NAME", "Sentinel XO")
     support = getattr(settings, "SENTINEL_SUPPORT_EMAIL", "soporte@perseustechnology.dev")
 
+    # ── Queries ──────────────────────────────────────────────────────────────
     devices        = client.devices.filter(is_active=True).prefetch_related("snapshots")
     incidents_res  = client.incidents.filter(
         resolved_at__range=(period_start, period_end), is_resolved=True)
@@ -173,11 +178,13 @@ def build_report_pdf(client, year: int, month: int) -> tuple[bytes, dict]:
         "domains_critical":   domains.filter(status__in=["critical", "expired"]).count(),
     }
 
+    # ── Documento ────────────────────────────────────────────────────────────
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=A4,
         leftMargin=ML, rightMargin=MR, topMargin=MT, bottomMargin=MB)
     story = []
 
+    # ── HEADER FULL-BLEED ────────────────────────────────────────────────────
     hdr = Table([[
         Paragraph(
             f'<font color="white" size="18"><b>{company}</b></font><br/>'
@@ -200,11 +207,13 @@ def build_report_pdf(client, year: int, month: int) -> tuple[bytes, dict]:
     ]))
     story.append(hdr)
 
+    # Accent line
     accent = Drawing(CW, 4)
     accent.add(Rect(0, 0, CW, 4, fillColor=C_BLUE, strokeColor=None))
     story.append(accent)
     story.append(Spacer(1, 4))
 
+    # ── INFO CLIENTE ─────────────────────────────────────────────────────────
     def info_cell(label, value, size=10, bold=True):
         return Table([
             [Paragraph(label, ps(f"il_{label[:4]}",
@@ -235,6 +244,7 @@ def build_report_pdf(client, year: int, month: int) -> tuple[bytes, dict]:
     story.append(cli)
     story.append(Spacer(1, 22))
 
+    # ── KPIs ─────────────────────────────────────────────────────────────────
     story += section_header("Resumen Ejecutivo",
                              "Métricas clave del período de facturación")
 
@@ -279,6 +289,34 @@ def build_report_pdf(client, year: int, month: int) -> tuple[bytes, dict]:
     story.append(kpi_row)
     story.append(Spacer(1, 22))
 
+    # ── RESUMEN NARRATIVO IA ─────────────────────────────────────────────────
+    try:
+        from core.views_ai import generate_narrative_summary
+        narrative = generate_narrative_summary(client, year, month, summary)
+    except Exception:
+        narrative = None
+
+    if narrative:
+        narr_box = Table([[
+            Paragraph(
+                f'<font color="#2563eb" size="8"><b>🧠 RESUMEN DEL PERÍODO</b></font><br/><br/>'
+                f'<font color="#334155" size="9">{narrative}</font>',
+                ps("narr", fontSize=9, textColor=C_SLATE8, leading=14,
+                   alignment=TA_LEFT)
+            )
+        ]], colWidths=[CW])
+        narr_box.setStyle(TableStyle([
+            ("BACKGROUND",    (0,0), (-1,-1), colors.HexColor("#eff6ff")),
+            ("BOX",           (0,0), (-1,-1), 0.5, colors.HexColor("#bfdbfe")),
+            ("LEFTPADDING",   (0,0), (-1,-1), 16),
+            ("RIGHTPADDING",  (0,0), (-1,-1), 16),
+            ("TOPPADDING",    (0,0), (-1,-1), 14),
+            ("BOTTOMPADDING", (0,0), (-1,-1), 14),
+        ]))
+        story.append(narr_box)
+        story.append(Spacer(1, 22))
+
+    # ── DISPOSITIVOS ──────────────────────────────────────────────────────────
     if devices.exists():
         story += section_header(
             "Estado de Dispositivos",
@@ -323,6 +361,7 @@ def build_report_pdf(client, year: int, month: int) -> tuple[bytes, dict]:
         story.append(t)
         story.append(Spacer(1, 18))
 
+    # ── INCIDENTES ────────────────────────────────────────────────────────────
     story += section_header(
         "Incidentes Resueltos",
         f"Detalle de atenciones y tickets cerrados durante {month_name}")
@@ -350,6 +389,7 @@ def build_report_pdf(client, year: int, month: int) -> tuple[bytes, dict]:
             ps("noInc", fontSize=9, textColor=C_SLATE5)))
     story.append(Spacer(1, 18))
 
+    # ── DOMINIOS ──────────────────────────────────────────────────────────────
     if domains.exists():
         story += section_header(
             "Estado de Dominios",
@@ -385,6 +425,7 @@ def build_report_pdf(client, year: int, month: int) -> tuple[bytes, dict]:
         t.setStyle(TableStyle(TH_STYLE))
         story.append(t)
 
+    # ── LICENCIAS M365 ────────────────────────────────────────────────────────
     if licenses:
         story.append(PageBreak())
         story += section_header(

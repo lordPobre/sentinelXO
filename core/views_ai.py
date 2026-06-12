@@ -398,3 +398,139 @@ def incident_ai_diagnosis(request, incident_id):
         return JsonResponse({"status": "ok", "diagnosis": diagnosis, "cached": False})
 
     return JsonResponse({"error": "No se pudo generar el diagnóstico"}, status=200)
+
+
+def generate_narrative_summary(client, year: int, month: int, summary: dict) -> str | None:
+    """
+    Genera un resumen ejecutivo narrativo en español para el reporte mensual PDF.
+    Cuenta la historia del mes: cómo operó la infraestructura, qué pasó y qué sigue.
+    Retorna texto plano (2-3 párrafos) o None si falla.
+    """
+    from core.models import AlertEvent, TelemetrySnapshot
+    from django.conf import settings
+    from dateutil.relativedelta import relativedelta
+
+    period_start = timezone.make_aware(__import__("datetime").datetime(year, month, 1))
+    period_end   = period_start + relativedelta(months=1)
+    month_name   = {
+        1:"enero",2:"febrero",3:"marzo",4:"abril",5:"mayo",6:"junio",
+        7:"julio",8:"agosto",9:"septiembre",10:"octubre",11:"noviembre",12:"diciembre"
+    }.get(month, str(month))
+
+    company = getattr(settings, "SENTINEL_COMPANY_NAME", "Sentinel XO")
+
+    # ── Incidentes resueltos del período ──────────────────────────────────────
+    incidents = list(client.incidents.filter(
+        resolved_at__range=(period_start, period_end), is_resolved=True
+    ).values("title", "severity", "category")[:15])
+
+    incidents_open = list(client.incidents.filter(
+        is_resolved=False
+    ).values("title", "severity")[:10])
+
+    # ── Alertas disparadas en el período, agrupadas por dispositivo/métrica ────
+    alerts = list(AlertEvent.objects.filter(
+        device__client=client,
+        fired_at__range=(period_start, period_end),
+    ).select_related("device").values(
+        "device__display_name", "metric", "severity", "value"
+    )[:30])
+
+    alert_summary = {}
+    for a in alerts:
+        key = (a["device__display_name"], a["metric"])
+        if key not in alert_summary:
+            alert_summary[key] = {"count": 0, "severity": a["severity"], "max_value": a["value"]}
+        alert_summary[key]["count"] += 1
+        alert_summary[key]["max_value"] = max(alert_summary[key]["max_value"], a["value"])
+
+    alert_list = [
+        {
+            "dispositivo": k[0], "metrica": k[1],
+            "veces": v["count"], "severidad": v["severity"], "valor_max": round(v["max_value"], 1)
+        }
+        for k, v in alert_summary.items()
+    ]
+
+    # ── Estado por dispositivo (resumen de telemetría del período) ─────────────
+    devices_summary = []
+    for dev in client.devices.filter(is_active=True):
+        snaps = list(TelemetrySnapshot.objects.filter(
+            device=dev, captured_at__range=(period_start, period_end)
+        ).order_by("captured_at"))
+        if not snaps:
+            continue
+        cpu_vals  = [s.cpu_percent for s in snaps if s.cpu_percent is not None]
+        ram_vals  = [s.ram_used_percent for s in snaps if s.ram_used_percent is not None]
+        temp_vals = [_extract_cpu_temp(s.temperatures or []) for s in snaps]
+        temp_vals = [t for t in temp_vals if t is not None]
+
+        devices_summary.append({
+            "nombre":        dev.display_name,
+            "cpu_promedio":  round(sum(cpu_vals)/len(cpu_vals), 1) if cpu_vals else None,
+            "cpu_max":       round(max(cpu_vals), 1) if cpu_vals else None,
+            "ram_promedio":  round(sum(ram_vals)/len(ram_vals), 1) if ram_vals else None,
+            "temp_max":      round(max(temp_vals), 1) if temp_vals else None,
+            "muestras":      len(snaps),
+        })
+
+    # ── Dominios y licencias ────────────────────────────────────────────────────
+    domains_critical = list(client.domains.filter(
+        status__in=["critical", "expired"]
+    ).values("fqdn", "status")[:5])
+
+    context = {
+        "cliente":           client.company_name,
+        "periodo":           f"{month_name} {year}",
+        "uptime_promedio":   summary.get("avg_uptime_percent"),
+        "equipos_total":     summary.get("devices_count"),
+        "incidentes_resueltos": incidents,
+        "incidentes_pendientes": incidents_open,
+        "alertas_disparadas":   alert_list,
+        "dispositivos":         devices_summary,
+        "dominios_criticos":    domains_critical,
+    }
+
+    prompt = f"""Eres el redactor de informes ejecutivos de {company}, una plataforma MSP de monitoreo de infraestructura TI.
+
+Genera el resumen ejecutivo narrativo para el reporte mensual de un cliente, basándote en estos datos:
+
+{json.dumps(context, ensure_ascii=False, indent=2, default=str)}
+
+INSTRUCCIONES:
+- Escribe en español, tono profesional pero cercano, dirigido al cliente (no técnico)
+- Escribe 2-3 párrafos cortos (máximo 600 caracteres en total)
+- Párrafo 1: cómo operó la infraestructura durante el mes en general (uptime, estabilidad)
+- Párrafo 2: menciona eventos relevantes (incidentes resueltos, alertas, patrones detectados) de forma natural, sin listas
+- Párrafo 3 (opcional): qué se recomienda o qué viene, si hay pendientes o dominios críticos
+- Si todo estuvo perfecto y sin incidentes, dilo con confianza y transmite tranquilidad
+- NO uses markdown, NO uses listas, NO uses títulos — solo texto narrativo fluido
+- NO repitas números exactos de forma robótica, intégralos naturalmente en las oraciones
+- Responde SOLO con el texto del resumen, sin comillas ni explicaciones adicionales"""
+
+    try:
+        payload = json.dumps({
+            "model":      CLAUDE_MODEL,
+            "max_tokens": 500,
+            "messages":   [{"role": "user", "content": prompt}],
+        }).encode("utf-8")
+
+        req = urllib.request.Request(
+            CLAUDE_API_URL,
+            data=payload,
+            headers={
+                "Content-Type":      "application/json",
+                "anthropic-version": "2023-06-01",
+            },
+            method="POST",
+        )
+
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            result = json.loads(resp.read().decode())
+            text   = result["content"][0]["text"].strip()
+            logger.info(f"Narrativa IA generada para {client.company_name} {month_name} {year}")
+            return text
+
+    except Exception as e:
+        logger.error(f"Error generando narrativa IA para {client.company_name}: {e}")
+        return None
