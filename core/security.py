@@ -197,9 +197,18 @@ def check_m365_security_posture(client) -> dict:
 
 # ── Detección de anomalías vía agente (huella de seguridad) ───────────────────
 
+def _startup_key(item):
+    """Clave normalizada (source sin sufijo de bits + nombre) para un item de inicio."""
+    import re
+    source = re.sub(r"\s*\((64|32)bit\)", "", item.get("source", ""))
+    return f"{source}::{item.get('name','')}"
+
+
 def _normalize_startup(items):
-    """Convierte lista de dicts de programas de inicio en set de strings comparables."""
-    return {f"{i.get('source','')}::{i.get('name','')}" for i in (items or [])}
+    """Convierte lista de dicts de programas de inicio en set de claves comparables.
+    Ignora el sufijo (64bit)/(32bit) del source para no generar falsos positivos
+    si cambia la vista de registro detectada entre versiones del agente."""
+    return {_startup_key(i) for i in (items or [])}
 
 
 def _normalize_tasks(items):
@@ -253,7 +262,7 @@ def process_security_snapshot(device, snapshot_data: dict) -> list:
         ))
 
     # ── Programas de inicio ─────────────────────────────────────────────────
-    new_startup_by_key = {f"{i.get('source','')}::{i.get('name','')}": i for i in new_startup}
+    new_startup_by_key = {_startup_key(i): i for i in new_startup}
     for added_key in (new_startup_set - old_startup_set):
         item = new_startup_by_key.get(added_key, {})
         anomalies.append(SecurityAnomalyEvent(
@@ -261,7 +270,7 @@ def process_security_snapshot(device, snapshot_data: dict) -> list:
             detail=f"Nuevo programa de inicio: {item.get('name','?')} "
                    f"({item.get('source','')}) → {item.get('command','')[:150]}",
         ))
-    old_startup_by_key = {f"{i.get('source','')}::{i.get('name','')}": i for i in (snap.startup_programs or [])}
+    old_startup_by_key = {_startup_key(i): i for i in (snap.startup_programs or [])}
     for removed_key in (old_startup_set - new_startup_set):
         item = old_startup_by_key.get(removed_key, {})
         anomalies.append(SecurityAnomalyEvent(

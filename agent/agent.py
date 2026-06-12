@@ -279,35 +279,55 @@ def get_startup_programs():
     if not IS_WINDOWS:
         return None
     items = []
+    seen = set()
     try:
         import winreg
+
+        # (hive, path, source_label, access_flags_extra)
+        # Para HKLM probamos la vista de 64 bits (KEY_WOW64_64KEY) y la de 32 bits
+        # (KEY_WOW64_32KEY / WOW6432Node) para detectar entradas sin importar si el
+        # agente corre como proceso de 32 o 64 bits.
         run_keys = [
-            (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Run"),
-            (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce"),
-            (winreg.HKEY_CURRENT_USER,  r"SOFTWARE\Microsoft\Windows\CurrentVersion\Run"),
-            (winreg.HKEY_CURRENT_USER,  r"SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce"),
+            (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Run",
+                "HKLM\\Run (64bit)", winreg.KEY_WOW64_64KEY),
+            (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Run",
+                "HKLM\\Run (32bit)", winreg.KEY_WOW64_32KEY),
+            (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce",
+                "HKLM\\RunOnce (64bit)", winreg.KEY_WOW64_64KEY),
+            (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce",
+                "HKLM\\RunOnce (32bit)", winreg.KEY_WOW64_32KEY),
+            (winreg.HKEY_CURRENT_USER,  r"SOFTWARE\Microsoft\Windows\CurrentVersion\Run",
+                "HKCU\\Run", 0),
+            (winreg.HKEY_CURRENT_USER,  r"SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce",
+                "HKCU\\RunOnce", 0),
         ]
-        for hive, path in run_keys:
-            hive_name = "HKLM" if hive == winreg.HKEY_LOCAL_MACHINE else "HKCU"
+        for hive, path, source_label, extra_flags in run_keys:
             try:
-                with winreg.OpenKey(hive, path) as key:
+                with winreg.OpenKey(hive, path, 0, winreg.KEY_READ | extra_flags) as key:
                     i = 0
                     while True:
                         try:
                             name, value, _ = winreg.EnumValue(key, i)
-                            items.append({
-                                "name":   name,
-                                "command": str(value)[:300],
-                                "source": f"{hive_name}\\{path.split(chr(92))[-1]}",
-                            })
+                            dedup_key = (source_label.split(" ")[0], name)  # ignora (64bit)/(32bit) para deduplicar
+                            if dedup_key not in seen:
+                                seen.add(dedup_key)
+                                items.append({
+                                    "name":   name,
+                                    "command": str(value)[:300],
+                                    "source": source_label,
+                                })
                             i += 1
                         except OSError:
                             break
             except FileNotFoundError:
                 continue
+            except OSError:
+                # KEY_WOW64_64KEY/32KEY puede no estar soportado en sistemas no-Windows-64
+                continue
     except Exception as e:
         logger.warning(f"No se pudo leer programas de inicio: {e}")
         return None
+
     return items
 
 
