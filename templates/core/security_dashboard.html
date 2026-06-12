@@ -77,4 +77,14 @@
 .htmx-indicator { display: none; }
 .htmx-request .htmx-indicator { display: inline-flex; align-items: center; }
 </style>
+<script>
+// Recargar la página completa después de verificar para actualizar timestamps y cards
+document.body.addEventListener("htmx:afterSwap", function(evt) {
+  if (evt.detail.target && evt.detail.target.id && evt.detail.target.id.startsWith("sec-status-")) {
+    setTimeout(function() {
+      window.location.reload();
+    }, 800);
+  }
+});
+</script>
 {% endblock %}
