@@ -1,0 +1,92 @@
+{% if not latest %}
+<div style="padding:20px;text-align:center;font-size:12px;color:var(--text-4);">
+  Sin verificaciones aún. Usa el botón "Verificar".
+</div>
+
+{% elif latest.error_msg and not latest.secure_score and not latest.mfa_total %}
+<div style="padding:16px;text-align:center;">
+  <div style="font-size:12px;color:var(--red);margin-bottom:4px;">No se pudo verificar</div>
+  <div class="mono" style="font-size:10px;color:var(--text-4);">{{ latest.error_msg|truncatechars:200 }}</div>
+</div>
+
+{% else %}
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+
+  <!-- Secure Score -->
+  <div style="padding:14px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.05);border-radius:10px;">
+    <div style="font-size:10px;font-weight:600;color:var(--text-4);letter-spacing:0.05em;text-transform:uppercase;margin-bottom:8px;">
+      🛡️ Microsoft Secure Score
+    </div>
+    {% if latest.secure_score is not None %}
+    <div style="display:flex;align-items:baseline;gap:6px;margin-bottom:6px;">
+      <span style="font-size:28px;font-weight:700;
+            {% if latest.secure_score_percent >= 70 %}color:var(--green);
+            {% elif latest.secure_score_percent >= 40 %}color:var(--amber);
+            {% else %}color:var(--red);{% endif %}">
+        {{ latest.secure_score|floatformat:0 }}
+      </span>
+      <span style="font-size:13px;color:var(--text-4);">/ {{ latest.secure_score_max|floatformat:0 }}</span>
+    </div>
+    <div class="bar-track" style="margin-bottom:6px;">
+      <div class="bar-fill {% if latest.secure_score_percent >= 70 %}bar-green{% elif latest.secure_score_percent >= 40 %}bar-amber{% else %}bar-red{% endif %}"
+           style="width:{{ latest.secure_score_percent }}%;"></div>
+    </div>
+    <div style="font-size:11px;color:var(--text-4);">{{ latest.secure_score_percent }}% del máximo posible</div>
+    {% else %}
+    <div style="font-size:12px;color:var(--text-4);padding:8px 0;">
+      {{ latest.check_details.secure_score.detail|default:"Sin datos — sin permiso SecurityEvents.Read.All" }}
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- MFA -->
+  <div style="padding:14px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.05);border-radius:10px;">
+    <div style="font-size:10px;font-weight:600;color:var(--text-4);letter-spacing:0.05em;text-transform:uppercase;margin-bottom:8px;">
+      🔐 Cobertura MFA
+    </div>
+    {% if latest.mfa_total is not None %}
+    <div style="display:flex;align-items:baseline;gap:6px;margin-bottom:6px;">
+      <span style="font-size:28px;font-weight:700;
+            {% if latest.mfa_percent >= 90 %}color:var(--green);
+            {% elif latest.mfa_percent >= 50 %}color:var(--amber);
+            {% else %}color:var(--red);{% endif %}">
+        {{ latest.mfa_percent|floatformat:0 }}%
+      </span>
+    </div>
+    <div class="bar-track" style="margin-bottom:6px;">
+      <div class="bar-fill {% if latest.mfa_percent >= 90 %}bar-green{% elif latest.mfa_percent >= 50 %}bar-amber{% else %}bar-red{% endif %}"
+           style="width:{{ latest.mfa_percent }}%;"></div>
+    </div>
+    <div style="font-size:11px;color:var(--text-4);">
+      {{ latest.mfa_registered }} de {{ latest.mfa_total }} usuarios con MFA
+    </div>
+    {% if latest.check_details.mfa.no_mfa_users %}
+    <div style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.04);">
+      <div style="font-size:9px;color:var(--red);font-weight:600;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px;">
+        Sin MFA:
+      </div>
+      {% for u in latest.check_details.mfa.no_mfa_users|slice:":5" %}
+      <div class="mono" style="font-size:10px;color:var(--text-3);padding:1px 0;">· {{ u }}</div>
+      {% endfor %}
+      {% if latest.check_details.mfa.no_mfa_users|length > 5 %}
+      <div style="font-size:10px;color:var(--text-4);margin-top:2px;">
+        y {{ latest.check_details.mfa.no_mfa_users|length|add:"-5" }} más...
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+    {% else %}
+    <div style="font-size:12px;color:var(--text-4);padding:8px 0;">
+      {{ latest.check_details.mfa.detail|default:"Sin datos — sin permiso Reports.Read.All" }}
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{% if latest.error_msg %}
+<div style="margin-top:10px;padding:8px 12px;background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.15);border-radius:8px;">
+  <div class="mono" style="font-size:10px;color:var(--amber);">⚠ {{ latest.error_msg|truncatechars:200 }}</div>
+</div>
+{% endif %}
+
+{% endif %}

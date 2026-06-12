@@ -1,0 +1,80 @@
+{% extends "base/layout.html" %}
+{% block title %}Seguridad — Sentinel XO{% endblock %}
+{% block page_title %}Postura de Seguridad{% endblock %}
+{% block page_subtitle %}<div class="mono" style="font-size:10px;color:var(--text-3);margin-top:1px;">Microsoft Secure Score · Cobertura MFA · Graph API</div>{% endblock %}
+
+{% block content %}
+
+{% if migration_pending %}
+<div style="padding:40px;text-align:center;">
+  <div style="font-size:28px;margin-bottom:12px;opacity:0.3;">⚙️</div>
+  <div style="font-size:14px;font-weight:600;color:#cbd5e1;margin-bottom:8px;">Migración pendiente</div>
+  <div style="font-size:12px;color:var(--text-4);">La tabla de chequeos de seguridad se está creando. Railway aplicará la migración en el próximo deploy.</div>
+  <div class="mono" style="font-size:11px;color:var(--text-4);margin-top:8px;">core_securitycheck</div>
+</div>
+{% else %}
+
+{% if not clients_security %}
+<div style="padding:40px;text-align:center;">
+  <div style="font-size:28px;margin-bottom:12px;opacity:0.3;">🛡️</div>
+  <div style="font-size:14px;font-weight:600;color:#cbd5e1;margin-bottom:8px;">Sin clientes con M365 configurado</div>
+  <div style="font-size:12px;color:var(--text-4);">Configura un Tenant M365 activo para un cliente para ver su postura de seguridad.</div>
+</div>
+{% else %}
+
+{% for item in clients_security %}
+{% with client=item.client latest=item.latest %}
+<div class="chart-card" style="margin-bottom:14px;">
+
+  <!-- Header cliente -->
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+    <div style="display:flex;align-items:center;gap:10px;">
+      <div style="width:34px;height:34px;border-radius:8px;background:rgba(37,99,235,0.12);
+                  display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;
+                  color:#60a5fa;flex-shrink:0;">
+        {{ client.company_name|slice:":2"|upper }}
+      </div>
+      <div>
+        <div style="font-size:13px;font-weight:600;color:#f1f5f9;">{{ client.company_name }}</div>
+        {% if latest %}
+        <div class="mono" style="font-size:10px;color:var(--text-4);">
+          Última verificación: {{ latest.checked_at|date:"d/m H:i" }}
+        </div>
+        {% else %}
+        <div class="mono" style="font-size:10px;color:var(--text-4);">Sin verificaciones aún</div>
+        {% endif %}
+      </div>
+    </div>
+    <button class="btn-primary" style="font-size:11px;padding:6px 14px;"
+            hx-post="{% url 'dashboard:security-check' client.id %}"
+            hx-target="#sec-status-{{ client.id }}"
+            hx-swap="innerHTML"
+            hx-indicator="#sec-spinner-{{ client.id }}">
+      <span id="sec-spinner-{{ client.id }}" class="htmx-indicator">
+        <svg width="11" height="11" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="animation:spin 1s linear infinite;">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+        </svg>
+      </span>
+      <span class="htmx-idle">↻</span>
+      Verificar
+    </button>
+  </div>
+
+  <div id="sec-status-{{ client.id }}">
+    {% include "core/partials/security_status.html" %}
+  </div>
+</div>
+{% endwith %}
+{% endfor %}
+
+{% endif %}
+{% endif %}
+
+<style>
+@keyframes spin { to { transform: rotate(360deg); } }
+.htmx-idle { display: inline-flex; align-items: center; gap:4px; }
+.htmx-request .htmx-idle { display: none; }
+.htmx-indicator { display: none; }
+.htmx-request .htmx-indicator { display: inline-flex; align-items: center; }
+</style>
+{% endblock %}

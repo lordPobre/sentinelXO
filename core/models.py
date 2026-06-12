@@ -470,3 +470,42 @@ class AlertEvent(models.Model):
     def __str__(self):
         return f"[{self.severity.upper()}] {self.device} — {self.metric}={self.value} @ {self.fired_at:%d/%m %H:%M}"
 
+
+class SecurityCheck(models.Model):
+    """Snapshot de postura de seguridad M365 de un cliente (Secure Score, MFA, etc)."""
+
+    client = models.ForeignKey(Client, on_delete=models.CASCADE, related_name="security_checks",
+                               verbose_name="Cliente")
+    checked_at = models.DateTimeField("Verificado", auto_now_add=True)
+
+    # Secure Score (Microsoft)
+    secure_score        = models.FloatField("Secure Score", null=True, blank=True)
+    secure_score_max    = models.FloatField("Secure Score máximo", null=True, blank=True)
+
+    # MFA
+    mfa_registered      = models.IntegerField("Usuarios con MFA", null=True, blank=True)
+    mfa_total           = models.IntegerField("Usuarios totales", null=True, blank=True)
+
+    # Detalle / errores
+    check_details = models.JSONField("Detalle", default=dict, blank=True)
+    error_msg     = models.TextField("Error", blank=True)
+
+    class Meta:
+        verbose_name = "Chequeo de seguridad"
+        verbose_name_plural = "Chequeos de seguridad"
+        ordering = ["-checked_at"]
+
+    def __str__(self):
+        return f"Seguridad {self.client} @ {self.checked_at:%d/%m %H:%M}"
+
+    @property
+    def secure_score_percent(self):
+        if self.secure_score is None or not self.secure_score_max:
+            return None
+        return round((self.secure_score / self.secure_score_max) * 100, 1)
+
+    @property
+    def mfa_percent(self):
+        if self.mfa_registered is None or not self.mfa_total:
+            return None
+        return round((self.mfa_registered / self.mfa_total) * 100, 1)
