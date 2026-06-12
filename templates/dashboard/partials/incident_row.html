@@ -1,73 +1,75 @@
-<div style="display:flex;align-items:flex-start;gap:12px;padding:12px 18px;border-bottom:1px solid rgba(255,255,255,0.03);">
-  <span class="dot {% if incident.is_resolved %}dot-on{% elif incident.severity == 'critical' or incident.severity == 'high' %}dot-off{% else %}dot-warn{% endif %}" style="margin-top:4px;flex-shrink:0;"></span>
-  <div style="flex:1;min-width:0;">
-    <div style="font-size:13px;color:#cbd5e1;{% if incident.is_resolved %}opacity:0.4;text-decoration:line-through;{% endif %}">{{ incident.title }}</div>
-    <div class="mono" style="font-size:10px;color:var(--text-4);margin-top:2px;">
-      {{ incident.created_at|date:"d/m/Y H:i" }}{% if incident.device %} · {{ incident.device.display_name }}{% endif %} · {{ incident.get_severity_display }}{% if incident.is_resolved and incident.resolved_at %} · Resuelto {{ incident.resolved_at|date:"d/m H:i" }}{% endif %}
-    </div>
-  </div>
-  <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
-    {% if incident.is_resolved %}
-    <span class="badge badge-ok">✓ Resuelto</span>
-    {% else %}
-    <span class="badge badge-warn">Abierto</span>
-    <button style="font-size:11px;color:var(--green);background:transparent;border:none;cursor:pointer;font-family:inherit;padding:2px 4px;"
-            onmouseover="this.style.color='#34d399'" onmouseout="this.style.color='var(--green)'"
-            hx-post="{% url 'dashboard:htmx-incident-resolve' incident.id %}"
-            hx-target="closest div[style*='display:flex']"
-            hx-swap="outerHTML">✓ Resolver</button>
-    {% endif %}
-  </div>
-
-{% if incident.ai_diagnosis %}
-<div id="ai-diag-{{ incident.id }}"
-     style="margin:0 18px 12px;padding:12px 14px;
-            background:rgba(37,99,235,0.05);border:1px solid rgba(37,99,235,0.15);
-            border-radius:10px;">
-  <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">
-    <span style="font-size:13px;">🧠</span>
-    <span style="font-size:10px;font-weight:600;color:#60a5fa;letter-spacing:0.05em;text-transform:uppercase;">
-      Diagnóstico IA
-    </span>
-    <span class="badge badge-blue" style="font-size:8px;padding:1px 6px;">
-      {{ incident.ai_diagnosis.prioridad_real|upper }}
-    </span>
-  </div>
-  <div style="font-size:12px;font-weight:600;color:#cbd5e1;margin-bottom:6px;">
-    {{ incident.ai_diagnosis.causa_probable }}
-  </div>
-  {% if incident.ai_diagnosis.evidencias %}
-  <div style="margin-bottom:8px;">
-    {% for ev in incident.ai_diagnosis.evidencias %}
-    <div style="font-size:11px;color:var(--text-4);padding:2px 0;">
-      · {{ ev }}
-    </div>
-    {% endfor %}
-  </div>
-  {% endif %}
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px;">
-    <div>
-      <div style="font-size:9px;font-weight:600;color:#60a5fa;text-transform:uppercase;
-                  letter-spacing:0.05em;margin-bottom:4px;">Pasos de resolución</div>
-      {% for paso in incident.ai_diagnosis.pasos_resolucion %}
-      <div style="font-size:11px;color:var(--text-3);padding:2px 0;">
-        {{ forloop.counter }}. {{ paso }}
+<div style="border-bottom:1px solid rgba(255,255,255,0.03);">
+  <div style="display:flex;align-items:flex-start;gap:12px;padding:12px 18px;">
+    <span class="dot {% if incident.is_resolved %}dot-on{% elif incident.severity == 'critical' or incident.severity == 'high' %}dot-off{% else %}dot-warn{% endif %}" style="margin-top:4px;flex-shrink:0;"></span>
+    <div style="flex:1;min-width:0;">
+      <div style="font-size:13px;color:#cbd5e1;{% if incident.is_resolved %}opacity:0.4;text-decoration:line-through;{% endif %}">{{ incident.title }}</div>
+      <div class="mono" style="font-size:10px;color:var(--text-4);margin-top:2px;">
+        {{ incident.created_at|date:"d/m/Y H:i" }}{% if incident.device %} · {{ incident.device.display_name }}{% endif %} · {{ incident.get_severity_display }}{% if incident.is_resolved and incident.resolved_at %} · Resuelto {{ incident.resolved_at|date:"d/m H:i" }}{% endif %}
       </div>
-      {% endfor %}
     </div>
-    <div>
-      <div style="font-size:9px;font-weight:600;color:#10b981;text-transform:uppercase;
-                  letter-spacing:0.05em;margin-bottom:4px;">Prevención</div>
-      <div style="font-size:11px;color:var(--text-3);">
-        {{ incident.ai_diagnosis.prevencion }}
-      </div>
-      {% if incident.ai_diagnosis.tiempo_estimado %}
-      <div style="font-size:10px;color:var(--text-4);margin-top:6px;">
-        ⏱ {{ incident.ai_diagnosis.tiempo_estimado }}
-      </div>
+    <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+      {% if incident.is_resolved %}
+      <span class="badge badge-ok">✓ Resuelto</span>
+      {% else %}
+      <span class="badge badge-warn">Abierto</span>
+      <button style="font-size:11px;color:var(--green);background:transparent;border:none;cursor:pointer;font-family:inherit;padding:2px 4px;"
+              onmouseover="this.style.color='#34d399'" onmouseout="this.style.color='var(--green)'"
+              hx-post="{% url 'dashboard:htmx-incident-resolve' incident.id %}"
+              hx-target="closest div[style*='border-bottom:1px solid rgba(255,255,255,0.03);']"
+              hx-swap="outerHTML">✓ Resolver</button>
       {% endif %}
     </div>
   </div>
-</div>
-{% endif %}
+
+  {% if incident.ai_diagnosis %}
+  <div id="ai-diag-{{ incident.id }}"
+       style="margin:0 18px 12px;padding:12px 14px;
+              background:rgba(37,99,235,0.05);border:1px solid rgba(37,99,235,0.15);
+              border-radius:10px;">
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">
+      <span style="font-size:13px;">🧠</span>
+      <span style="font-size:10px;font-weight:600;color:#60a5fa;letter-spacing:0.05em;text-transform:uppercase;">
+        Diagnóstico IA
+      </span>
+      <span class="badge badge-blue" style="font-size:8px;padding:1px 6px;">
+        {{ incident.ai_diagnosis.prioridad_real|upper }}
+      </span>
+    </div>
+    <div style="font-size:12px;font-weight:600;color:#cbd5e1;margin-bottom:6px;">
+      {{ incident.ai_diagnosis.causa_probable }}
+    </div>
+    {% if incident.ai_diagnosis.evidencias %}
+    <div style="margin-bottom:8px;">
+      {% for ev in incident.ai_diagnosis.evidencias %}
+      <div style="font-size:11px;color:var(--text-4);padding:2px 0;">
+        · {{ ev }}
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px;">
+      <div>
+        <div style="font-size:9px;font-weight:600;color:#60a5fa;text-transform:uppercase;
+                    letter-spacing:0.05em;margin-bottom:4px;">Pasos de resolución</div>
+        {% for paso in incident.ai_diagnosis.pasos_resolucion %}
+        <div style="font-size:11px;color:var(--text-3);padding:2px 0;">
+          {{ forloop.counter }}. {{ paso }}
+        </div>
+        {% endfor %}
+      </div>
+      <div>
+        <div style="font-size:9px;font-weight:600;color:#10b981;text-transform:uppercase;
+                    letter-spacing:0.05em;margin-bottom:4px;">Prevención</div>
+        <div style="font-size:11px;color:var(--text-3);">
+          {{ incident.ai_diagnosis.prevencion }}
+        </div>
+        {% if incident.ai_diagnosis.tiempo_estimado %}
+        <div style="font-size:10px;color:var(--text-4);margin-top:6px;">
+          ⏱ {{ incident.ai_diagnosis.tiempo_estimado }}
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
 </div>
