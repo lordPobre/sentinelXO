@@ -36,4 +36,5 @@ urlpatterns = [
     path("security/",                                   security_views.security_dashboard, name="security"),
     path("security/<uuid:client_id>/check/",            security_views.security_check_now, name="security-check"),
     path("security/<uuid:client_id>/analyze/",          security_views.security_ai_analysis, name="security-ai-analysis"),
+    path("security/anomaly/<int:anomaly_id>/ack/",       security_views.security_anomaly_acknowledge, name="security-anomaly-ack"),
 ]

@@ -193,3 +193,151 @@ def check_m365_security_posture(client) -> dict:
                 f"mfa={mfa_registered}/{mfa_total}")
 
     return result
+
+
+# ── Detección de anomalías vía agente (huella de seguridad) ───────────────────
+
+def _normalize_startup(items):
+    """Convierte lista de dicts de programas de inicio en set de strings comparables."""
+    return {f"{i.get('source','')}::{i.get('name','')}" for i in (items or [])}
+
+
+def _normalize_tasks(items):
+    """Convierte lista de dicts de tareas programadas en set de nombres."""
+    return {i.get("name", "") for i in (items or []) if i.get("name")}
+
+
+def process_security_snapshot(device, snapshot_data: dict) -> list:
+    """
+    Compara la huella de seguridad recibida del agente con la última conocida
+    para el dispositivo. Crea SecurityAnomalyEvent por cada cambio detectado
+    y actualiza el snapshot. Retorna la lista de anomalías creadas.
+
+    snapshot_data: {"local_admins": [...], "startup_programs": [...], "scheduled_tasks": [...]}
+    """
+    from core.models import SecuritySnapshot, SecurityAnomalyEvent
+
+    new_admins  = set(snapshot_data.get("local_admins") or [])
+    new_startup = snapshot_data.get("startup_programs") or []
+    new_tasks   = snapshot_data.get("scheduled_tasks") or []
+
+    new_startup_set = _normalize_startup(new_startup)
+    new_tasks_set   = _normalize_tasks(new_tasks)
+
+    snap, created = SecuritySnapshot.objects.get_or_create(device=device)
+    anomalies = []
+
+    if created:
+        # Primera huella — establece la línea base, sin generar anomalías
+        snap.local_admins     = sorted(new_admins)
+        snap.startup_programs = new_startup
+        snap.scheduled_tasks  = new_tasks
+        snap.save(update_fields=["local_admins", "startup_programs", "scheduled_tasks", "updated_at"])
+        logger.info(f"Huella de seguridad inicial registrada para {device.display_name}")
+        return anomalies
+
+    old_admins      = set(snap.local_admins or [])
+    old_startup_set = _normalize_startup(snap.startup_programs)
+    old_tasks_set   = _normalize_tasks(snap.scheduled_tasks)
+
+    # ── Administradores locales ────────────────────────────────────────────
+    for added in (new_admins - old_admins):
+        anomalies.append(SecurityAnomalyEvent(
+            device=device, anomaly_type="new_admin", severity="critical",
+            detail=f"Nueva cuenta con privilegios de administrador: {added}",
+        ))
+    for removed in (old_admins - new_admins):
+        anomalies.append(SecurityAnomalyEvent(
+            device=device, anomaly_type="removed_admin", severity="info",
+            detail=f"Cuenta removida del grupo de administradores: {removed}",
+        ))
+
+    # ── Programas de inicio ─────────────────────────────────────────────────
+    new_startup_by_key = {f"{i.get('source','')}::{i.get('name','')}": i for i in new_startup}
+    for added_key in (new_startup_set - old_startup_set):
+        item = new_startup_by_key.get(added_key, {})
+        anomalies.append(SecurityAnomalyEvent(
+            device=device, anomaly_type="new_startup", severity="warning",
+            detail=f"Nuevo programa de inicio: {item.get('name','?')} "
+                   f"({item.get('source','')}) → {item.get('command','')[:150]}",
+        ))
+    old_startup_by_key = {f"{i.get('source','')}::{i.get('name','')}": i for i in (snap.startup_programs or [])}
+    for removed_key in (old_startup_set - new_startup_set):
+        item = old_startup_by_key.get(removed_key, {})
+        anomalies.append(SecurityAnomalyEvent(
+            device=device, anomaly_type="removed_startup", severity="info",
+            detail=f"Programa de inicio eliminado: {item.get('name','?')} ({item.get('source','')})",
+        ))
+
+    # ── Tareas programadas ───────────────────────────────────────────────────
+    for added in (new_tasks_set - old_tasks_set):
+        anomalies.append(SecurityAnomalyEvent(
+            device=device, anomaly_type="new_task", severity="warning",
+            detail=f"Nueva tarea programada: {added}",
+        ))
+    for removed in (old_tasks_set - new_tasks_set):
+        anomalies.append(SecurityAnomalyEvent(
+            device=device, anomaly_type="removed_task", severity="info",
+            detail=f"Tarea programada eliminada: {removed}",
+        ))
+
+    if anomalies:
+        SecurityAnomalyEvent.objects.bulk_create(anomalies)
+        logger.warning(f"Anomalías de seguridad detectadas en {device.display_name}: "
+                       f"{len(anomalies)} ({', '.join(a.anomaly_type for a in anomalies)})")
+
+    # Actualizar snapshot con el estado actual
+    snap.local_admins     = sorted(new_admins)
+    snap.startup_programs = new_startup
+    snap.scheduled_tasks  = new_tasks
+    snap.save(update_fields=["local_admins", "startup_programs", "scheduled_tasks", "updated_at"])
+
+    return anomalies
+
+
+def notify_security_anomalies(device, anomalies: list):
+    """Envía un email consolidado por las anomalías de seguridad detectadas."""
+    if not anomalies:
+        return
+
+    from django.conf import settings
+    from emailmon.services import send_tracked_email
+
+    client = device.client
+    company = getattr(settings, "SENTINEL_COMPANY_NAME", "Sentinel XO")
+    recipients = client.get_alert_recipients()
+    if not recipients:
+        return
+
+    has_critical = any(a.severity == "critical" for a in anomalies)
+    icon = "🚨" if has_critical else "⚠️"
+
+    lines = []
+    for a in anomalies:
+        sev_icon = {"critical": "🔴", "warning": "🟡", "info": "ℹ️"}.get(a.severity, "•")
+        lines.append(f"{sev_icon} {a.get_anomaly_type_display()}: {a.detail}")
+
+    subject = f"{icon} [{company}] Cambios de seguridad detectados en {device.display_name}"
+    message = (
+        f"Estimado equipo de {client.company_name},\n\n"
+        f"Sentinel XO detectó los siguientes cambios en la configuración de seguridad "
+        f"del equipo {device.display_name}:\n\n"
+        + "\n".join(lines) +
+        f"\n\nSi estos cambios no fueron realizados por su equipo de TI, "
+        f"recomendamos revisar el equipo de inmediato.\n\n"
+        f"— {company}"
+    )
+
+    try:
+        send_tracked_email(
+            subject=subject, body=message, to=recipients,
+            category="alert", client=client,
+        )
+        from core.models import SecurityAnomalyEvent
+        SecurityAnomalyEvent.objects.filter(
+            id__in=[a.id for a in anomalies]
+        ).update(notified=True)
+        logger.info(f"Alerta de seguridad enviada para {device.display_name} "
+                    f"({len(anomalies)} anomalías) → {recipients}")
+    except Exception as e:
+        logger.error(f"Error enviando alerta de seguridad para {device.display_name}: {e}")

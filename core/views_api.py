@@ -101,6 +101,17 @@ class TelemetryIngestView(APIView):
         except Exception as e:
             logger.error(f"Error en motor de alertas: {e}")
 
+        # Procesar huella de seguridad (si el agente la envió esta vez)
+        try:
+            security_snapshot = data.get("security_snapshot")
+            if security_snapshot:
+                from core.security import process_security_snapshot, notify_security_anomalies
+                anomalies = process_security_snapshot(device, security_snapshot)
+                if anomalies:
+                    notify_security_anomalies(device, anomalies)
+        except Exception as e:
+            logger.error(f"Error procesando huella de seguridad: {e}")
+
         return Response({"status": "ok", "device": device.display_name}, status=status.HTTP_201_CREATED)
 
 

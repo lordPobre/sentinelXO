@@ -540,3 +540,60 @@ class SecurityCheck(models.Model):
         if self.mfa_registered is None or not self.mfa_total:
             return None
         return round((self.mfa_registered / self.mfa_total) * 100, 1)
+
+class SecuritySnapshot(models.Model):
+    """Última huella de seguridad conocida de un dispositivo (para comparar y detectar cambios)."""
+
+    device = models.OneToOneField(HardwareDevice, on_delete=models.CASCADE,
+                                   related_name="security_snapshot", verbose_name="Dispositivo")
+    local_admins      = models.JSONField("Administradores locales", default=list, blank=True)
+    startup_programs  = models.JSONField("Programas de inicio", default=list, blank=True)
+    scheduled_tasks   = models.JSONField("Tareas programadas", default=list, blank=True)
+    updated_at        = models.DateTimeField("Actualizado", auto_now=True)
+
+    class Meta:
+        verbose_name = "Huella de seguridad"
+        verbose_name_plural = "Huellas de seguridad"
+
+    def __str__(self):
+        return f"Huella de seguridad — {self.device}"
+
+
+class SecurityAnomalyEvent(models.Model):
+    """Cambio detectado en la huella de seguridad de un dispositivo (posible indicador de compromiso)."""
+
+    TYPE_CHOICES = [
+        ("new_admin",      "Nuevo administrador local"),
+        ("removed_admin",  "Administrador local eliminado"),
+        ("new_startup",    "Nuevo programa de inicio"),
+        ("removed_startup","Programa de inicio eliminado"),
+        ("new_task",       "Nueva tarea programada"),
+        ("removed_task",   "Tarea programada eliminada"),
+    ]
+    SEVERITY_CHOICES = [
+        ("info",     "Informativa"),
+        ("warning",  "Advertencia"),
+        ("critical", "Crítica"),
+    ]
+    STATUS_CHOICES = [
+        ("open",         "Abierta"),
+        ("acknowledged", "Revisada"),
+    ]
+
+    device      = models.ForeignKey(HardwareDevice, on_delete=models.CASCADE,
+                                    related_name="security_anomalies", verbose_name="Dispositivo")
+    anomaly_type = models.CharField("Tipo", max_length=20, choices=TYPE_CHOICES)
+    severity    = models.CharField("Severidad", max_length=10, choices=SEVERITY_CHOICES, default="warning")
+    status      = models.CharField("Estado", max_length=12, choices=STATUS_CHOICES, default="open")
+    detail      = models.CharField("Detalle", max_length=300)
+    detected_at = models.DateTimeField("Detectada", auto_now_add=True)
+    notified    = models.BooleanField("Email enviado", default=False)
+    ai_diagnosis = models.JSONField("Diagnóstico IA", null=True, blank=True)
+
+    class Meta:
+        verbose_name = "Anomalía de seguridad"
+        verbose_name_plural = "Anomalías de seguridad"
+        ordering = ["-detected_at"]
+
+    def __str__(self):
+        return f"[{self.severity.upper()}] {self.device} — {self.get_anomaly_type_display()}: {self.detail[:50]}"

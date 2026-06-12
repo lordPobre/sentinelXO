@@ -64,6 +64,29 @@
     {% include "core/partials/security_status.html" %}
   </div>
 
+  <!-- Anomalías de seguridad (vía agente) -->
+  <div style="margin-top:14px;padding-top:14px;border-top:1px solid rgba(255,255,255,0.05);">
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">
+      <span style="font-size:13px;">🕵️</span>
+      <span style="font-size:10px;font-weight:600;color:var(--text-4);letter-spacing:0.05em;text-transform:uppercase;">
+        Anomalías de Seguridad (Agente)
+      </span>
+      {% if item.anomalies_open %}
+      <span class="badge badge-crit" style="font-size:8px;padding:1px 6px;">{{ item.anomalies_open }} sin revisar</span>
+      {% endif %}
+    </div>
+    {% if item.anomalies %}
+      {% for anomaly in item.anomalies %}
+        {% include "core/partials/security_anomaly_row.html" %}
+      {% endfor %}
+    {% else %}
+    <div style="padding:14px;text-align:center;font-size:11px;color:var(--text-4);">
+      Sin anomalías detectadas. El agente revisa administradores locales, programas de inicio
+      y tareas programadas cada 5 minutos.
+    </div>
+    {% endif %}
+  </div>
+
   {% if latest %}
   <div style="margin-top:14px;padding-top:14px;border-top:1px solid rgba(255,255,255,0.05);">
     <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">

@@ -1,15 +1,11 @@
+#!/usr/bin/env python3
 """
 Sentinel XO — Agente de Telemetría v4.0
 Monitorea: CPU, RAM, disco, red, temperatura, GPU (NVIDIA/AMD/Intel)
 """
-import wmi
-import psutil
-import pynvml
-import GPUtil
 import os, sys, platform, socket, time, json, logging, random
 from datetime import datetime, timezone
 from pathlib import Path
-
 
 logging.basicConfig(
     level=logging.INFO,
@@ -18,6 +14,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("sentinel-agent")
 
+# ── Cargar .env ────────────────────────────────────────────────────────────────
 _env_file = Path(__file__).parent / ".env"
 if _env_file.exists():
     with open(_env_file) as f:
@@ -31,6 +28,7 @@ SENTINEL_TOKEN   = os.environ.get("SENTINEL_TOKEN", "")
 SENTINEL_API_URL = os.environ.get("SENTINEL_API_URL", "http://127.0.0.1:8000/api/v1/telemetry/")
 INTERVAL         = int(os.environ.get("SENTINEL_INTERVAL", "5"))
 TIMEOUT          = int(os.environ.get("SENTINEL_TIMEOUT", "10"))
+SECURITY_INTERVAL = int(os.environ.get("SENTINEL_SECURITY_INTERVAL", "300"))  # cada 5 min
 IS_WINDOWS       = platform.system() == "Windows"
 
 
@@ -44,10 +42,18 @@ def get_local_ip():
 
 
 def get_temperatures():
+    """
+    Temperaturas del sistema.
+    Windows: OpenHardwareMonitor (WMI) → fallback MSAcpi
+    Linux/macOS: psutil.sensors_temperatures()
+    Retorna lista de {label, current, high, critical}
+    """
     temps = []
 
     if IS_WINDOWS:
+        # Método principal: OpenHardwareMonitor expuesto por WMI
         try:
+            import wmi
             w = wmi.WMI(namespace="root\\OpenHardwareMonitor")
             for s in w.Sensor():
                 if s.SensorType == "Temperature":
@@ -59,8 +65,11 @@ def get_temperatures():
                     })
         except Exception:
             pass
+
+        # Fallback: zona ACPI si OHM no está corriendo
         if not temps:
             try:
+                import wmi
                 w = wmi.WMI()
                 for item in w.MSAcpi_ThermalZoneTemperature():
                     celsius = (item.CurrentTemperature / 10.0) - 273.15
@@ -74,6 +83,7 @@ def get_temperatures():
                 pass
     else:
         try:
+            import psutil
             sensors = psutil.sensors_temperatures()
             for name, entries in sensors.items():
                 for entry in entries:
@@ -90,12 +100,25 @@ def get_temperatures():
 
 
 def get_gpu_stats():
+    """
+    Estadísticas de GPU. Soporta:
+      - NVIDIA: pynvml  (pip install pynvml)
+      - AMD/Intel/cualquier: OpenHardwareMonitor via WMI en Windows
+      - Linux NVIDIA: también pynvml
+    Retorna dict con gpu_name, gpu_usage_percent, gpu_memory_used_percent,
+    gpu_memory_total_gb, gpu_temp_celsius  — o None si no hay GPU detectable.
+    """
+
+    # ── NVIDIA con pynvml (Windows y Linux) ──────────────────────────────────
     try:
+        import pynvml
         pynvml.nvmlInit()
         handle = pynvml.nvmlDeviceGetHandleByIndex(0)  # primera GPU
+
         name    = pynvml.nvmlDeviceGetName(handle)
         if isinstance(name, bytes):
             name = name.decode()
+
         util    = pynvml.nvmlDeviceGetUtilizationRates(handle)
         mem     = pynvml.nvmlDeviceGetMemoryInfo(handle)
 
@@ -118,8 +141,10 @@ def get_gpu_stats():
     except Exception:
         pass
 
+    # ── OpenHardwareMonitor en Windows (AMD, Intel, NVIDIA alternativo) ───────
     if IS_WINDOWS:
         try:
+            import wmi
             w = wmi.WMI(namespace="root\\OpenHardwareMonitor")
             sensors = w.Sensor()
 
@@ -132,6 +157,7 @@ def get_gpu_stats():
 
             for s in sensors:
                 hw = s.Parent if hasattr(s, "Parent") else ""
+                # Detectar nombre de GPU desde hardware
                 try:
                     for hw_item in w.Hardware():
                         if hw_item.HardwareType in ("GpuNvidia", "GpuAti"):
@@ -148,6 +174,7 @@ def get_gpu_stats():
                 elif stype == "Temperature" and "gpu core" in name_lower:
                     gpu_temp = round(float(s.Value), 1)
                 elif stype == "SmallData" and "gpu memory used" in name_lower:
+                    # OHM reporta VRAM en MB
                     gpu_mem_used_gb = round(float(s.Value) / 1024, 2)
                 elif stype == "SmallData" and "gpu memory total" in name_lower:
                     gpu_mem_gb = round(float(s.Value) / 1024, 2)
@@ -166,8 +193,10 @@ def get_gpu_stats():
         except Exception:
             pass
 
+    # ── Linux: intentar GPUtil como alternativa ───────────────────────────────
     if not IS_WINDOWS:
         try:
+            import GPUtil
             gpus = GPUtil.getGPUs()
             if gpus:
                 g = gpus[0]
@@ -185,6 +214,7 @@ def get_gpu_stats():
 
 
 def get_network_stats():
+    """Bytes enviados/recibidos desde el arranque."""
     try:
         import psutil
         net = psutil.net_io_counters()
@@ -198,7 +228,143 @@ def get_network_stats():
         return {}
 
 
-def collect():
+def get_local_admins():
+    """Lista de cuentas en el grupo Administradores (solo Windows)."""
+    if not IS_WINDOWS:
+        return None
+    try:
+        import subprocess
+        result = subprocess.run(
+            ["net", "localgroup", "Administradores"],
+            capture_output=True, text=True, timeout=10, encoding="cp850", errors="ignore"
+        )
+        text = result.stdout
+        if "no existe" in text.lower() or "does not exist" in text.lower():
+            result = subprocess.run(
+                ["net", "localgroup", "Administrators"],
+                capture_output=True, text=True, timeout=10, encoding="cp850", errors="ignore"
+            )
+            text = result.stdout
+
+        # El listado de miembros está entre dos líneas de '----' y 'The command...'
+        lines = text.splitlines()
+        members = []
+        in_members = False
+        for line in lines:
+            stripped = line.strip()
+            if stripped.startswith("---"):
+                in_members = not in_members or len(members) == 0
+                continue
+            if stripped.startswith("The command completed") or not stripped:
+                if in_members and members:
+                    break
+                continue
+            if in_members or (not stripped.lower().startswith(("alias", "comentario",
+                              "nombre", "comment", "name", "members"))
+                              and "----" not in stripped):
+                if stripped and stripped not in members:
+                    members.append(stripped)
+
+        # Filtrar líneas que no son nombres de usuario (headers residuales)
+        members = [m for m in members if m and not m.lower().startswith(
+            ("alias", "comentario", "comment", "nombre", "name", "miembros", "members"))]
+        return sorted(set(members))
+    except Exception as e:
+        logger.warning(f"No se pudo leer administradores locales: {e}")
+        return None
+
+
+def get_startup_programs():
+    """Programas configurados para ejecutarse al iniciar sesión/sistema (solo Windows)."""
+    if not IS_WINDOWS:
+        return None
+    items = []
+    try:
+        import winreg
+        run_keys = [
+            (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Run"),
+            (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce"),
+            (winreg.HKEY_CURRENT_USER,  r"SOFTWARE\Microsoft\Windows\CurrentVersion\Run"),
+            (winreg.HKEY_CURRENT_USER,  r"SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce"),
+        ]
+        for hive, path in run_keys:
+            hive_name = "HKLM" if hive == winreg.HKEY_LOCAL_MACHINE else "HKCU"
+            try:
+                with winreg.OpenKey(hive, path) as key:
+                    i = 0
+                    while True:
+                        try:
+                            name, value, _ = winreg.EnumValue(key, i)
+                            items.append({
+                                "name":   name,
+                                "command": str(value)[:300],
+                                "source": f"{hive_name}\\{path.split(chr(92))[-1]}",
+                            })
+                            i += 1
+                        except OSError:
+                            break
+            except FileNotFoundError:
+                continue
+    except Exception as e:
+        logger.warning(f"No se pudo leer programas de inicio: {e}")
+        return None
+    return items
+
+
+def get_scheduled_tasks():
+    """Tareas programadas activas, excluyendo las nativas de Microsoft (solo Windows)."""
+    if not IS_WINDOWS:
+        return None
+    try:
+        import subprocess
+        result = subprocess.run(
+            ["schtasks", "/query", "/fo", "csv", "/nh"],
+            capture_output=True, text=True, timeout=20, encoding="cp850", errors="ignore"
+        )
+        tasks = []
+        for line in result.stdout.splitlines():
+            line = line.strip()
+            if not line or line.startswith('"TaskName"'):
+                continue
+            parts = [p.strip('"') for p in line.split('","')]
+            if len(parts) < 3:
+                continue
+            name = parts[0].strip('"').lstrip("\\")
+            status = parts[2].strip('"') if len(parts) > 2 else ""
+            # Excluir tareas nativas del sistema (Microsoft\...)
+            if name.startswith("Microsoft\\") or not name:
+                continue
+            tasks.append({"name": name, "status": status})
+        return tasks
+    except Exception as e:
+        logger.warning(f"No se pudo leer tareas programadas: {e}")
+        return None
+
+
+def collect_security_snapshot():
+    """
+    Recolecta una huella de seguridad del equipo: administradores locales,
+    programas de inicio y tareas programadas. Solo Windows.
+    Retorna None si no aplica (Linux/Mac) o si falló la recolección completa.
+    """
+    if not IS_WINDOWS:
+        return None
+
+    admins = get_local_admins()
+    startup = get_startup_programs()
+    tasks   = get_scheduled_tasks()
+
+    if admins is None and startup is None and tasks is None:
+        return None
+
+    return {
+        "local_admins":     admins if admins is not None else [],
+        "startup_programs": startup if startup is not None else [],
+        "scheduled_tasks":  tasks if tasks is not None else [],
+    }
+
+
+def collect(include_security=False):
     try:
         import psutil
     except ImportError:
@@ -248,6 +414,15 @@ def collect():
     # Agregar GPU solo si se detectó
     if gpu:
         payload.update(gpu)
+
+    # Agregar huella de seguridad cada SECURITY_INTERVAL segundos (Windows)
+    if include_security:
+        try:
+            sec = collect_security_snapshot()
+            if sec is not None:
+                payload["security_snapshot"] = sec
+        except Exception as e:
+            logger.warning(f"Error recolectando huella de seguridad: {e}")
 
     return payload
 
@@ -317,10 +492,16 @@ def main():
 
     time.sleep(random.uniform(0, min(INTERVAL, 3)))
 
+    last_security_send = 0.0
+
     while True:
         try:
-            payload = collect()
+            now = time.monotonic()
+            send_security = IS_WINDOWS and (now - last_security_send >= SECURITY_INTERVAL)
+            payload = collect(include_security=send_security)
             send(payload)
+            if send_security:
+                last_security_send = now
         except Exception as e:
             logger.error(f"Error inesperado: {e}")
         time.sleep(INTERVAL)

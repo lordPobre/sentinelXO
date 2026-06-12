@@ -10,7 +10,7 @@ from django.http import HttpResponseForbidden
 @login_required
 def security_dashboard(request):
     """Vista principal del panel de seguridad."""
-    from core.models import Client, SecurityCheck
+    from core.models import Client, SecurityCheck, SecurityAnomalyEvent
 
     # Verificar que la tabla existe (puede no existir si la migración no se aplicó)
     try:
@@ -36,9 +36,14 @@ def security_dashboard(request):
     clients_security = []
     for client in clients:
         latest = SecurityCheck.objects.filter(client=client).order_by("-checked_at").first()
+        anomalies = SecurityAnomalyEvent.objects.filter(
+            device__client=client
+        ).select_related("device").order_by("-detected_at")[:20]
         clients_security.append({
             "client": client,
             "latest": latest,
+            "anomalies": anomalies,
+            "anomalies_open": sum(1 for a in anomalies if a.status == "open"),
         })
 
     return render(request, "core/security_dashboard.html", {
@@ -69,6 +74,25 @@ def security_check_now(request, client_id):
         "client": client,
         "latest": latest,
     })
+
+
+@login_required
+def security_anomaly_acknowledge(request, anomaly_id):
+    """POST — marca una anomalía de seguridad como revisada."""
+    from core.models import SecurityAnomalyEvent
+
+    anomaly = get_object_or_404(SecurityAnomalyEvent, pk=anomaly_id)
+
+    if not request.user.is_staff:
+        portal = request.user.client_portals.filter(pk=anomaly.device.client_id).first()
+        if not portal:
+            return HttpResponseForbidden()
+
+    if request.method == "POST":
+        anomaly.status = "acknowledged"
+        anomaly.save(update_fields=["status"])
+
+    return render(request, "core/partials/security_anomaly_row.html", {"anomaly": anomaly})
 
 
 @login_required
