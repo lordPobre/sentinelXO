@@ -434,20 +434,18 @@ def generate_narrative_summary(client, year: int, month: int, summary: dict) -> 
     ).values("title", "severity")[:10])
 
     # ── Alertas disparadas en el período, agrupadas por dispositivo/métrica ────
-    alerts = list(AlertEvent.objects.filter(
+    alerts_qs = AlertEvent.objects.filter(
         device__client=client,
         fired_at__range=(period_start, period_end),
-    ).select_related("device").values(
-        "device__display_name", "metric", "severity", "value"
-    )[:30])
+    ).select_related("device")[:30]
 
     alert_summary = {}
-    for a in alerts:
-        key = (a["device__display_name"], a["metric"])
+    for a in alerts_qs:
+        key = (a.device.display_name, a.metric)
         if key not in alert_summary:
-            alert_summary[key] = {"count": 0, "severity": a["severity"], "max_value": a["value"]}
+            alert_summary[key] = {"count": 0, "severity": a.severity, "max_value": a.value}
         alert_summary[key]["count"] += 1
-        alert_summary[key]["max_value"] = max(alert_summary[key]["max_value"], a["value"])
+        alert_summary[key]["max_value"] = max(alert_summary[key]["max_value"], a.value)
 
     alert_list = [
         {
