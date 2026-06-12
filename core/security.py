@@ -96,18 +96,47 @@ def check_m365_security_posture(client) -> dict:
         logger.error(f"Security check error (secureScore) para {client}: {e}")
 
     # ── 3. Estado de MFA por usuario ────────────────────────────────────────
-    # Requiere permiso Reports.Read.All o UserAuthenticationMethod.Read.All (Application)
+    # El reporte /reports/authenticationMethods/userRegistrationDetails requiere
+    # Azure AD Premium P1/P2. Como alternativa compatible con cualquier tenant,
+    # consultamos los métodos de autenticación registrados por cada usuario
+    # individualmente vía /users/{id}/authentication/methods (Application:
+    # UserAuthenticationMethod.Read.All).
     try:
-        resp = req_lib.get(
-            "https://graph.microsoft.com/v1.0/reports/authenticationMethods/userRegistrationDetails"
-            "?$top=999",
+        users_resp = req_lib.get(
+            "https://graph.microsoft.com/v1.0/users"
+            "?$select=id,userPrincipalName,accountEnabled&$top=999",
             headers=headers, timeout=15,
         )
-        if resp.status_code == 200:
-            users = resp.json().get("value", [])
-            mfa_total      = len(users)
-            mfa_registered = sum(1 for u in users if u.get("isMfaRegistered"))
-            no_mfa_users   = [u.get("userPrincipalName") for u in users if not u.get("isMfaRegistered")][:10]
+        if users_resp.status_code == 200:
+            all_users = [u for u in users_resp.json().get("value", [])
+                         if u.get("accountEnabled", True)]
+            mfa_total      = len(all_users)
+            mfa_registered = 0
+            no_mfa_users   = []
+
+            # Métodos que NO cuentan como MFA (solo contraseña)
+            non_mfa_methods = {"#microsoft.graph.passwordAuthenticationMethod"}
+
+            for u in all_users:
+                uid = u.get("id")
+                try:
+                    m_resp = req_lib.get(
+                        f"https://graph.microsoft.com/v1.0/users/{uid}/authentication/methods",
+                        headers=headers, timeout=10,
+                    )
+                    if m_resp.status_code == 200:
+                        methods   = m_resp.json().get("value", [])
+                        method_types = {m.get("@odata.type") for m in methods}
+                        has_mfa = bool(method_types - non_mfa_methods)
+                        if has_mfa:
+                            mfa_registered += 1
+                        else:
+                            no_mfa_users.append(u.get("userPrincipalName"))
+                    else:
+                        # Si no podemos verificar un usuario, no lo contamos en el total
+                        mfa_total -= 1
+                except Exception:
+                    mfa_total -= 1
 
             pct = round((mfa_registered / mfa_total * 100), 1) if mfa_total else 0
             result["checks"]["mfa"] = {
@@ -117,21 +146,28 @@ def check_m365_security_posture(client) -> dict:
                 "total":      mfa_total,
                 "percent":    pct,
                 "detail":     f"{mfa_registered}/{mfa_total} usuarios ({pct}%)",
-                "no_mfa_users": no_mfa_users,
+                "no_mfa_users": no_mfa_users[:10],
             }
             if pct < 90:
                 result["overall"] = "warning" if result["overall"] == "ok" else result["overall"]
                 result["errors"].append(f"MFA: solo {pct}% de usuarios con MFA registrado")
-        elif resp.status_code == 403:
+
+        elif users_resp.status_code == 403:
+            body_txt = users_resp.text[:300]
+            logger.error(f"MFA check 403 (users) para {client}: {body_txt}")
             result["checks"]["mfa"] = {
                 "status": "skipped", "label": "Cobertura MFA",
-                "detail": "Sin permiso Reports.Read.All / UserAuthenticationMethod.Read.All",
+                "detail": "Sin permiso User.Read.All / UserAuthenticationMethod.Read.All",
+                "raw_error": body_txt,
             }
-            result["errors"].append("MFA: sin permiso Reports.Read.All")
+            result["errors"].append(f"MFA: sin permiso — {body_txt[:150]}")
         else:
+            body_txt = users_resp.text[:300]
+            logger.error(f"MFA check HTTP {users_resp.status_code} para {client}: {body_txt}")
             result["checks"]["mfa"] = {
                 "status": "error", "label": "Cobertura MFA",
-                "error":  f"HTTP {resp.status_code}",
+                "error":  f"HTTP {users_resp.status_code}",
+                "raw_error": body_txt,
             }
             result["overall"] = "warning"
     except Exception as e:
