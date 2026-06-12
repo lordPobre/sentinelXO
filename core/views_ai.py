@@ -219,6 +219,9 @@ def device_ai_analysis(request, device_id):
     prompt  = _build_prompt(summary, alerts)
 
     # Llamar a Claude API
+    api_key = (getattr(settings, "ANTHROPIC_API_KEY", "") or os.environ.get("ANTHROPIC_API_KEY", "")).strip()
+    logger.info(f"ANTHROPIC_API_KEY presente: {bool(api_key)}, longitud: {len(api_key)}, prefijo: {api_key[:12]}...")
+
     try:
         payload = json.dumps({
             "model":      CLAUDE_MODEL,
@@ -229,13 +232,11 @@ def device_ai_analysis(request, device_id):
         req = urllib.request.Request(
             CLAUDE_API_URL,
             data=payload,
-            headers={
-                "Content-Type":      "application/json",
-                "anthropic-version": "2023-06-01",
-                "x-api-key":         getattr(settings, "ANTHROPIC_API_KEY", "") or os.environ.get("ANTHROPIC_API_KEY", ""),
-            },
             method="POST",
         )
+        req.add_header("Content-Type", "application/json")
+        req.add_header("anthropic-version", "2023-06-01")
+        req.add_header("x-api-key", api_key)
 
         with urllib.request.urlopen(req, timeout=30) as resp:
             result  = json.loads(resp.read().decode())
@@ -340,6 +341,9 @@ Genera un diagnóstico JSON con EXACTAMENTE esta estructura (sin markdown, solo 
 Si no hay datos de telemetría, basa el diagnóstico en el título y categoría del incidente.
 Solo JSON, sin texto adicional."""
 
+    api_key = (getattr(settings, "ANTHROPIC_API_KEY", "") or os.environ.get("ANTHROPIC_API_KEY", "")).strip()
+    logger.info(f"ANTHROPIC_API_KEY presente: {bool(api_key)}, longitud: {len(api_key)}")
+
     try:
         payload = json.dumps({
             "model":      CLAUDE_MODEL,
@@ -350,13 +354,11 @@ Solo JSON, sin texto adicional."""
         req = urllib.request.Request(
             CLAUDE_API_URL,
             data=payload,
-            headers={
-                "Content-Type":      "application/json",
-                "anthropic-version": "2023-06-01",
-                "x-api-key":         getattr(settings, "ANTHROPIC_API_KEY", "") or os.environ.get("ANTHROPIC_API_KEY", ""),
-            },
             method="POST",
         )
+        req.add_header("Content-Type", "application/json")
+        req.add_header("anthropic-version", "2023-06-01")
+        req.add_header("x-api-key", api_key)
 
         with urllib.request.urlopen(req, timeout=25) as resp:
             result  = json.loads(resp.read().decode())
@@ -511,6 +513,9 @@ INSTRUCCIONES:
 - NO repitas números exactos de forma robótica, intégralos naturalmente en las oraciones
 - Responde SOLO con el texto del resumen, sin comillas ni explicaciones adicionales"""
 
+    api_key = (getattr(settings, "ANTHROPIC_API_KEY", "") or os.environ.get("ANTHROPIC_API_KEY", "")).strip()
+    logger.info(f"ANTHROPIC_API_KEY presente: {bool(api_key)}, longitud: {len(api_key)}")
+
     try:
         payload = json.dumps({
             "model":      CLAUDE_MODEL,
@@ -521,13 +526,11 @@ INSTRUCCIONES:
         req = urllib.request.Request(
             CLAUDE_API_URL,
             data=payload,
-            headers={
-                "Content-Type":      "application/json",
-                "anthropic-version": "2023-06-01",
-                "x-api-key":         getattr(settings, "ANTHROPIC_API_KEY", "") or os.environ.get("ANTHROPIC_API_KEY", ""),
-            },
             method="POST",
         )
+        req.add_header("Content-Type", "application/json")
+        req.add_header("anthropic-version", "2023-06-01")
+        req.add_header("x-api-key", api_key)
 
         with urllib.request.urlopen(req, timeout=30) as resp:
             result = json.loads(resp.read().decode())
