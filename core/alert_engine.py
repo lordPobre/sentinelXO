@@ -4,9 +4,7 @@ Evalúa reglas en cada snapshot de telemetría recibido.
 También se usa para alertas SMTP desde emailmon.
 """
 import logging
-from core.models import AlertEvent
 from django.utils import timezone
-from core.models import MaintenanceIncident, AlertRule, AlertEvent
 from django.conf import settings
 
 logger = logging.getLogger("sentinel.alerts")
@@ -29,7 +27,9 @@ METRIC_UNITS = {
 }
 SEVERITY_EMOJIS = {"warning": "⚠️", "critical": "🔴"}
 
+
 def _extract_cpu_temp(temperatures: list) -> float | None:
+    """Extrae temperatura CPU del JSON de temperaturas del snapshot."""
     if not temperatures:
         return None
     keywords = ["cpu", "processor", "package", "core", "tdie", "tctl"]
@@ -39,10 +39,13 @@ def _extract_cpu_temp(temperatures: list) -> float | None:
             val = t.get("current")
             if val is not None:
                 return float(val)
+    # Primera temperatura disponible como fallback
     first = temperatures[0].get("current") if temperatures else None
     return float(first) if first is not None else None
 
+
 def _get_snapshot_value(snapshot, metric: str) -> float | None:
+    """Extrae el valor numérico de un snapshot para una métrica dada."""
     if metric == "cpu":
         return snapshot.cpu_percent
     elif metric == "ram":
@@ -57,7 +60,10 @@ def _get_snapshot_value(snapshot, metric: str) -> float | None:
         return snapshot.gpu_temp_celsius
     return None
 
+
 def _is_in_cooldown(rule, device) -> bool:
+    """Verifica si la regla está en período de cooldown para este dispositivo."""
+    from core.models import AlertEvent
     cutoff = timezone.now() - timezone.timedelta(minutes=rule.cooldown_minutes)
     return AlertEvent.objects.filter(
         rule=rule,
@@ -65,6 +71,7 @@ def _is_in_cooldown(rule, device) -> bool:
         fired_at__gte=cutoff,
         status="firing",
     ).exists()
+
 
 def _build_alert_message(device, metric: str, value: float, threshold: float) -> str:
     label = METRIC_LABELS.get(metric, metric)
@@ -74,7 +81,9 @@ def _build_alert_message(device, metric: str, value: float, threshold: float) ->
         f"(umbral: {threshold:.0f}{unit})"
     )
 
+
 def _send_alert_email(event) -> bool:
+    """Envía email de alerta usando el sistema de notificaciones existente."""
     company = getattr(settings, "SENTINEL_COMPANY_NAME", "Sentinel XO")
     support = getattr(settings, "SENTINEL_SUPPORT_EMAIL", "soporte@perseustechnology.dev")
 
@@ -84,6 +93,7 @@ def _send_alert_email(event) -> bool:
     emoji     = SEVERITY_EMOJIS.get(event.severity, "⚠️")
     sev_label = "Advertencia" if event.severity == "warning" else "Crítica"
 
+    # Si el cliente tiene activado "solo incidentes", no enviar alertas automáticas
     if getattr(client, "notify_incidents_only", False):
         logger.info(f"Alerta automática omitida para {client} (notify_incidents_only=True)")
         return False
@@ -111,7 +121,7 @@ El sistema de monitoreo Sentinel XO ha detectado una condición de alerta.
   Valor:      {event.value:.1f}{unit}
   Umbral:     {event.threshold:.0f}{unit}
   Severidad:  {sev_label}
-  Hora:       {event.fired_at.strftime('%d/%m/%Y a las %H:%M:%S')}
+  Hora:       {timezone.localtime(event.fired_at).strftime('%d/%m/%Y a las %H:%M:%S')}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -143,7 +153,10 @@ Saludos,
             logger.error(f"Error enviando alerta por email: {e}")
             return False
 
+
 def _create_incident_from_alert(event):
+    """Crea un incidente automático en el sistema cuando se dispara una alerta."""
+    from core.models import MaintenanceIncident
     label = METRIC_LABELS.get(event.metric, event.metric)
     unit  = METRIC_UNITS.get(event.metric, "")
     sev   = "critical" if event.severity == "critical" else "high"
@@ -160,15 +173,24 @@ def _create_incident_from_alert(event):
             f"Métrica: {label}\n"
             f"Valor detectado: {event.value:.1f}{unit}\n"
             f"Umbral configurado: {event.threshold:.0f}{unit}\n"
-            f"Hora: {event.fired_at.strftime('%d/%m/%Y %H:%M:%S')}"
+            f"Hora: {timezone.localtime(event.fired_at).strftime('%d/%m/%Y %H:%M:%S')}"
         ),
     )
 
+
 def evaluate_snapshot(snapshot) -> list:
+    """
+    Evalúa todas las reglas activas contra un snapshot recién recibido.
+    Retorna lista de AlertEvent creados.
+    """
+    from core.models import AlertRule, AlertEvent
+
     device  = snapshot.device
     client  = device.client
     fired   = []
 
+    # Reglas aplicables: las del cliente sin dispositivo específico
+    # O las del cliente para este dispositivo específico
     rules = AlertRule.objects.filter(
         client=client,
         is_active=True,
@@ -179,10 +201,10 @@ def evaluate_snapshot(snapshot) -> list:
     for rule in rules:
         value = _get_snapshot_value(snapshot, rule.metric)
         if value is None:
-            continue  
+            continue  # métrica no disponible en este snapshot
 
         if value <= rule.threshold:
-            continue  
+            continue  # no supera el umbral
 
         if _is_in_cooldown(rule, device):
             logger.debug(f"Alerta en cooldown: {rule} para {device}")
@@ -202,11 +224,13 @@ def evaluate_snapshot(snapshot) -> list:
             status="firing",
         )
 
+        # Crear incidente automático
         try:
             _create_incident_from_alert(event)
         except Exception as e:
             logger.error(f"Error creando incidente desde alerta: {e}")
 
+        # Enviar email si está configurado
         if rule.notify_email:
             try:
                 notified = _send_alert_email(event)
@@ -219,10 +243,18 @@ def evaluate_snapshot(snapshot) -> list:
 
     return fired
 
+
 def evaluate_smtp_failure(client, smtp_host: str, error_msg: str) -> None:
+    """
+    Dispara alerta cuando el check SMTP falla.
+    Se llama desde emailmon cuando un check retorna error/timeout.
+    """
+    from core.models import AlertEvent, AlertRule
+
     company = getattr(settings, "SENTINEL_COMPANY_NAME", "Sentinel XO")
     support = getattr(settings, "SENTINEL_SUPPORT_EMAIL", "soporte@perseustechnology.dev")
 
+    # Cooldown: no repetir alerta SMTP si ya hubo una en los últimos 60 min
     cutoff = timezone.now() - timezone.timedelta(minutes=60)
     recent = AlertEvent.objects.filter(
         device__client=client,
@@ -233,6 +265,8 @@ def evaluate_smtp_failure(client, smtp_host: str, error_msg: str) -> None:
     if recent:
         return
 
+    # Notificar por email directamente (sin regla de dispositivo)
+    # Si el cliente tiene activado "solo incidentes", no enviar alertas SMTP automáticas
     if getattr(client, "notify_incidents_only", False):
         return
 
@@ -277,7 +311,9 @@ Saludos,
         except Exception as e:
             logger.error(f"Error enviando alerta SMTP: {e}")
 
+    # Crear incidente automático
     try:
+        from core.models import MaintenanceIncident
         MaintenanceIncident.objects.create(
             client=client,
             title=f"Problema SMTP detectado: {smtp_host}",
@@ -288,6 +324,7 @@ Saludos,
         )
     except Exception as e:
         logger.error(f"Error creando incidente SMTP: {e}")
+
 
 def models_Q(**kwargs):
     from django.db.models import Q

@@ -1,27 +1,21 @@
 import json
-import hmac
-import hashlib
-import logging
-from core.models import Client
-from core.models import MaintenanceIncident
 from django.shortcuts import render, redirect
 from django.contrib.auth.decorators import login_required
-from django.views.decorators.csrf import csrf_exempt
-from django.views.decorators.http import require_POST
 from django.contrib import messages
-from django.http import JsonResponse,HttpResponseForbidden,HttpResponse, HttpResponseBadRequest
+from django.http import JsonResponse
 from django.utils import timezone
 from django.db.models import Count, Q
 from .models import EmailLog, SmtpCheck
 from .services import send_test_email, check_smtp_connectivity
-from django.conf import settings
 
 
 @login_required
 def email_dashboard(request):
+    """Panel principal de monitoreo de email."""
     if not request.user.is_staff:
         return redirect("dashboard:home")
 
+    # Estadísticas de las últimas 24h
     since_24h = timezone.now() - timezone.timedelta(hours=24)
     since_7d  = timezone.now() - timezone.timedelta(days=7)
 
@@ -33,19 +27,24 @@ def email_dashboard(request):
     sent_7d    = logs_7d.filter(status="sent").count()
     failed_7d  = logs_7d.filter(status="failed").count()
 
+    # Último check SMTP
     latest_check = SmtpCheck.objects.first()
+
+    # Uptime SMTP últimas 24h (% de checks OK)
     checks_24h = SmtpCheck.objects.filter(checked_at__gte=since_24h)
     total_checks = checks_24h.count()
     ok_checks    = checks_24h.filter(status="ok").count()
     smtp_uptime  = round((ok_checks / total_checks * 100), 1) if total_checks > 0 else None
 
+    # Logs recientes
     recent_logs   = EmailLog.objects.select_related("client")[:50]
     recent_checks = SmtpCheck.objects.all()[:24]
 
+    # Checks SMTP para gráfico (últimas 24 verificaciones)
     chart_checks = list(SmtpCheck.objects.order_by("-checked_at")[:48])
     chart_checks.reverse()
     chart_data = {
-        "labels": [c.checked_at.strftime("%H:%M") for c in chart_checks],
+        "labels": [timezone.localtime(c.checked_at).strftime("%H:%M") for c in chart_checks],
         "ms":     [c.response_ms or 0 for c in chart_checks],
         "status": [c.status for c in chart_checks],
     }
@@ -67,6 +66,7 @@ def email_dashboard(request):
 
 @login_required
 def smtp_check_now(request):
+    """HTMX: ejecuta un check SMTP en tiempo real y devuelve el resultado."""
     if not request.user.is_staff:
         return JsonResponse({"error": "Sin acceso"}, status=403)
 
@@ -79,6 +79,7 @@ def smtp_check_now(request):
 
 @login_required
 def send_test(request):
+    """Envía un email de prueba al email del usuario logueado."""
     if not request.user.is_staff:
         return redirect("dashboard:home")
 
@@ -99,15 +100,24 @@ def send_test(request):
 
 @login_required
 def live_status(request):
+    """
+    GET /email/live/
+    HTMX polling cada 10s — devuelve el fragmento completo de estado en tiempo real.
+    Ejecuta un check SMTP automáticamente si el último tiene más de 1 hora.
+    """
     if not request.user.is_staff:
+        from django.http import HttpResponseForbidden
         return HttpResponseForbidden()
 
+    from django.utils import timezone
+    # live_status usa el último check de Resend (envío) — sin auto-check que contamine M365
     latest_check = SmtpCheck.objects.filter(
         smtp_host__icontains="resend"
     ).order_by("-checked_at").first()
 
     since_24h = timezone.now() - timezone.timedelta(hours=24)
 
+    # Uptime = checks de Resend (envío de emails)
     checks_24h   = SmtpCheck.objects.filter(
         smtp_host__icontains="resend",
         checked_at__gte=since_24h,
@@ -132,17 +142,30 @@ def live_status(request):
         "now":           timezone.now(),
     })
 
+
+import json
+import hmac
+import hashlib
+import logging
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_POST
+from django.http import HttpResponse, HttpResponseBadRequest, HttpResponseForbidden
+from django.conf import settings
+
 logger = logging.getLogger("perseus")
 
+# Mapeo de eventos Brevo → estado en EmailLog
 BREVO_EVENT_MAP = {
+    # Entrega exitosa
     "delivered":          "sent",
+    # Problemas — marcar como rebotado o fallido
     "hard_bounce":        "bounced",
     "soft_bounce":        "bounced",
     "blocked":            "failed",
     "spam":               "bounced",
     "invalid_email":      "failed",
     "error":              "failed",
-    "unsubscribed":       "sent",   
+    "unsubscribed":       "sent",   # entregado pero el usuario se desinscribió
     "click":              "sent",
     "open":               "sent",
     "complaint":          "bounced",
@@ -153,6 +176,16 @@ BREVO_EVENT_MAP = {
 @csrf_exempt
 @require_POST
 def brevo_webhook(request):
+    """
+    POST /email/webhook/brevo/
+    Recibe eventos de Brevo y actualiza EmailLog automáticamente.
+
+    Configurar en Brevo:
+      Transactional → Webhooks → Add a new webhook
+      URL: https://tu-dominio.com/email/webhook/brevo/
+      Eventos: delivered, hard_bounce, soft_bounce, blocked, spam, error, invalid_email
+    """
+    # 1. Verificar firma si hay secret configurado
     secret = getattr(settings, "BREVO_WEBHOOK_SECRET", "")
     if secret:
         signature = request.headers.get("X-Brevo-Signature", "")
@@ -165,11 +198,13 @@ def brevo_webhook(request):
             logger.warning("Webhook Brevo: firma inválida")
             return HttpResponseForbidden("Firma inválida")
 
+    # 2. Parsear payload
     try:
         payload = json.loads(request.body)
     except json.JSONDecodeError:
         return HttpResponseBadRequest("JSON inválido")
 
+    # Brevo puede enviar un array o un objeto único
     events = payload if isinstance(payload, list) else [payload]
 
     updated = 0
@@ -192,6 +227,7 @@ def brevo_webhook(request):
 
         logger.info(f"Webhook Brevo: {event_type} → {recipient} (status: {new_status})")
 
+        # 3. Buscar el EmailLog más reciente para este destinatario
         log = (
             EmailLog.objects
             .filter(recipient__iexact=recipient)
@@ -200,6 +236,8 @@ def brevo_webhook(request):
         )
 
         if log:
+            # Actualizar solo si el nuevo estado es peor o diferente
+            # (no queremos sobreescribir 'bounced' con 'sent' si llegan fuera de orden)
             priority = {"sent": 1, "failed": 2, "bounced": 3}
             current_prio = priority.get(log.status, 0)
             new_prio     = priority.get(new_status, 0)
@@ -211,6 +249,7 @@ def brevo_webhook(request):
                 updated += 1
                 logger.info(f"EmailLog actualizado: {recipient} → {new_status}")
         else:
+            # No existe el log — crear uno (email enviado fuera del sistema)
             EmailLog.objects.create(
                 recipient=recipient,
                 subject=f"[Brevo webhook] {event_type}",
@@ -221,7 +260,10 @@ def brevo_webhook(request):
             created += 1
             logger.info(f"EmailLog creado desde webhook: {recipient} → {new_status}")
 
+        # 4. Si es bounce o error grave, crear incidente automático
         if new_status in ("bounced", "failed") and event_type in ("hard_bounce", "blocked", "invalid_email", "error"):
+            from core.models import MaintenanceIncident
+            # Solo crear si no hay uno abierto para este email
             if not MaintenanceIncident.objects.filter(
                 title__icontains=recipient,
                 is_resolved=False,
@@ -247,6 +289,10 @@ def brevo_webhook(request):
 
 @login_required
 def m365_check_now(request):
+    """
+    POST /email/m365/check/
+    Ejecuta verificación M365 en tiempo real usando Graph API (sin SMTP).
+    """
     if not request.user.is_staff:
         from django.http import HttpResponseForbidden
         return HttpResponseForbidden()
@@ -267,6 +313,7 @@ def m365_check_now(request):
             pass
 
     if not client:
+        # Verificar todos los clientes con M365 configurado
         clients = Client.objects.filter(is_active=True, m365_tenant__is_active=True)
         results = []
         for c in clients:
@@ -283,18 +330,26 @@ def m365_check_now(request):
 
     return render(request, "emailmon/partials/m365_status.html", {"result": result})
 
+
 def m365_dashboard(request):
+    """Panel de monitoreo M365 — muestra estado SMTP y Graph API por cliente."""
     if not request.user.is_staff:
         return redirect("dashboard:home")
-    
+
+    from core.models import Client
+    from django.utils import timezone
+
+    # Clientes con M365 configurado
     m365_clients = Client.objects.filter(
         is_active=True,
         m365_tenant__is_active=True,
     ).prefetch_related("m365_licenses", "m365_tenant")
 
-    
+    from .models import SmtpCheck
+    import json
     since_24h = timezone.now() - timezone.timedelta(hours=24)
 
+    # Checks M365 via Graph API — host exacto "graph.microsoft.com (M365)"
     M365_HOST = "graph.microsoft.com (M365)"
     graph_qs  = SmtpCheck.objects.filter(
         smtp_host=M365_HOST,
@@ -307,20 +362,23 @@ def m365_dashboard(request):
         smtp_host=M365_HOST,
     ).order_by("-checked_at").first()
 
+    # Historial para la tabla
     m365_checks = SmtpCheck.objects.filter(
         smtp_host=M365_HOST,
     ).order_by("-checked_at")[:24]
 
+    # Gráfico
     chart_checks = list(SmtpCheck.objects.filter(
         smtp_host=M365_HOST,
     ).order_by("-checked_at")[:48])
     chart_checks.reverse()
     chart_data = {
-        "labels": [c.checked_at.strftime("%H:%M") for c in chart_checks],
+        "labels": [timezone.localtime(c.checked_at).strftime("%H:%M") for c in chart_checks],
         "ms":     [c.response_ms or 0 for c in chart_checks],
         "status": [c.status for c in chart_checks],
     }
 
+    # Calcular porcentajes de envío y recepción de las últimas 24h
     checks_with_details = graph_qs.exclude(check_details={})
     send_total = checks_with_details.count()
     send_ok    = sum(1 for c in checks_with_details
@@ -331,6 +389,7 @@ def m365_dashboard(request):
     send_pct = round(send_ok / send_total * 100, 1) if send_total > 0 else None
     recv_pct = round(recv_ok / send_total * 100, 1) if send_total > 0 else None
 
+    # Último detalle de envío y recepción
     last_with_details = graph_qs.exclude(check_details={}).order_by("-checked_at").first()
     last_send = last_with_details.check_details.get("send_status") if last_with_details else None
     last_recv = last_with_details.check_details.get("recv_status") if last_with_details else None

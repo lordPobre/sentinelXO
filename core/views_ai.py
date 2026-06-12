@@ -3,6 +3,7 @@ Sentinel XO — Análisis Predictivo con IA (Claude API)
 Analiza el historial de telemetría y genera insights inteligentes.
 """
 import json
+import os
 import logging
 import urllib.request
 import urllib.error
@@ -78,7 +79,7 @@ def _build_telemetry_summary(device, snapshots) -> dict:
         cpu_t = _extract_cpu_temp(s.temperatures or [])
         if (s.cpu_percent and s.cpu_percent > 90) or (cpu_t and cpu_t > 80):
             peaks.append({
-                "time": s.captured_at.strftime("%d/%m %H:%M"),
+                "time": timezone.localtime(s.captured_at).strftime("%d/%m %H:%M"),
                 "cpu":  s.cpu_percent,
                 "temp": cpu_t,
             })
@@ -138,7 +139,7 @@ def _get_recent_alerts(device):
             "metric":   e.metric,
             "value":    e.value,
             "severity": e.severity,
-            "time":     e.fired_at.strftime("%d/%m %H:%M"),
+            "time":     timezone.localtime(e.fired_at).strftime("%d/%m %H:%M"),
             "status":   e.status,
         }
         for e in events
@@ -231,6 +232,7 @@ def device_ai_analysis(request, device_id):
             headers={
                 "Content-Type":      "application/json",
                 "anthropic-version": "2023-06-01",
+                "x-api-key":         getattr(settings, "ANTHROPIC_API_KEY", "") or os.environ.get("ANTHROPIC_API_KEY", ""),
             },
             method="POST",
         )
@@ -313,7 +315,7 @@ Se ha creado el siguiente incidente:
 - Categoría: {incident.get_category_display()}
 - Cliente: {incident.client.company_name}
 - Dispositivo: {device.display_name if device else "No especificado"}
-- Hora: {incident.created_at.strftime("%d/%m/%Y %H:%M:%S")}
+- Hora: {timezone.localtime(incident.created_at).strftime("%d/%m/%Y %H:%M:%S")}
 
 {"Datos de telemetría del equipo (30 min antes del incidente):" if context else "Sin datos de telemetría disponibles."}
 {json.dumps(context, ensure_ascii=False, indent=2) if context else ""}
@@ -351,6 +353,7 @@ Solo JSON, sin texto adicional."""
             headers={
                 "Content-Type":      "application/json",
                 "anthropic-version": "2023-06-01",
+                "x-api-key":         getattr(settings, "ANTHROPIC_API_KEY", "") or os.environ.get("ANTHROPIC_API_KEY", ""),
             },
             method="POST",
         )
@@ -521,6 +524,7 @@ INSTRUCCIONES:
             headers={
                 "Content-Type":      "application/json",
                 "anthropic-version": "2023-06-01",
+                "x-api-key":         getattr(settings, "ANTHROPIC_API_KEY", "") or os.environ.get("ANTHROPIC_API_KEY", ""),
             },
             method="POST",
         )

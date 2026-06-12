@@ -7,18 +7,22 @@ import logging
 import urllib.request
 import urllib.error
 import json
-import time
-import requests as req_lib
 import socket
-from django.utils import timezone
 from django.conf import settings
 from .models import EmailLog, SmtpCheck
-from monitoring.services import get_graph_token
 
 logger = logging.getLogger("perseus")
 
+
+# ── Brevo API HTTP ─────────────────────────────────────────────────────────────
+
 def _resend_send(subject: str, body: str, to: list[str],
                  attachments: list = None) -> tuple[bool, str]:
+    """
+    Envía un email vía API HTTP de Resend.
+    No usa SMTP — funciona en Railway plan Hobby.
+    Retorna (success, error_msg).
+    """
     api_key      = getattr(settings, "RESEND_API_KEY", "")
     sender_email = getattr(settings, "DEFAULT_FROM_EMAIL", "soporte@perseustechnology.dev")
     sender_name  = getattr(settings, "SENTINEL_COMPANY_NAME", "Sentinel XO")
@@ -73,6 +77,10 @@ def _resend_send(subject: str, body: str, to: list[str],
 
 
 def check_resend_api() -> SmtpCheck:
+    """
+    Verifica conectividad con la API de Resend.
+    Hace un GET al endpoint de dominios — si responde, la API está OK.
+    """
     api_key = getattr(settings, "RESEND_API_KEY", "")
     start   = time.monotonic()
 
@@ -122,6 +130,7 @@ def check_resend_api() -> SmtpCheck:
 
 
 def _fire_smtp_alert(error_msg: str):
+    """Dispara alerta inteligente cuando la API de email falla."""
     try:
         from core.alert_engine import evaluate_smtp_failure
         from core.models import Client
@@ -130,8 +139,13 @@ def _fire_smtp_alert(error_msg: str):
     except Exception as ae:
         logger.debug(f"Alert engine: {ae}")
 
+
+# Alias para compatibilidad con código que llama check_smtp_connectivity
 def check_smtp_connectivity() -> SmtpCheck:
     return check_resend_api()
+
+
+# ── send_tracked_email ────────────────────────────────────────────────────────
 
 def send_tracked_email(
     subject: str,
@@ -141,6 +155,10 @@ def send_tracked_email(
     client=None,
     attachments: list = None,
 ) -> bool:
+    """
+    Envía un email vía Brevo API y registra el resultado en EmailLog.
+    Retorna True si se envió correctamente.
+    """
     success, error_msg = _resend_send(subject, body, to, attachments)
 
     for recipient in to:
@@ -157,6 +175,10 @@ def send_tracked_email(
 
 
 def send_test_email(to: str) -> dict:
+    """Envía un email de prueba y retorna el resultado."""
+    from django.utils import timezone
+
+    # Verificar API antes de enviar
     check = check_resend_api()
 
     subject = f"[Sentinel XO] Email de prueba — {timezone.now().strftime('%d/%m/%Y %H:%M')}"
@@ -178,7 +200,22 @@ def send_test_email(to: str) -> dict:
     }
 
 
+
+
 def check_m365_graph_health(client) -> dict:
+    """
+    Monitorea el estado del servicio de email de Microsoft 365 usando Graph API.
+    No usa SMTP (puerto 587) — funciona en Railway plan Hobby.
+
+    Verifica 3 cosas vía HTTPS:
+      1. Token válido  → credenciales Azure correctas
+      2. Exchange Online health → estado oficial del servicio M365
+      3. Buzones activos → que el tenant tiene usuarios con email
+    """
+    import time
+    import requests as req_lib
+    from monitoring.services import get_graph_token
+
     result = {
         "client":   str(client),
         "overall":  "ok",
@@ -192,6 +229,7 @@ def check_m365_graph_health(client) -> dict:
 
     tenant = client.m365_tenant
 
+    # ── 1. Obtener token (valida credenciales Azure) ───────────────────────────
     start = time.monotonic()
     try:
         token = get_graph_token(
@@ -210,10 +248,12 @@ def check_m365_graph_health(client) -> dict:
                                      "error": err_str[:200]}
         result["overall"] = "error"
         result["errors"].append(f"Auth fallida: {err_str[:200]}")
-        return result  
+        return result  # sin token no podemos continuar
 
     headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
 
+    # ── 2. Service Health — estado de Exchange Online ─────────────────────────
+    # Requiere permiso ServiceHealth.Read.All en la app Azure
     start = time.monotonic()
     try:
         resp = req_lib.get(
@@ -236,7 +276,7 @@ def check_m365_graph_health(client) -> dict:
                 if is_healthy:
                     chk_status = "ok"
                 elif is_degraded:
-                    chk_status = "warning"  
+                    chk_status = "warning"  # degradación = advertencia, no error
                 else:
                     chk_status = "error"
 
@@ -248,9 +288,11 @@ def check_m365_graph_health(client) -> dict:
                     "detail":     exchange.get("statusDisplayName", svc_status),
                 }
                 if not is_healthy:
+                    # Solo escalar a error si hay incidente, degradación es solo warning
                     result["overall"] = "error" if is_incident else "warning"
                     result["errors"].append(f"Exchange Online: {svc_status}")
             else:
+                # Endpoint OK pero sin datos de Exchange — permiso insuficiente
                 result["checks"]["exchange_health"] = {
                     "status": "skipped", "ms": health_ms,
                     "label":  "Estado Exchange Online",
@@ -279,6 +321,7 @@ def check_m365_graph_health(client) -> dict:
         result["overall"] = "warning"
         result["errors"].append(f"Service Health error: {e}")
 
+    # ── 3. Verificar que hay usuarios con buzón (mailbox activo) ───────────────
     start = time.monotonic()
     try:
         resp = req_lib.get(
@@ -311,6 +354,7 @@ def check_m365_graph_health(client) -> dict:
             "error":  str(e)[:150],
         }
 
+    # ── 4. Ping ligero a Graph (latencia general M365) ────────────────────────
     start = time.monotonic()
     try:
         resp = req_lib.get(
@@ -337,10 +381,16 @@ def check_m365_graph_health(client) -> dict:
             "label":  "Graph API latencia",
             "error":  str(e)[:150],
         }
+
+    # ── 5. Envío real — sendMail vía Graph API ────────────────────────────────
+    # Requiere permiso Mail.Send en la app Azure
+    # Solo envía email de verificación si el cliente no tiene notify_incidents_only
     start = time.monotonic()
     try:
+        # Usar el email configurado en el tenant M365 para la verificación
+        # Si está vacío, no se envía el email de prueba
         verify_email = getattr(tenant, "verify_email", "").strip()
-        test_recipient = verify_email  
+        test_recipient = verify_email  # vacío = no enviar
         if test_recipient:
             company = getattr(settings, "SENTINEL_COMPANY_NAME", "Sentinel XO")
             from django.utils import timezone as tz
@@ -360,6 +410,7 @@ def check_m365_graph_health(client) -> dict:
                 },
                 "saveToSentItems": "false",
             }
+            # Necesitamos un usuario desde el cual enviar — usamos el primero con licencia
             users_resp = req_lib.get(
                 "https://graph.microsoft.com/v1.0/users?$filter=assignedLicenses/$count ne 0"
                 "&$count=true&$select=id,mail&$top=1",
@@ -369,6 +420,7 @@ def check_m365_graph_health(client) -> dict:
             sender_id = None
             sender_mailbox = getattr(tenant, "sender_mailbox", "").strip()
 
+            # Prioridad 1: buzón configurado explícitamente en el tenant
             if sender_mailbox:
                 lookup = req_lib.get(
                     f"https://graph.microsoft.com/v1.0/users/{sender_mailbox}?$select=id,mail",
@@ -378,6 +430,7 @@ def check_m365_graph_health(client) -> dict:
                     sender_id = lookup.json().get("id")
                     logger.info(f"M365 sendMail usando buzón configurado: {sender_mailbox}")
 
+            # Prioridad 2: primer usuario con licencia (fallback)
             if not sender_id and users_resp.status_code == 200:
                 users_val = users_resp.json().get("value", [])
                 if users_val:
@@ -435,8 +488,11 @@ def check_m365_graph_health(client) -> dict:
         }
         logger.error(f"M365 sendMail error para {client}: {e}")
 
+    # ── 6. Recepción real — leer últimos mensajes del buzón ───────────────────
+    # Requiere permiso Mail.ReadBasic.All en la app Azure
     start = time.monotonic()
     try:
+        # Obtener el primer usuario con licencia
         users_resp = req_lib.get(
             "https://graph.microsoft.com/v1.0/users?$filter=assignedLicenses/$count ne 0"
             "&$count=true&$select=id,mail,displayName&$top=1",
@@ -450,6 +506,7 @@ def check_m365_graph_health(client) -> dict:
             if users_val:
                 user_id    = users_val[0].get("id")
                 user_email = users_val[0].get("mail", "—")
+                # Leer los últimos 5 emails recibidos
                 msgs_resp = req_lib.get(
                     f"https://graph.microsoft.com/v1.0/users/{user_id}/messages"
                     "?$select=receivedDateTime,subject&$top=5&$orderby=receivedDateTime desc",
@@ -460,6 +517,7 @@ def check_m365_graph_health(client) -> dict:
                 if msgs_resp.status_code == 200:
                     messages  = msgs_resp.json().get("value", [])
                     last_recv = messages[0].get("receivedDateTime", "") if messages else None
+                    # Parsear fecha del último email recibido
                     last_recv_str = "—"
                     hours_ago     = None
                     if last_recv:
@@ -468,7 +526,7 @@ def check_m365_graph_health(client) -> dict:
                             dt = datetime.fromisoformat(last_recv.replace("Z", "+00:00"))
                             from django.utils import timezone as dj_tz
                             hours_ago = (dj_tz.now() - dt).total_seconds() / 3600
-                            last_recv_str = dt.strftime("%d/%m %H:%M")
+                            last_recv_str = dj_tz.localtime(dt).strftime("%d/%m %H:%M")
                         except Exception:
                             last_recv_str = last_recv[:16]
 
@@ -513,6 +571,7 @@ def check_m365_graph_health(client) -> dict:
         }
         logger.error(f"M365 recepción error para {client}: {e}")
 
+    # Registrar en SmtpCheck para el historial
     overall_ok = result["overall"] == "ok"
     best_ms = min(
         (v.get("ms", 0) for v in result["checks"].values() if v.get("ms")),
@@ -520,12 +579,14 @@ def check_m365_graph_health(client) -> dict:
     )
     err_summary  = "; ".join(result["errors"])[:500] if result["errors"] else ""
     overall_str  = result["overall"]
+    # "warning" = degradación de servicio MS — no es un fallo nuestro, guardar como "ok"
     smtpcheck_status = "ok" if overall_str in ("ok", "warning") else "error"
     if overall_str == "warning":
         logger.warning(f"M365 advertencia para {client}: {err_summary}")
     elif overall_str == "error":
         logger.error(f"M365 check fallido para {client}: {err_summary}")
 
+    # Guardar detalle de envío y recepción para el KPI
     send_check = result["checks"].get("smtp_send", {})
     recv_check = result["checks"].get("smtp_recv", {})
     SmtpCheck.objects.create(
@@ -546,11 +607,17 @@ def check_m365_graph_health(client) -> dict:
 
     return result
 
+# ── check_m365_smtp (solo verifica Graph API, no SMTP) ───────────────────────
+
 M365_SMTP_HOST = "smtp.office365.com"
 M365_SMTP_PORT = 587
 
 
 def check_m365_smtp(client=None) -> dict:
+    """
+    Verifica Microsoft 365 vía Graph API.
+    El check SMTP a office365.com se omite en Railway (puerto bloqueado).
+    """
     results = {
         "client":  str(client) if client else "Global",
         "smtp":    {"host": M365_SMTP_HOST, "port": M365_SMTP_PORT,
@@ -561,6 +628,7 @@ def check_m365_smtp(client=None) -> dict:
         "errors":  [],
     }
 
+    # Verificar Graph API si el cliente tiene tenant
     if client and hasattr(client, "m365_tenant") and client.m365_tenant.is_active:
         tenant = client.m365_tenant
         start  = time.monotonic()

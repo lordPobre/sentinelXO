@@ -1,27 +1,31 @@
 import logging
-from core.models import Client
 from django.utils import timezone
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.authentication import SessionAuthentication
 from rest_framework.authentication import BasicAuthentication
-from rest_framework.permissions import IsAuthenticated
-from .models import HardwareDevice, TelemetrySnapshot
-from core.alert_engine import evaluate_snapshot
-from .serializers import TelemetryIngestSerializer
+
 
 class CsrfExemptSessionAuthentication(SessionAuthentication):
+    """SessionAuthentication sin verificación CSRF — seguro para endpoints GET de solo lectura."""
     def enforce_csrf(self, request):
-        pass  
+        pass  # no verificar CSRF
+from rest_framework.permissions import IsAuthenticated
+
+from .models import HardwareDevice, TelemetrySnapshot
 
 logger = logging.getLogger("perseus")
 
 
 class TelemetryIngestView(APIView):
+    """
+    POST /api/v1/telemetry/
+    Autenticación propia por agent_token — no usa sesión Django ni DRF Token.
+    """
     authentication_classes = []
     permission_classes = []
-    throttle_classes = []  
+    throttle_classes = []   # el agent_token ya protege este endpoint
 
     def post(self, request):
         auth_header = request.headers.get("Authorization", "")
@@ -37,6 +41,7 @@ class TelemetryIngestView(APIView):
             logger.warning(f"Telemetría con token inválido: {agent_token[:8]}...")
             return Response({"error": "Token inválido"}, status=status.HTTP_401_UNAUTHORIZED)
 
+        from .serializers import TelemetryIngestSerializer
         serializer = TelemetryIngestSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -78,12 +83,16 @@ class TelemetryIngestView(APIView):
             device.hostname = data["hostname"]
             update_fields.append("hostname")
         device.save(update_fields=update_fields)
+
+        # Limpiar snapshots de más de 30 días
         cutoff = timezone.now() - timezone.timedelta(days=30)
         TelemetrySnapshot.objects.filter(device=device, captured_at__lt=cutoff).delete()
 
         logger.info(f"Telemetría recibida: {device.display_name} ({device.client})")
 
+        # Evaluar reglas de alerta en background (no bloquea la respuesta)
         try:
+            from core.alert_engine import evaluate_snapshot
             snap = TelemetrySnapshot.objects.filter(device=device).order_by("-captured_at").first()
             if snap:
                 fired = evaluate_snapshot(snap)
@@ -96,6 +105,7 @@ class TelemetryIngestView(APIView):
 
 
 class DeviceStatusView(APIView):
+    """GET /api/v1/devices/<token>/status/ — verificación de conectividad del agente"""
     authentication_classes = []
     permission_classes = []
     throttle_classes = []
@@ -109,6 +119,10 @@ class DeviceStatusView(APIView):
 
 
 class DeviceLiveView(APIView):
+    """
+    GET /api/v1/devices/<device_id>/live/
+    Snapshot más reciente de un dispositivo. Usa sesión Django.
+    """
     authentication_classes = [CsrfExemptSessionAuthentication]
     permission_classes = [IsAuthenticated]
     throttle_classes = []
@@ -153,11 +167,17 @@ class DeviceLiveView(APIView):
 
 
 class ClientLiveSummaryView(APIView):
+    """
+    GET /api/v1/clients/<client_id>/live/
+    Resumen en tiempo real de todos los dispositivos de un cliente.
+    Usa SessionAuthentication para que el fetch() del dashboard funcione.
+    """
     authentication_classes = [CsrfExemptSessionAuthentication]
     permission_classes = [IsAuthenticated]
     throttle_classes = []
 
     def get(self, request, client_id):
+        from core.models import Client
         try:
             if request.user.is_staff:
                 client = Client.objects.get(pk=client_id)
@@ -194,6 +214,10 @@ class ClientLiveSummaryView(APIView):
 
 
 class DeviceHistoryView(APIView):
+    """
+    GET /api/v1/devices/<device_id>/history/?limit=120
+    Últimos N snapshots de un dispositivo para los gráficos históricos.
+    """
     authentication_classes = [CsrfExemptSessionAuthentication]
     permission_classes = [IsAuthenticated]
     throttle_classes = []
@@ -212,7 +236,7 @@ class DeviceHistoryView(APIView):
         snapshots = list(
             device.snapshots.order_by("-captured_at")[:limit]
         )
-        snapshots.reverse()  
+        snapshots.reverse()  # cronológico
 
         snap = snapshots[-1] if snapshots else None
 
@@ -239,7 +263,7 @@ class DeviceHistoryView(APIView):
             } if snap else None,
             "history": [
                 {
-                    "t":   s.captured_at.strftime("%H:%M:%S"),
+                    "t":   timezone.localtime(s.captured_at).strftime("%H:%M:%S"),
                     "cpu": s.cpu_percent,
                     "ram": s.ram_used_percent,
                 }

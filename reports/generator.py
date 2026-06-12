@@ -228,7 +228,7 @@ def build_report_pdf(client, year: int, month: int) -> tuple[bytes, dict]:
         info_cell("CLIENTE",     client.company_name, size=13),
         info_cell("CONTACTO",    client.contact_email, size=9, bold=False),
         info_cell("PLAN ACTIVO", client.get_plan_display(), size=9),
-        info_cell("GENERADO",    timezone.now().strftime("%d/%m/%Y %H:%M"),
+        info_cell("GENERADO",    timezone.localtime(timezone.now()).strftime("%d/%m/%Y %H:%M"),
                   size=9, bold=False),
     ]], colWidths=[CW*0.32, CW*0.26, CW*0.20, CW*0.22])
     cli.setStyle(TableStyle([
@@ -372,7 +372,7 @@ def build_report_pdf(client, year: int, month: int) -> tuple[bytes, dict]:
                      th("Severidad"), th("Equipo Afectado")]]
         for inc in incidents_res[:20]:
             inc_rows.append([
-                td(inc.resolved_at.strftime("%d/%m/%y") if inc.resolved_at else "—",
+                td(timezone.localtime(inc.resolved_at).strftime("%d/%m/%y") if inc.resolved_at else "—",
                    color=C_SLATE5),
                 td(inc.title[:65], bold=True),
                 pill_cell(inc.get_severity_display(),

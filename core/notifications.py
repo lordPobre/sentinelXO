@@ -33,7 +33,16 @@ CATEGORY_LABELS = {
 
 
 def _get_recipients(incident) -> list[str]:
+    """
+    Determina los destinatarios según la categoría del incidente.
+    - Hardware / Red → contacto del cliente (usuario del equipo)
+    - Dominio / Email / Licencia → contacto del cliente (jefe / responsable TI)
+    Siempre incluye el email del cliente.
+    """
+    # Usar el método centralizado del modelo — incluye contact_email + alert_emails
     recipients = list(incident.client.get_alert_recipients())
+
+    # Usuarios del portal también reciben si es incidente de hardware
     if incident.device and incident.category == "hardware":
         for user in incident.client.portal_users.filter(email__isnull=False):
             if user.email and user.email not in recipients:
@@ -56,8 +65,9 @@ def _build_body(incident) -> str:
     support      = getattr(settings, "SENTINEL_SUPPORT_EMAIL", "soporte@sentinelxo.dev")
     category     = CATEGORY_LABELS.get(incident.category, incident.category)
     severity     = SEVERITY_LABELS.get(incident.severity, incident.severity)
-    created_at   = incident.created_at.strftime("%d/%m/%Y a las %H:%M")
+    created_at   = timezone.localtime(incident.created_at).strftime("%d/%m/%Y a las %H:%M")
 
+    # Detalle específico según categoría
     detail_lines = []
     if incident.category == "hardware" and incident.device:
         detail_lines += [
@@ -66,6 +76,7 @@ def _build_body(incident) -> str:
             f"  Último contacto: {incident.device.last_seen.strftime('%d/%m/%Y %H:%M') if incident.device.last_seen else '—'}",
         ]
     elif incident.category == "domain":
+        # Buscar dominios con problemas del cliente
         domains = incident.client.domains.filter(
             status__in=["critical", "warning", "expired"]
         )
@@ -142,6 +153,10 @@ def models_f_total():
 
 
 def notify_incident_created(incident) -> bool:
+    """
+    Envía notificación por email al crear un incidente.
+    Retorna True si el email se envió correctamente.
+    """
     if not incident.notify_email:
         logger.info(f"Notificación desactivada para incidente #{incident.pk}")
         return False
@@ -171,6 +186,7 @@ def notify_incident_created(incident) -> bool:
         return success
 
     except Exception as e:
+        # Fallback a send_mail si emailmon no está disponible
         try:
             from django.core.mail import send_mail
             send_mail(subject, body, settings.DEFAULT_FROM_EMAIL,
@@ -183,13 +199,16 @@ def notify_incident_created(incident) -> bool:
 
 
 def notify_incident_resolved(incident) -> bool:
+    """
+    Envía notificación de resolución al cerrar un incidente.
+    """
     recipients = _get_recipients(incident)
     if not recipients:
         return False
 
     company = getattr(settings, "SENTINEL_COMPANY_NAME", "Sentinel XO")
     support = getattr(settings, "SENTINEL_SUPPORT_EMAIL", "soporte@sentinelxo.dev")
-    resolved_at = incident.resolved_at.strftime("%d/%m/%Y a las %H:%M") if incident.resolved_at else "—"
+    resolved_at = timezone.localtime(incident.resolved_at).strftime("%d/%m/%Y a las %H:%M") if incident.resolved_at else "—"
 
     subject = f"✅ [{company}] Incidente resuelto: {incident.title[:60]}"
     body = f"""Estimado equipo de {incident.client.company_name},
