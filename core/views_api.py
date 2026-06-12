@@ -105,10 +105,18 @@ class TelemetryIngestView(APIView):
         try:
             security_snapshot = data.get("security_snapshot")
             if security_snapshot:
+                logger.info(
+                    f"Huella de seguridad recibida de {device.display_name}: "
+                    f"{len(security_snapshot.get('local_admins', []))} admins, "
+                    f"{len(security_snapshot.get('startup_programs', []))} programas de inicio, "
+                    f"{len(security_snapshot.get('scheduled_tasks', []))} tareas"
+                )
                 from core.security import process_security_snapshot, notify_security_anomalies
                 anomalies = process_security_snapshot(device, security_snapshot)
                 if anomalies:
                     notify_security_anomalies(device, anomalies)
+                else:
+                    logger.info(f"Huella de seguridad sin cambios para {device.display_name}")
         except Exception as e:
             logger.error(f"Error procesando huella de seguridad: {e}")
 

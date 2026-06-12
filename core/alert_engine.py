@@ -161,7 +161,7 @@ def _create_incident_from_alert(event):
     unit  = METRIC_UNITS.get(event.metric, "")
     sev   = "critical" if event.severity == "critical" else "high"
 
-    MaintenanceIncident.objects.create(
+    incident = MaintenanceIncident.objects.create(
         client=event.device.client,
         device=event.device,
         title=f"Alerta automática: {label} al {event.value:.1f}{unit} en {event.device.display_name}",
@@ -176,6 +176,19 @@ def _create_incident_from_alert(event):
             f"Hora: {timezone.localtime(event.fired_at).strftime('%d/%m/%Y %H:%M:%S')}"
         ),
     )
+
+    # Generar diagnóstico IA en background (no bloquea el motor de alertas)
+    try:
+        import threading
+        from core.views_ai import diagnose_incident
+        def run_diagnosis():
+            diag = diagnose_incident(incident)
+            if diag:
+                incident.ai_diagnosis = diag
+                incident.save(update_fields=["ai_diagnosis"])
+        threading.Thread(target=run_diagnosis, daemon=True).start()
+    except Exception as e:
+        logger.warning(f"Error iniciando diagnóstico IA para incidente automático: {e}")
 
 
 def evaluate_snapshot(snapshot) -> list:
@@ -314,7 +327,7 @@ Saludos,
     # Crear incidente automático
     try:
         from core.models import MaintenanceIncident
-        MaintenanceIncident.objects.create(
+        incident = MaintenanceIncident.objects.create(
             client=client,
             title=f"Problema SMTP detectado: {smtp_host}",
             severity="high",
@@ -322,6 +335,19 @@ Saludos,
             notify_email=False,
             description=f"Error detectado: {error_msg[:300]}\nServidor: {smtp_host}",
         )
+
+        # Generar diagnóstico IA en background
+        try:
+            import threading
+            from core.views_ai import diagnose_incident
+            def run_diagnosis():
+                diag = diagnose_incident(incident)
+                if diag:
+                    incident.ai_diagnosis = diag
+                    incident.save(update_fields=["ai_diagnosis"])
+            threading.Thread(target=run_diagnosis, daemon=True).start()
+        except Exception as e2:
+            logger.warning(f"Error iniciando diagnóstico IA para incidente SMTP: {e2}")
     except Exception as e:
         logger.error(f"Error creando incidente SMTP: {e}")
 
