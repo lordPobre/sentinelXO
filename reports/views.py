@@ -3,8 +3,7 @@ from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse
 from django.contrib import messages
 from django.utils import timezone
-from core.models import Client, MonthlyReport,HardwareDevice
-from .device_report import build_device_report_pdf
+from core.models import Client, MonthlyReport
 from .generator import build_report_pdf
 
 
@@ -28,6 +27,8 @@ def report_download(request, report_id):
 
 @login_required
 def report_generate_now(request, client_id):
+    """Genera un reporte manualmente (GET o POST). Genera sincrónicamente y redirige al detalle."""
+    from django.utils import timezone
     client = get_object_or_404(Client, pk=client_id)
     now = timezone.now()
     try:
@@ -50,8 +51,17 @@ def report_generate_now(request, client_id):
 
 @login_required
 def device_report_download(request, device_id):
+    """
+    GET /reports/device/<device_id>/?year=2026&month=6&granularity=daily
+    Genera y descarga el reporte PDF individual de un dispositivo.
+    """
+    from django.utils import timezone
+    from core.models import HardwareDevice
+    from .device_report import build_device_report_pdf
+
     device = get_object_or_404(HardwareDevice, pk=device_id, is_active=True)
 
+    # Solo staff o usuarios del portal del cliente
     if not request.user.is_staff:
         if not request.user.client_portals.filter(pk=device.client_id).exists():
             from django.http import HttpResponseForbidden
@@ -79,4 +89,28 @@ def device_report_download(request, device_id):
     )
     response = HttpResponse(pdf_bytes, content_type="application/pdf")
     response["Content-Disposition"] = f'attachment; filename="{filename}"' 
+    return response
+
+
+@login_required
+def security_report_download(request, client_id):
+    """GET /reports/security/<client_id>/ — descarga el PDF de postura de seguridad."""
+    from .security_report import build_security_report_pdf
+
+    client = get_object_or_404(Client, pk=client_id)
+
+    if not request.user.is_staff:
+        if not request.user.client_portals.filter(pk=client_id).exists():
+            from django.http import HttpResponseForbidden
+            return HttpResponseForbidden("Sin acceso")
+
+    try:
+        pdf_bytes = build_security_report_pdf(client)
+    except Exception as e:
+        return HttpResponse(f"Error generando reporte de seguridad: {e}", status=500)
+
+    now = timezone.now()
+    filename = f"reporte_seguridad_{client.company_name.replace(' ', '_')}_{now.strftime('%Y%m%d')}.pdf"
+    response = HttpResponse(pdf_bytes, content_type="application/pdf")
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
     return response

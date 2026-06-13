@@ -45,6 +45,12 @@
         {% endif %}
       </div>
     </div>
+    <div style="display:flex;gap:8px;">
+    <a href="{% url 'reports:security-report' client.id %}" target="_blank"
+       class="btn-ghost" style="font-size:11px;padding:6px 14px;display:inline-flex;align-items:center;gap:6px;text-decoration:none;">
+      <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 10v6m0 0l-3-3m3 3l3-3M4 7V4a1 1 0 011-1h10l5 5v13a1 1 0 01-1 1H5a1 1 0 01-1-1V7z"/></svg>
+      PDF
+    </a>
     <button class="btn-primary" style="font-size:11px;padding:6px 14px;"
             hx-post="{% url 'dashboard:security-check' client.id %}"
             hx-target="#sec-status-{{ client.id }}"
@@ -58,6 +64,7 @@
       <span class="htmx-idle">↻</span>
       Verificar
     </button>
+    </div>
   </div>
 
   <div id="sec-status-{{ client.id }}">
