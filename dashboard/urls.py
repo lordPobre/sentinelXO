@@ -12,7 +12,7 @@ urlpatterns = [
     path("admin/overview/",                         views.admin_overview,        name="admin-overview"),
     path("admin/clients/",                          views.admin_clients,         name="admin-clients"),
     path("admin/clients/<uuid:client_id>/",         views.admin_client_detail,   name="admin-client-detail"),
-    path("admin/audit/",                            views.audit_log_view,        name="audit-log"),
+    path("admin/audit/",                            core_views.audit_log_view,        name="audit-log"),
     # Portal cliente
     path("select/",                                 views.client_select,         name="client-select"),
     path("portal/<uuid:client_id>/",                views.client_portal,         name="client-portal"),
