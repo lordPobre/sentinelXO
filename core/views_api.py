@@ -5,16 +5,17 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.authentication import SessionAuthentication
 from rest_framework.authentication import BasicAuthentication
+from django.conf import settings
+from rest_framework.permissions import IsAuthenticated
+from .models import HardwareDevice, TelemetrySnapshot
+from core.throttles import TelemetryRateThrottle
+from core.models import Client
 
 
 class CsrfExemptSessionAuthentication(SessionAuthentication):
     """SessionAuthentication sin verificación CSRF — seguro para endpoints GET de solo lectura."""
     def enforce_csrf(self, request):
         pass  # no verificar CSRF
-from rest_framework.permissions import IsAuthenticated
-
-from .models import HardwareDevice, TelemetrySnapshot
-
 logger = logging.getLogger("perseus")
 
 
@@ -28,7 +29,7 @@ class TelemetryIngestView(APIView):
     throttle_classes = ["core.throttles.TelemetryRateThrottle"]
 
     def get_throttles(self):
-        from core.throttles import TelemetryRateThrottle
+        
         return [TelemetryRateThrottle()]
 
     def post(self, request):
@@ -214,7 +215,6 @@ class ClientLiveSummaryView(APIView):
     throttle_classes = []
 
     def get(self, request, client_id):
-        from core.models import Client
         try:
             if request.user.is_staff:
                 client = Client.objects.get(pk=client_id)
