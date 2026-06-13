@@ -270,3 +270,18 @@ def device_detail_live(request, device_id):
         "snapshots": snapshots,
         "section": "realtime",
     })
+
+
+
+@login_required
+def audit_log_view(request):
+    """Vista del log de auditoría — solo staff."""
+    if not request.user.is_staff:
+        from django.http import HttpResponseForbidden
+        return HttpResponseForbidden()
+    from core.models import AuditLog
+    logs = AuditLog.objects.select_related("user").order_by("-timestamp")[:200]
+    return render(request, "dashboard/audit_log.html", {
+        "section": "audit",
+        "logs":    logs,
+    })
