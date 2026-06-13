@@ -1,0 +1,228 @@
+{% extends "base/layout.html" %}
+{% block title %}Seguridad — {{ client.company_name }} — Sentinel XO{% endblock %}
+{% block page_title %}{{ client.company_name }}{% endblock %}
+{% block page_subtitle %}<div class="mono" style="font-size:10px;color:var(--text-3);margin-top:1px;">Postura de Seguridad</div>{% endblock %}
+
+{% block content %}
+
+<div style="margin-bottom:14px;">
+  <a href="{% url 'dashboard:security' %}" class="btn-ghost" style="font-size:11px;padding:6px 12px;display:inline-flex;align-items:center;gap:6px;text-decoration:none;">
+    <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+    Volver a Seguridad
+  </a>
+</div>
+
+<div class="chart-card" style="margin-bottom:14px;">
+
+  <!-- Header cliente -->
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px;">
+    <div style="display:flex;align-items:center;gap:10px;">
+      <div style="width:34px;height:34px;border-radius:8px;background:rgba(37,99,235,0.12);
+                  display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;
+                  color:#60a5fa;flex-shrink:0;">
+        {{ client.company_name|slice:":2"|upper }}
+      </div>
+      <div>
+        <div style="font-size:13px;font-weight:600;color:#f1f5f9;">{{ client.company_name }}</div>
+        {% if latest %}
+        <div class="mono" style="font-size:10px;color:var(--text-4);">
+          Última verificación: {{ latest.checked_at|date:"d/m H:i" }}
+        </div>
+        {% else %}
+        <div class="mono" style="font-size:10px;color:var(--text-4);">Sin verificaciones aún</div>
+        {% endif %}
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;">
+    <a href="{% url 'reports:security-report' client.id %}" target="_blank"
+       class="btn-ghost" style="font-size:11px;padding:6px 14px;display:inline-flex;align-items:center;gap:6px;text-decoration:none;">
+      <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 10v6m0 0l-3-3m3 3l3-3M4 7V4a1 1 0 011-1h10l5 5v13a1 1 0 01-1 1H5a1 1 0 01-1-1V7z"/></svg>
+      PDF
+    </a>
+    <button class="btn-primary" style="font-size:11px;padding:6px 14px;"
+            hx-post="{% url 'dashboard:security-check' client.id %}"
+            hx-target="#sec-status-{{ client.id }}"
+            hx-swap="innerHTML"
+            hx-indicator="#sec-spinner-{{ client.id }}">
+      <span id="sec-spinner-{{ client.id }}" class="htmx-indicator">
+        <svg width="11" height="11" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="animation:spin 1s linear infinite;">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+        </svg>
+      </span>
+      <span class="htmx-idle">↻</span>
+      Verificar
+    </button>
+    </div>
+  </div>
+
+  {% if not m365_configured and not latest %}
+  <div style="padding:14px;margin-bottom:14px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.05);border-radius:10px;font-size:11px;color:var(--text-4);">
+    Este cliente no tiene un Tenant M365 configurado. El Secure Score y la cobertura MFA no estarán disponibles,
+    pero igual puedes ver anomalías de seguridad detectadas por el agente y certificados SSL en el reporte PDF.
+  </div>
+  {% endif %}
+
+  <div id="sec-status-{{ client.id }}">
+    {% include "core/partials/security_status.html" %}
+  </div>
+
+  <!-- Anomalías de seguridad (vía agente) -->
+  <div style="margin-top:14px;padding-top:14px;border-top:1px solid rgba(255,255,255,0.05);">
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">
+      <span style="font-size:13px;">🕵️</span>
+      <span style="font-size:10px;font-weight:600;color:var(--text-4);letter-spacing:0.05em;text-transform:uppercase;">
+        Anomalías de Seguridad (Agente)
+      </span>
+      {% if anomalies_open %}
+      <span class="badge badge-crit" style="font-size:8px;padding:1px 6px;">{{ anomalies_open }} sin revisar</span>
+      {% endif %}
+    </div>
+    {% if anomalies %}
+      {% for anomaly in anomalies %}
+        {% include "core/partials/security_anomaly_row.html" %}
+      {% endfor %}
+    {% else %}
+    <div style="padding:14px;text-align:center;font-size:11px;color:var(--text-4);">
+      Sin anomalías detectadas. El agente revisa administradores locales, programas de inicio
+      y tareas programadas cada 5 minutos.
+    </div>
+    {% endif %}
+  </div>
+
+  {% if latest %}
+  <div style="margin-top:14px;padding-top:14px;border-top:1px solid rgba(255,255,255,0.05);">
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">
+      <span style="font-size:13px;">🧠</span>
+      <span style="font-size:10px;font-weight:600;color:#60a5fa;letter-spacing:0.05em;text-transform:uppercase;">
+        Análisis de Seguridad IA
+      </span>
+    </div>
+    <div id="sec-ai-{{ client.id }}">
+      {% if latest.ai_summary %}
+        {% include "core/partials/security_ai_panel.html" with latest=latest %}
+      {% else %}
+      <div style="padding:16px;text-align:center;">
+        <button class="btn-primary" style="font-size:12px;"
+                hx-post="{% url 'dashboard:security-ai-analysis' client.id %}"
+                hx-target="#sec-ai-{{ client.id }}" hx-swap="innerHTML"
+                hx-indicator="#sec-ai-spinner-{{ client.id }}">
+          <span id="sec-ai-spinner-{{ client.id }}" class="htmx-indicator">
+            <svg width="11" height="11" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="animation:spin 1s linear infinite;">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+            </svg>
+          </span>
+          <span class="htmx-idle">🧠</span>
+          Generar reporte de seguridad
+        </button>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+<style>
+@keyframes spin { to { transform: rotate(360deg); } }
+.htmx-idle { display: inline-flex; align-items: center; gap:4px; }
+.htmx-request .htmx-idle { display: none; }
+.htmx-indicator { display: none; }
+.htmx-request .htmx-indicator { display: inline-flex; align-items: center; }
+
+/* ── Tarjetas de Anomalías / Hallazgos — diseño responsive ──────────────── */
+.sec-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  margin-bottom: 8px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.05);
+  background: rgba(255,255,255,0.02);
+}
+.sec-card--critical { background: rgba(239,68,68,0.06); border-color: rgba(239,68,68,0.15); }
+.sec-card--warning  { background: rgba(245,158,11,0.06); border-color: rgba(245,158,11,0.15); }
+.sec-card--info     { background: rgba(37,99,235,0.05); border-color: rgba(37,99,235,0.12); }
+.sec-card--ack      { background: rgba(255,255,255,0.015); border-color: rgba(255,255,255,0.03); opacity: 0.6; }
+
+.sec-card-header {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+@media (min-width: 640px) {
+  .sec-card-header {
+    flex-direction: row;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+  }
+}
+
+.sec-card-main {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  min-width: 0;
+  flex: 1;
+}
+.sec-card-icon { font-size: 15px; flex-shrink: 0; margin-top: 1px; line-height: 1.4; }
+.sec-card-body { min-width: 0; flex: 1; }
+.sec-card-title {
+  font-size: 12px; font-weight: 600; color: #f1f5f9;
+  line-height: 1.4; word-break: break-word;
+}
+.sec-card-title.is-ack { text-decoration: line-through; opacity: 0.7; }
+.sec-card-desc {
+  font-size: 11px; color: var(--text-3); line-height: 1.5;
+  margin-top: 4px; word-break: break-word;
+}
+
+.sec-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+@media (min-width: 640px) {
+  .sec-card-meta {
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 6px;
+  }
+}
+
+.sec-card-code {
+  font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+  font-size: 10.5px;
+  line-height: 1.6;
+  color: #94a3b8;
+  background: rgba(0,0,0,0.25);
+  border: 1px solid rgba(255,255,255,0.04);
+  border-radius: 6px;
+  padding: 8px 10px;
+  overflow-x: auto;
+  white-space: nowrap;
+  -webkit-overflow-scrolling: touch;
+}
+.sec-card-code::-webkit-scrollbar { height: 4px; }
+.sec-card-code::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+
+.sec-card-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 8px;
+  margin-top: 2px;
+  border-top: 1px solid rgba(255,255,255,0.04);
+}
+</style>
+<script>
+// Recargar la página completa después de verificar para actualizar timestamps y cards
+document.body.addEventListener("htmx:afterSwap", function(evt) {
+  if (evt.detail.target && evt.detail.target.id && evt.detail.target.id.startsWith("sec-status-")) {
+    setTimeout(function() {
+      window.location.reload();
+    }, 800);
+  }
+});
+</script>
+{% endblock %}
