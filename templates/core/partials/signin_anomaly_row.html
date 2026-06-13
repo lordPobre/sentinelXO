@@ -1,0 +1,45 @@
+<div id="signin-anomaly-{{ anomaly.id }}"
+     class="sec-card {% if anomaly.status == 'acknowledged' %}sec-card--ack{% elif anomaly.severity == 'critical' %}sec-card--critical{% elif anomaly.severity == 'warning' %}sec-card--warning{% else %}sec-card--info{% endif %}">
+
+  <div class="sec-card-header">
+    <div class="sec-card-main">
+      <span class="sec-card-icon">
+        {% if anomaly.anomaly_type == 'impossible_travel' %}🚨
+        {% elif anomaly.anomaly_type == 'risky_signin' %}⚠️
+        {% else %}🌍{% endif %}
+      </span>
+      <div class="sec-card-body">
+        <div class="sec-card-title {% if anomaly.status == 'acknowledged' %}is-ack{% endif %}">
+          {{ anomaly.get_anomaly_type_display }}
+        </div>
+        <div class="sec-card-desc">{{ anomaly.detail_summary }}</div>
+      </div>
+    </div>
+
+    <div class="sec-card-meta">
+      <span class="mono" style="font-size:9px;color:var(--text-4);">{{ anomaly.detected_at|date:"d/m H:i" }}</span>
+      {% if anomaly.status == 'open' %}
+        <span class="badge {% if anomaly.severity == 'critical' %}badge-crit{% elif anomaly.severity == 'warning' %}badge-warn{% else %}badge-gray{% endif %}"
+              style="font-size:8px;padding:1px 6px;">
+          {{ anomaly.get_severity_display|upper }}
+        </span>
+      {% else %}
+        <span class="badge badge-gray" style="font-size:8px;padding:1px 6px;">Revisada</span>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if anomaly.detail_code %}
+  <div class="sec-card-code">{{ anomaly.detail_code }}</div>
+  {% endif %}
+
+  {% if anomaly.status == 'open' %}
+  <div class="sec-card-footer">
+    <button class="btn-ghost" style="font-size:10px;padding:3px 10px;"
+            hx-post="{% url 'dashboard:signin-anomaly-ack' anomaly.id %}"
+            hx-target="#signin-anomaly-{{ anomaly.id }}" hx-swap="outerHTML">
+      ✓ Marcar como revisada
+    </button>
+  </div>
+  {% endif %}
+</div>

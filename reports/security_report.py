@@ -148,7 +148,7 @@ _PRIORITY_LABELS = {"baja": "BAJA", "media": "MEDIA", "alta": "ALTA", "critica":
 # ── Función principal ────────────────────────────────────────────────────────
 def build_security_report_pdf(client) -> bytes:
     from django.conf import settings
-    from core.models import SecurityCheck, SecurityAnomalyEvent
+    from core.models import SecurityCheck, SecurityAnomalyEvent, SignInAnomalyEvent
 
     company = getattr(settings, "SENTINEL_COMPANY_NAME", "Sentinel XO")
     now = timezone.localtime(timezone.now())
@@ -158,6 +158,9 @@ def build_security_report_pdf(client) -> bytes:
     anomalies = list(SecurityAnomalyEvent.objects.filter(
         device__client=client
     ).select_related("device").order_by("-detected_at")[:50])
+    signin_anomalies = list(SignInAnomalyEvent.objects.filter(
+        client=client
+    ).order_by("-detected_at")[:50])
 
     ai = latest.ai_summary if (latest and latest.ai_summary) else None
 
@@ -437,6 +440,33 @@ def build_security_report_pdf(client) -> bytes:
         story.append(Paragraph(
             "No se han detectado anomalías de seguridad en los dispositivos de este cliente.",
             ps("noanom", fontSize=9, textColor=C_SLATE5)))
+
+    # ── INICIOS DE SESIÓN SOSPECHOSOS (M365) ─────────────────────────────────
+    if signin_anomalies:
+        story.append(Spacer(1, 18))
+        story += section_header("Inicios de Sesión Sospechosos (M365)",
+                                 "Países nuevos, viaje imposible y sign-ins riesgosos detectados")
+        rows = [[th("FECHA"), th("TIPO"), th("DETALLE"), th("ESTADO")]]
+        for a in signin_anomalies:
+            sev_key = _severity_pill_key(a.severity)
+            estado_pill = pill_cell("REVISADA", "green") if a.status == "acknowledged" \
+                else pill_cell(_SEVERITY_LABELS.get(a.severity, "INFO"), sev_key)
+            rows.append([
+                td(timezone.localtime(a.detected_at).strftime("%d/%m/%Y %H:%M"), size=8),
+                td(a.get_anomaly_type_display(), size=8),
+                td(a.detail_summary, size=8, color=C_SLATE5),
+                estado_pill,
+            ])
+        t = Table(rows, colWidths=[CW*0.15, CW*0.20, CW*0.45, CW*0.20], repeatRows=1)
+        t.setStyle(TableStyle(TH_STYLE + [("ALIGN", (3,0), (3,-1), "CENTER")]))
+        story.append(t)
+
+        open_count = sum(1 for a in signin_anomalies if a.status == "open")
+        story.append(Spacer(1, 8))
+        story.append(Paragraph(
+            f"<b>{open_count}</b> anomalía(s) sin revisar de un total de <b>{len(signin_anomalies)}</b> "
+            f"registradas (últimas 50).",
+            ps("signin_summary", fontSize=8.5, textColor=C_SLATE5)))
 
     # ── Build ────────────────────────────────────────────────────────────────
     doc.build(story, onFirstPage=footer_cb, onLaterPages=footer_cb)

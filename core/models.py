@@ -296,6 +296,12 @@ class M365Tenant(models.Model):
                   "Ej: it@vcchile.cl — debe ser un usuario con licencia Exchange activa."
     )
 
+    # Monitoreo de inicios de sesión sospechosos
+    known_countries   = models.JSONField("Países conocidos", default=list, blank=True,
+                                          help_text="Países desde los que se ha iniciado sesión "
+                                                     "anteriormente (baseline). Se actualiza automáticamente.")
+    last_signin_check = models.DateTimeField("Última revisión de inicios de sesión", null=True, blank=True)
+
     class Meta:
         verbose_name = "Tenant M365"
         verbose_name_plural = "Tenants M365"
@@ -710,3 +716,50 @@ class AuditLog(models.Model):
             )
         except Exception:
             pass  # Nunca fallar por logging
+
+class SignInAnomalyEvent(models.Model):
+    """Inicio de sesión M365 sospechoso detectado vía Microsoft Graph (/auditLogs/signIns)."""
+
+    TYPE_CHOICES = [
+        ("new_country",      "Inicio de sesión desde nuevo país"),
+        ("impossible_travel","Viaje imposible"),
+        ("risky_signin",     "Inicio de sesión riesgoso (Microsoft)"),
+    ]
+    SEVERITY_CHOICES = [
+        ("info",     "Informativa"),
+        ("warning",  "Advertencia"),
+        ("critical", "Crítica"),
+    ]
+    STATUS_CHOICES = [
+        ("open",         "Abierta"),
+        ("acknowledged", "Revisada"),
+    ]
+
+    client       = models.ForeignKey(Client, on_delete=models.CASCADE,
+                                     related_name="signin_anomalies", verbose_name="Cliente")
+    anomaly_type = models.CharField("Tipo", max_length=20, choices=TYPE_CHOICES)
+    severity     = models.CharField("Severidad", max_length=10, choices=SEVERITY_CHOICES, default="warning")
+    status       = models.CharField("Estado", max_length=12, choices=STATUS_CHOICES, default="open")
+    detail       = models.CharField("Detalle", max_length=400)
+    detected_at  = models.DateTimeField("Detectada", auto_now_add=True)
+    notified     = models.BooleanField("Email enviado", default=False)
+
+    class Meta:
+        verbose_name = "Anomalía de inicio de sesión"
+        verbose_name_plural = "Anomalías de inicio de sesión"
+        ordering = ["-detected_at"]
+
+    def __str__(self):
+        return f"[{self.severity.upper()}] {self.client} — {self.get_anomaly_type_display()}: {self.detail[:50]}"
+
+    @property
+    def detail_summary(self):
+        if "→" in self.detail:
+            return self.detail.split("→", 1)[0].strip()
+        return self.detail
+
+    @property
+    def detail_code(self):
+        if "→" in self.detail:
+            return self.detail.split("→", 1)[1].strip()
+        return None

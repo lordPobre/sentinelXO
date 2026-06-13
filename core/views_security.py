@@ -39,13 +39,17 @@ def security_dashboard(request):
         anomalies_open = SecurityAnomalyEvent.objects.filter(
             device__client=client, status="open"
         ).count()
+        from core.models import SignInAnomalyEvent
+        signin_anomalies_open = SignInAnomalyEvent.objects.filter(
+            client=client, status="open"
+        ).count()
         m365_configured = bool(getattr(client, "m365_tenant", None) and client.m365_tenant.is_active)
         ai = latest.ai_summary if (latest and latest.ai_summary) else None
 
         clients_security.append({
             "client":           client,
             "latest":           latest,
-            "anomalies_open":   anomalies_open,
+            "anomalies_open":   anomalies_open + signin_anomalies_open,
             "m365_configured":  m365_configured,
             "ai_risk":          ai.get("nivel_riesgo") if ai else None,
         })
@@ -73,12 +77,19 @@ def security_client_detail(request, client_id):
         device__client=client
     ).select_related("device").order_by("-detected_at")[:20]
 
+    from core.models import SignInAnomalyEvent
+    signin_anomalies = SignInAnomalyEvent.objects.filter(
+        client=client
+    ).order_by("-detected_at")[:20]
+
     return render(request, "core/security_client_detail.html", {
         "section":        "security",
         "client":         client,
         "latest":         latest,
         "anomalies":      anomalies,
         "anomalies_open": sum(1 for a in anomalies if a.status == "open"),
+        "signin_anomalies":      signin_anomalies,
+        "signin_anomalies_open": sum(1 for a in signin_anomalies if a.status == "open"),
         "m365_configured": bool(getattr(client, "m365_tenant", None) and client.m365_tenant.is_active),
     })
 
@@ -109,7 +120,7 @@ def security_check_now(request, client_id):
 
 @login_required
 def security_anomaly_acknowledge(request, anomaly_id):
-    """POST — marca una anomalía de seguridad como revisada."""
+    """POST — marca una anomalía de seguridad (agente) como revisada."""
     from core.models import SecurityAnomalyEvent
 
     anomaly = get_object_or_404(SecurityAnomalyEvent, pk=anomaly_id)
@@ -124,6 +135,25 @@ def security_anomaly_acknowledge(request, anomaly_id):
         anomaly.save(update_fields=["status"])
 
     return render(request, "core/partials/security_anomaly_row.html", {"anomaly": anomaly})
+
+
+@login_required
+def signin_anomaly_acknowledge(request, anomaly_id):
+    """POST — marca una anomalía de inicio de sesión (M365) como revisada."""
+    from core.models import SignInAnomalyEvent
+
+    anomaly = get_object_or_404(SignInAnomalyEvent, pk=anomaly_id)
+
+    if not request.user.is_staff:
+        portal = request.user.client_portals.filter(pk=anomaly.client_id).first()
+        if not portal:
+            return HttpResponseForbidden()
+
+    if request.method == "POST":
+        anomaly.status = "acknowledged"
+        anomaly.save(update_fields=["status"])
+
+    return render(request, "core/partials/signin_anomaly_row.html", {"anomaly": anomaly})
 
 
 @login_required

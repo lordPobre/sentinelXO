@@ -280,3 +280,37 @@ def backup_database():
         except Exception:
             pass
         return {"status": "error", "reason": str(e)}
+
+
+@shared_task(name="core.check_signin_anomalies_all")
+def check_signin_anomalies_all():
+    """
+    Revisa los inicios de sesión M365 recientes de todos los clientes con
+    Tenant M365 activo, detecta anomalías (países nuevos, viaje imposible,
+    sign-ins riesgosos) y envía notificaciones por email.
+
+    Pensada para ejecutarse cada 30-60 minutos vía Celery Beat.
+    """
+    from core.models import Client
+    from core.security import check_signin_anomalies, notify_signin_anomalies
+
+    clients = Client.objects.filter(is_active=True, m365_tenant__is_active=True)
+
+    total_anomalies = 0
+    checked = 0
+
+    for client in clients:
+        try:
+            anomalies = check_signin_anomalies(client)
+            if anomalies:
+                notify_signin_anomalies(client, anomalies)
+                total_anomalies += len(anomalies)
+            checked += 1
+        except Exception as e:
+            logger.error(f"check_signin_anomalies_all: error para {client}: {e}")
+
+    if total_anomalies:
+        logger.info(f"check_signin_anomalies_all: {total_anomalies} anomalía(s) "
+                    f"en {checked} cliente(s)")
+
+    return {"checked": checked, "anomalies": total_anomalies}
