@@ -45,6 +45,13 @@ class TelemetryInline(admin.TabularInline):
     def has_add_permission(self, request, obj=None):
         return False
 
+    def get_queryset(self, request):
+        # Limitar a los últimos 10 — un dispositivo puede tener miles de snapshots
+        # (cada 5s), y mostrarlos todos excede DATA_UPLOAD_MAX_NUMBER_FIELDS.
+        qs = super().get_queryset(request).order_by("-captured_at")
+        ids = list(qs.values_list("pk", flat=True)[:10])
+        return qs.filter(pk__in=ids)
+
 
 @admin.register(HardwareDevice)
 class HardwareDeviceAdmin(admin.ModelAdmin):
