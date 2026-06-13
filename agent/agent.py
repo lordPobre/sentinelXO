@@ -438,7 +438,7 @@ def get_installed_software():
     return items
 
 
-
+def collect_security_snapshot():
     """
     Recolecta una huella de seguridad del equipo: administradores locales,
     programas de inicio y tareas programadas. Solo Windows.
