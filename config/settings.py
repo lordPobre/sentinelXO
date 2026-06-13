@@ -160,6 +160,7 @@ BREVO_WEBHOOK_SECRET = os.environ.get("BREVO_WEBHOOK_SECRET", "")  # Clave para 
 SENTINEL_COMPANY_NAME  = os.environ.get("SENTINEL_COMPANY_NAME", "Sentinel XO")
 SENTINEL_SUPPORT_EMAIL = os.environ.get("SENTINEL_SUPPORT_EMAIL", "soporte@sentinelxo.dev")
 SENTINEL_HMAC_SECRET   = os.environ.get("SENTINEL_HMAC_SECRET", "")  # si vacío, la validación HMAC se omite
+SENTINEL_BACKUP_EMAIL  = os.environ.get("SENTINEL_BACKUP_EMAIL", "")  # destino del backup semanal de la BD
 
 # ── Seguridad HTTP ──────────────────────────────────────────────────────────
 SECURE_CONTENT_TYPE_NOSNIFF      = True        # X-Content-Type-Options: nosniff

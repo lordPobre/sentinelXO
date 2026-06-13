@@ -99,6 +99,11 @@ class HardwareDevice(models.Model):
     last_seen = models.DateTimeField("Último contacto", null=True, blank=True)
     registered_at = models.DateTimeField("Registrado", auto_now_add=True)
 
+    # Estado de conectividad (monitoreo de agente offline)
+    is_offline      = models.BooleanField("Sin conexión", default=False)
+    offline_since   = models.DateTimeField("Sin conexión desde", null=True, blank=True)
+    offline_notified = models.BooleanField("Alerta offline enviada", default=False)
+
     class Meta:
         verbose_name = "Dispositivo"
         verbose_name_plural = "Dispositivos"
@@ -122,6 +127,12 @@ class HardwareDevice(models.Model):
         if not self.last_seen:
             return False
         return (timezone.now() - self.last_seen).total_seconds() < 1800  # 30 min
+
+    @property
+    def minutes_since_last_seen(self):
+        if not self.last_seen:
+            return None
+        return (timezone.now() - self.last_seen).total_seconds() / 60
 
     @property
     def status(self):
@@ -351,12 +362,13 @@ class MaintenanceIncident(models.Model):
     ]
 
     CATEGORY_CHOICES = [
-        ("hardware",  "Hardware / Equipo"),
-        ("domain",    "Dominio"),
-        ("email",     "Email / SMTP"),
-        ("license",   "Licencia M365"),
-        ("network",   "Red"),
-        ("other",     "Otro"),
+        ("hardware",     "Hardware / Equipo"),
+        ("domain",       "Dominio"),
+        ("email",        "Email / SMTP"),
+        ("license",      "Licencia M365"),
+        ("network",      "Red"),
+        ("connectivity", "Conectividad del Agente"),
+        ("other",        "Otro"),
     ]
 
     client = models.ForeignKey(Client, on_delete=models.CASCADE, related_name="incidents",
