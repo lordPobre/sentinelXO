@@ -15,6 +15,14 @@
       <div class="bar-track" style="flex:1;"><div class="bar-fill {% if snap.cpu_percent > 90 %}bar-red{% elif snap.cpu_percent > 70 %}bar-amber{% else %}bar-blue{% endif %}" style="width:{{ snap.cpu_percent }}%;"></div></div>
       <span class="mono" style="font-size:11px;color:#94a3b8;min-width:30px;text-align:right;">{{ snap.cpu_percent|floatformat:0 }}%</span>
     </div>
+    {% if cpu_points %}
+    <div style="margin-top:8px;">
+      <svg viewBox="0 0 100 28" preserveAspectRatio="none" style="width:100%;height:36px;display:block;">
+        <polyline points="{{ cpu_points }}" fill="none" stroke="#3b82f6" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+        <polygon points="0,28 {{ cpu_points }} 100,28" fill="#3b82f6" opacity="0.08"/>
+      </svg>
+    </div>
+    {% endif %}
   </div>
   <div>
     <div style="font-size:9px;font-weight:600;letter-spacing:0.07em;text-transform:uppercase;color:var(--text-4);margin-bottom:7px;">RAM</div>
@@ -22,8 +30,21 @@
       <div class="bar-track" style="flex:1;"><div class="bar-fill {% if snap.ram_used_percent > 90 %}bar-red{% elif snap.ram_used_percent > 75 %}bar-amber{% else %}bar-green{% endif %}" style="width:{{ snap.ram_used_percent }}%;"></div></div>
       <span class="mono" style="font-size:11px;color:#94a3b8;min-width:30px;text-align:right;">{{ snap.ram_used_percent|floatformat:0 }}%</span>
     </div>
+    {% if ram_points %}
+    <div style="margin-top:8px;">
+      <svg viewBox="0 0 100 28" preserveAspectRatio="none" style="width:100%;height:36px;display:block;">
+        <polyline points="{{ ram_points }}" fill="none" stroke="#10b981" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+        <polygon points="0,28 {{ ram_points }} 100,28" fill="#10b981" opacity="0.08"/>
+      </svg>
+    </div>
+    {% endif %}
   </div>
 </div>
+{% if cpu_points %}
+<div style="padding:0 18px 12px;margin-top:-6px;">
+  <span class="mono" style="font-size:9px;color:var(--text-4);">Últimas {{ history_count }} lecturas</span>
+</div>
+{% endif %}
 {% if snap.disk_usage %}
 <div style="padding:0 18px 16px;">
   <div style="font-size:9px;font-weight:600;letter-spacing:0.07em;text-transform:uppercase;color:var(--text-4);margin-bottom:8px;">Almacenamiento</div>

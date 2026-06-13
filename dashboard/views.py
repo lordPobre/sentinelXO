@@ -149,9 +149,28 @@ def models_gte_total():
 def htmx_device_detail(request, device_id):
     """Fragmento HTMX: detalle de un dispositivo con sus últimos snapshots."""
     device = get_object_or_404(HardwareDevice, pk=device_id)
-    snapshots = device.snapshots.all()[:24]  # últimas 24 capturas (~6h a 15 min)
-    return render(request, "dashboard/partials/device_detail.html",
-                  {"device": device, "snapshots": snapshots})
+    snapshots = list(device.snapshots.all()[:24])  # últimas 24 capturas (~6h a 15 min)
+
+    # Construir puntos para sparklines SVG (CPU/RAM) en orden cronológico
+    cpu_points = ram_points = ""
+    chrono = list(reversed(snapshots))  # más antiguo primero
+    if len(chrono) >= 2:
+        n = len(chrono)
+        def to_points(values):
+            pts = []
+            for i, v in enumerate(values):
+                x = (i / (n - 1)) * 100
+                y = 28 - (max(0, min(100, v or 0)) / 100) * 28
+                pts.append(f"{x:.1f},{y:.1f}")
+            return " ".join(pts)
+        cpu_points = to_points([s.cpu_percent for s in chrono])
+        ram_points = to_points([s.ram_used_percent for s in chrono])
+
+    return render(request, "dashboard/partials/device_detail.html", {
+        "device": device, "snapshots": snapshots,
+        "cpu_points": cpu_points, "ram_points": ram_points,
+        "history_count": len(chrono),
+    })
 
 
 @login_required
