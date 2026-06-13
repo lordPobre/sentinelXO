@@ -351,6 +351,18 @@ def notify_security_anomalies(device, anomalies: list):
     except Exception as e:
         logger.error(f"Error enviando alerta de seguridad para {device.display_name}: {e}")
 
+    # Telegram solo para anomalías críticas (ej. nuevo administrador local)
+    critical = [a for a in anomalies if a.severity == "critical"]
+    if critical:
+        from core.notifications_telegram import notify_telegram
+        tg_lines = [f"🔴 {a.get_anomaly_type_display()}: {a.detail}" for a in critical]
+        notify_telegram(
+            client,
+            f"🚨 <b>{company}</b>\n\n"
+            f"Cambios críticos de seguridad en <b>{device.display_name}</b>:\n\n"
+            + "\n".join(tg_lines)
+        )
+
 
 # ── Monitor de inicios de sesión sospechosos M365 ──────────────────────────────
 # Usa /auditLogs/signIns — disponible sin Azure AD Premium P1/P2, solo requiere
@@ -559,6 +571,18 @@ def notify_signin_anomalies(client, anomalies: list):
                     f"({len(anomalies)} anomalías) → {recipients}")
     except Exception as e:
         logger.error(f"Error enviando alerta de sign-in para {client}: {e}")
+
+    # Telegram solo para anomalías críticas (viaje imposible, sign-in de alto riesgo)
+    critical = [a for a in anomalies if a.severity == "critical"]
+    if critical:
+        from core.notifications_telegram import notify_telegram
+        tg_lines = [f"🔴 {a.get_anomaly_type_display()}: {a.detail}" for a in critical]
+        notify_telegram(
+            client,
+            f"🚨 <b>{company}</b>\n\n"
+            f"Inicios de sesión críticos detectados en <b>{client.company_name}</b> (M365):\n\n"
+            + "\n".join(tg_lines)
+        )
 
 
 # ── Inventario de software y detección de cambios ──────────────────────────────

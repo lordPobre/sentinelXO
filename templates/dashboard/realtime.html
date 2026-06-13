@@ -399,9 +399,14 @@ function updateCard(d) {
     ramBar.className = "bar-fill " + (ram >= 90 ? "bar-red" : ram >= 75 ? "bar-amber" : "bar-green");
   }
 
-  // Gráfico histórico
-  initChart(d.id);
-  pushHistory(d.id, cpu, ram);
+  // Gráfico histórico — si Chart.js no cargó, no debe detener la actualización
+  // de los demás equipos en este loop
+  try {
+    initChart(d.id);
+    pushHistory(d.id, cpu, ram);
+  } catch (e) {
+    console.warn("Chart error para " + d.id + ":", e);
+  }
 
   // Discos
   const disksEl = document.getElementById("dc-disks-" + d.id);

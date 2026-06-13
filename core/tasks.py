@@ -1,316 +1,141 @@
-"""
-Sentinel XO — Tareas Celery de core (monitoreo de conectividad de agentes).
-"""
 import logging
 from celery import shared_task
 from django.utils import timezone
-from django.conf import settings
 
-logger = logging.getLogger("sentinel.tasks")
-
-
-@shared_task(name="core.check_offline_devices")
-def check_offline_devices():
-    """
-    Revisa todos los dispositivos activos y detecta cuáles llevan más de
-    HardwareDevice.OFFLINE_THRESHOLD_MINUTES sin reportar telemetría.
-
-    - Si un dispositivo pasa a offline → crea MaintenanceIncident + email.
-    - Si un dispositivo que estaba offline vuelve a reportar → email de
-      recuperación y limpia el estado.
-
-    Pensada para ejecutarse cada 5 minutos vía Celery Beat (Periodic Task
-    configurada en Django Admin).
-    """
-    from core.models import HardwareDevice, MaintenanceIncident
-    from emailmon.services import send_tracked_email
-
-    company = getattr(settings, "SENTINEL_COMPANY_NAME", "Sentinel XO")
-    now = timezone.now()
-
-    devices = HardwareDevice.objects.filter(is_active=True, client__is_active=True).select_related("client")
-
-    went_offline = 0
-    recovered = 0
-
-    for device in devices:
-        currently_offline = not device.is_online
-
-        # ── Caso 1: estaba online, ahora offline ──────────────────────────
-        if currently_offline and not device.is_offline:
-            device.is_offline = True
-            device.offline_since = now
-            device.offline_notified = False
-            device.save(update_fields=["is_offline", "offline_since", "offline_notified"])
-            logger.warning(
-                f"Dispositivo offline: {device.display_name} ({device.client}) — "
-                f"último contacto: {device.last_seen}"
-            )
-            went_offline += 1
-            continue
-
-        # ── Caso 2: ya estaba offline, sigue offline → ¿notificar? ────────
-        if currently_offline and device.is_offline and not device.offline_notified:
-            minutes = device.minutes_since_last_seen
-            last_seen_local = timezone.localtime(device.last_seen) if device.last_seen else None
-
-            try:
-                incident = MaintenanceIncident.objects.create(
-                    client=device.client,
-                    device=device,
-                    title=f"Equipo sin conexión: {device.display_name}",
-                    severity="high",
-                    category="connectivity",
-                    notify_email=False,
-                    description=(
-                        f"El agente de monitoreo de {device.display_name} dejó de reportar "
-                        f"telemetría.\n\n"
-                        f"Último contacto: {last_seen_local.strftime('%d/%m/%Y %H:%M:%S') if last_seen_local else '—'}\n"
-                        f"Tiempo sin reportar: {minutes:.0f} minutos\n\n"
-                        f"Posibles causas: el equipo está apagado, sin conexión a internet, "
-                        f"o el servicio del agente Sentinel XO se detuvo."
-                    ),
-                )
-                # Diagnóstico IA en background, igual que otros incidentes automáticos
-                try:
-                    import threading
-                    from core.views_ai import diagnose_incident
-                    def run_diagnosis():
-                        diag = diagnose_incident(incident)
-                        if diag:
-                            incident.ai_diagnosis = diag
-                            incident.save(update_fields=["ai_diagnosis"])
-                    threading.Thread(target=run_diagnosis, daemon=True).start()
-                except Exception as e:
-                    logger.warning(f"Error iniciando diagnóstico IA para incidente offline: {e}")
-            except Exception as e:
-                logger.error(f"Error creando incidente offline para {device.display_name}: {e}")
-
-            recipients = device.client.get_alert_recipients()
-            if recipients:
-                subject = f"🔴 [{company}] {device.display_name} sin conexión"
-                message = (
-                    f"Estimado equipo de {device.client.company_name},\n\n"
-                    f"El equipo {device.display_name} dejó de reportar telemetría a Sentinel XO.\n\n"
-                    f"Último contacto: {last_seen_local.strftime('%d/%m/%Y %H:%M:%S') if last_seen_local else '—'}\n"
-                    f"Tiempo sin reportar: {minutes:.0f} minutos\n\n"
-                    f"Esto puede indicar que el equipo está apagado, sin internet, o que el "
-                    f"servicio del agente se detuvo. Si esto es esperado (mantenimiento, "
-                    f"equipo apagado a propósito), puede ignorar esta alerta.\n\n"
-                    f"— {company}"
-                )
-                try:
-                    send_tracked_email(
-                        subject=subject, body=message, to=recipients,
-                        category="alert", client=device.client,
-                    )
-                    logger.info(f"Alerta offline enviada para {device.display_name} → {recipients}")
-                except Exception as e:
-                    logger.error(f"Error enviando alerta offline para {device.display_name}: {e}")
-
-            device.offline_notified = True
-            device.save(update_fields=["offline_notified"])
-
-        # ── Caso 3: estaba offline, ahora volvió ──────────────────────────
-        elif not currently_offline and device.is_offline:
-            offline_since = device.offline_since
-            device.is_offline = False
-            device.offline_since = None
-            device.offline_notified = False
-            device.save(update_fields=["is_offline", "offline_since", "offline_notified"])
-            recovered += 1
-
-            recipients = device.client.get_alert_recipients()
-            if recipients and offline_since:
-                duration = now - offline_since
-                hours, rem = divmod(int(duration.total_seconds()), 3600)
-                minutes_d, _ = divmod(rem, 60)
-                duration_txt = (f"{hours}h {minutes_d}min" if hours else f"{minutes_d} minutos")
-
-                subject = f"🟢 [{company}] {device.display_name} reconectado"
-                message = (
-                    f"Estimado equipo de {device.client.company_name},\n\n"
-                    f"El equipo {device.display_name} volvió a reportar telemetría a Sentinel XO.\n\n"
-                    f"Estuvo sin conexión durante aproximadamente {duration_txt}.\n\n"
-                    f"— {company}"
-                )
-                try:
-                    send_tracked_email(
-                        subject=subject, body=message, to=recipients,
-                        category="alert", client=device.client,
-                    )
-                    logger.info(f"Alerta de reconexión enviada para {device.display_name} → {recipients}")
-                except Exception as e:
-                    logger.error(f"Error enviando alerta de reconexión para {device.display_name}: {e}")
-
-    if went_offline or recovered:
-        logger.info(f"check_offline_devices: {went_offline} nuevos offline, {recovered} reconectados")
-
-    return {"went_offline": went_offline, "recovered": recovered, "checked": devices.count()}
+logger = logging.getLogger("perseus")
 
 
-@shared_task(name="core.backup_database")
-def backup_database():
-    """
-    Backup semanal de los datos críticos de Sentinel XO.
+@shared_task(name="monitoring.refresh_all_domains")
+def refresh_all_domains():
+    """Tarea diaria: actualiza estado WHOIS de todos los dominios activos."""
+    from core.models import Domain
+    from .services import refresh_domain
 
-    Usa `dumpdata` (portable, no requiere el binario pg_dump) para exportar
-    los modelos de negocio — clientes, dispositivos, incidentes, seguridad,
-    usuarios, etc. — excluyendo tablas de alto volumen que no son críticas
-    para recuperación de desastres (telemetría detallada cada 5s, logs de
-    auditoría, logs de email).
-
-    El resultado se comprime con gzip y se envía por email como adjunto al
-    correo configurado en SENTINEL_BACKUP_EMAIL.
-
-    Pensada para ejecutarse semanalmente vía Celery Beat (Periodic Task
-    configurada en Django Admin).
-    """
-    import gzip
-    import io
-    from django.core.management import call_command
-    from emailmon.services import send_tracked_email
-
-    company = getattr(settings, "SENTINEL_COMPANY_NAME", "Sentinel XO")
-    backup_email = getattr(settings, "SENTINEL_BACKUP_EMAIL", "")
-    now = timezone.now()
-
-    # Tablas de alto volumen / no críticas excluidas del backup
-    EXCLUDED = [
-        "core.telemetrysnapshot",
-        "core.auditlog",
-        "emailmon.emaillog",
-        "admin.logentry",
-        "contenttypes",
-        "sessions.session",
-        "django_celery_beat",
-    ]
-
-    if not backup_email:
-        logger.error("backup_database: SENTINEL_BACKUP_EMAIL no configurado, abortando")
-        return {"status": "error", "reason": "SENTINEL_BACKUP_EMAIL no configurado"}
-
-    try:
-        # ── 1. Generar dump JSON ────────────────────────────────────────────
-        buf = io.StringIO()
-        call_command(
-            "dumpdata",
-            exclude=EXCLUDED,
-            natural_foreign=True,
-            natural_primary=True,
-            indent=None,
-            stdout=buf,
-        )
-        json_data = buf.getvalue().encode("utf-8")
-        raw_size = len(json_data)
-
-        # ── 2. Comprimir con gzip ────────────────────────────────────────────
-        gz_buf = io.BytesIO()
-        with gzip.GzipFile(fileobj=gz_buf, mode="wb") as gz:
-            gz.write(json_data)
-        gz_data = gz_buf.getvalue()
-        gz_size = len(gz_data)
-
-        # ── 3. Verificar tamaño (límite Resend ~40MB) ───────────────────────
-        MAX_SIZE = 35 * 1024 * 1024  # 35MB margen de seguridad
-        if gz_size > MAX_SIZE:
-            logger.error(
-                f"backup_database: dump comprimido ({gz_size/1024/1024:.1f}MB) "
-                f"excede el límite de adjunto ({MAX_SIZE/1024/1024:.0f}MB)"
-            )
-            send_tracked_email(
-                subject=f"🔴 [{company}] Backup semanal FALLÓ — tamaño excedido",
-                body=(
-                    f"El backup semanal de la base de datos generó un archivo de "
-                    f"{gz_size/1024/1024:.1f}MB, que excede el límite de adjunto de email "
-                    f"({MAX_SIZE/1024/1024:.0f}MB).\n\n"
-                    f"Considera configurar un destino de almacenamiento externo (S3, "
-                    f"Cloudinary) para backups de mayor tamaño.\n\n"
-                    f"— {company}"
-                ),
-                to=[backup_email],
-                category="other",
-            )
-            return {"status": "error", "reason": "size_exceeded", "size_mb": round(gz_size/1024/1024, 1)}
-
-        # ── 4. Enviar por email ──────────────────────────────────────────────
-        filename = f"sentinelxo_backup_{now.strftime('%Y%m%d_%H%M')}.json.gz"
-        subject = f"💾 [{company}] Backup semanal — {now.strftime('%d/%m/%Y')}"
-        body = (
-            f"Backup automático semanal de Sentinel XO.\n\n"
-            f"Fecha: {timezone.localtime(now).strftime('%d/%m/%Y %H:%M')}\n"
-            f"Tamaño sin comprimir: {raw_size/1024:.0f} KB\n"
-            f"Tamaño comprimido: {gz_size/1024:.0f} KB\n\n"
-            f"Este archivo contiene un dump JSON de los datos de negocio "
-            f"(clientes, dispositivos, incidentes, configuración de seguridad, "
-            f"usuarios, etc.) — comprimido con gzip.\n\n"
-            f"Para restaurar:\n"
-            f"  gunzip {filename}\n"
-            f"  python manage.py loaddata {filename[:-3]}\n\n"
-            f"Guarda este archivo en un lugar seguro (no lo dejes solo en el correo).\n\n"
-            f"— {company}"
-        )
-
-        success = send_tracked_email(
-            subject=subject, body=body, to=[backup_email],
-            category="other",
-            attachments=[(filename, gz_data, "application/gzip")],
-        )
-
-        if success:
-            logger.info(f"backup_database: backup enviado a {backup_email} "
-                       f"({gz_size/1024:.0f} KB comprimido)")
-            return {"status": "ok", "size_kb": round(gz_size/1024, 1), "sent_to": backup_email}
-        else:
-            logger.error(f"backup_database: error enviando email a {backup_email}")
-            return {"status": "error", "reason": "email_send_failed"}
-
-    except Exception as e:
-        logger.error(f"backup_database: error generando backup: {e}")
+    domains = Domain.objects.filter(client__is_active=True)
+    ok = 0
+    errors = 0
+    for domain in domains:
         try:
-            send_tracked_email(
-                subject=f"🔴 [{company}] Backup semanal FALLÓ",
-                body=(
-                    f"El backup semanal de la base de datos falló con el siguiente error:\n\n"
-                    f"{e}\n\n— {company}"
-                ),
-                to=[backup_email],
-                category="other",
-            )
-        except Exception:
-            pass
-        return {"status": "error", "reason": str(e)}
+            refresh_domain(domain)
+            ok += 1
+        except Exception as e:
+            logger.error(f"Error actualizando {domain.fqdn}: {e}")
+            errors += 1
+
+    logger.info(f"Dominios actualizados: {ok} OK, {errors} errores")
+    return {"ok": ok, "errors": errors}
 
 
-@shared_task(name="core.check_signin_anomalies_all")
-def check_signin_anomalies_all():
-    """
-    Revisa los inicios de sesión M365 recientes de todos los clientes con
-    Tenant M365 activo, detecta anomalías (países nuevos, viaje imposible,
-    sign-ins riesgosos) y envía notificaciones por email.
+@shared_task(name="monitoring.refresh_single_domain")
+def refresh_single_domain(domain_id: int):
+    """Actualiza un dominio específico (usado desde el dashboard con HTMX)."""
+    from core.models import Domain
+    from .services import refresh_domain
+    try:
+        domain = Domain.objects.get(pk=domain_id)
+        refresh_domain(domain)
+        return {"status": "ok", "fqdn": domain.fqdn}
+    except Domain.DoesNotExist:
+        return {"status": "error", "message": "Dominio no encontrado"}
 
-    Pensada para ejecutarse cada 30-60 minutos vía Celery Beat.
-    """
+
+@shared_task(name="monitoring.sync_m365_all_clients")
+def sync_m365_all_clients():
+    """Cada 4 horas: sincroniza licencias M365 de todos los clientes configurados."""
     from core.models import Client
-    from core.security import check_signin_anomalies, notify_signin_anomalies
+    from .services import sync_m365_client
 
     clients = Client.objects.filter(is_active=True, m365_tenant__is_active=True)
-
-    total_anomalies = 0
-    checked = 0
-
+    results = {"ok": 0, "errors": 0}
     for client in clients:
-        try:
-            anomalies = check_signin_anomalies(client)
-            if anomalies:
-                notify_signin_anomalies(client, anomalies)
-                total_anomalies += len(anomalies)
-            checked += 1
-        except Exception as e:
-            logger.error(f"check_signin_anomalies_all: error para {client}: {e}")
+        if sync_m365_client(client):
+            results["ok"] += 1
+        else:
+            results["errors"] += 1
 
-    if total_anomalies:
-        logger.info(f"check_signin_anomalies_all: {total_anomalies} anomalía(s) "
-                    f"en {checked} cliente(s)")
+    logger.info(f"M365 sync: {results['ok']} OK, {results['errors']} errores")
+    return results
 
-    return {"checked": checked, "anomalies": total_anomalies}
+
+@shared_task(name="monitoring.check_expiry_alerts")
+def check_expiry_alerts():
+    """
+    Diario: envía alertas por email si hay dominios próximos a vencer.
+    Alerta a 90, 30 y 7 días.
+    """
+    from core.models import Domain
+    from django.core.mail import send_mail
+    from django.conf import settings
+
+    alert_thresholds = [90, 30, 7]
+    today = timezone.now().date()
+
+    for domain in Domain.objects.filter(client__is_active=True, expiry_date__isnull=False):
+        days = domain.days_until_expiry
+        if days in alert_thresholds:
+            subject = f"⚠️ Dominio próximo a vencer: {domain.fqdn} ({days} días)"
+            message = (
+                f"Estimado equipo de {domain.client.company_name},\n\n"
+                f"El dominio {domain.fqdn} vence el {domain.expiry_date.strftime('%d/%m/%Y')} "
+                f"({days} días).\n\n"
+                f"Por favor coordine la renovación a tiempo.\n\n"
+                f"— {settings.SENTINEL_COMPANY_NAME}"
+            )
+            try:
+                from emailmon.services import send_tracked_email
+                send_tracked_email(
+                    subject=subject,
+                    body=message,
+                    to=[domain.client.contact_email],
+                    category="alert",
+                    client=domain.client,
+                )
+                logger.info(f"Alerta enviada: {domain.fqdn} ({days}d) → {domain.client.contact_email}")
+            except Exception as e:
+                logger.error(f"Error enviando alerta {domain.fqdn}: {e}")
+
+            if days <= 7:
+                from core.notifications_telegram import notify_telegram
+                notify_telegram(
+                    domain.client,
+                    f"⚠️ <b>{settings.SENTINEL_COMPANY_NAME}</b>\n\n"
+                    f"El dominio <b>{domain.fqdn}</b> vence en {days} día(s) "
+                    f"({domain.expiry_date.strftime('%d/%m/%Y')})."
+                )
+
+    # ── Alertas de certificado SSL próximo a vencer ────────────────────────────
+    ssl_thresholds = [30, 15, 7, 1]
+    for domain in Domain.objects.filter(client__is_active=True, ssl_expiry_date__isnull=False):
+        ssl_days = domain.days_until_ssl_expiry
+        if ssl_days in ssl_thresholds:
+            subject = f"🔒 Certificado SSL próximo a vencer: {domain.fqdn} ({ssl_days} días)"
+            message = (
+                f"Estimado equipo de {domain.client.company_name},\n\n"
+                f"El certificado SSL de {domain.fqdn} vence el "
+                f"{domain.ssl_expiry_date.strftime('%d/%m/%Y')} ({ssl_days} días).\n\n"
+                f"Emisor: {domain.ssl_issuer or '—'}\n\n"
+                f"Si el certificado no se renueva automáticamente, el sitio mostrará "
+                f"advertencias de seguridad a los visitantes una vez vencido.\n\n"
+                f"— {settings.SENTINEL_COMPANY_NAME}"
+            )
+            try:
+                from emailmon.services import send_tracked_email
+                send_tracked_email(
+                    subject=subject,
+                    body=message,
+                    to=domain.client.get_alert_recipients(),
+                    category="alert",
+                    client=domain.client,
+                )
+                logger.info(f"Alerta SSL enviada: {domain.fqdn} ({ssl_days}d) → {domain.client.company_name}")
+            except Exception as e:
+                logger.error(f"Error enviando alerta SSL {domain.fqdn}: {e}")
+
+            if ssl_days <= 7:
+                from core.notifications_telegram import notify_telegram
+                notify_telegram(
+                    domain.client,
+                    f"🔒 <b>{settings.SENTINEL_COMPANY_NAME}</b>\n\n"
+                    f"El certificado SSL de <b>{domain.fqdn}</b> vence en {ssl_days} día(s) "
+                    f"({domain.ssl_expiry_date.strftime('%d/%m/%Y')})."
+                )

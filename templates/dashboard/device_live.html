@@ -489,7 +489,8 @@ function updateTemperatures(temps) {
   }).join("");
 }
 
-// Esperar a que Chart.js esté disponible antes de arrancar
+// Esperar a que Chart.js esté disponible (con límite) antes de inicializar los charts.
+// El polling de datos NO depende de esto — arranca de inmediato siempre.
 function waitForChart(callback, attempts) {
   attempts = attempts || 0;
   if (typeof Chart !== 'undefined') {
@@ -497,20 +498,18 @@ function waitForChart(callback, attempts) {
   } else if (attempts < 30) {
     setTimeout(() => waitForChart(callback, attempts + 1), 200);
   } else {
-    console.warn("Chart.js no cargó — cargando desde CDN alternativo");
-    const s = document.createElement('script');
-    s.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js';
-    s.onload = callback;
-    document.head.appendChild(s);
+    console.warn("Chart.js no cargó tras 6s — los gráficos no estarán disponibles, pero los datos en vivo sí.");
   }
 }
 
+// Arrancar polling de datos inmediatamente, sin esperar a Chart.js
+poll();
+setInterval(poll, 5000);
+
+// Inicializar charts cuando (y si) Chart.js esté disponible.
+// El siguiente ciclo de poll() (cada 5s) repoblará los charts automáticamente.
 waitForChart(function() {
-  // Inicializar charts
   initCharts();
-  // Arrancar polling
-  poll();
-  setInterval(poll, 5000);
 });
 
 function initCharts() {

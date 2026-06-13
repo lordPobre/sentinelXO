@@ -256,3 +256,23 @@ def software_cve_analysis(request, device_id):
         "device": device, "snapshot": snapshot,
         "error": "No se pudo generar el análisis. Intenta de nuevo.",
     })
+
+
+@login_required
+def telegram_test(request, client_id):
+    """POST — envía un mensaje de prueba por Telegram al cliente."""
+    from core.models import Client
+    from core.notifications_telegram import send_telegram_test
+
+    if not request.user.is_staff:
+        portal = request.user.client_portals.filter(pk=client_id).first()
+        if not portal:
+            return HttpResponseForbidden()
+
+    client = get_object_or_404(Client, pk=client_id)
+
+    success, error = send_telegram_test(client)
+
+    return render(request, "core/partials/telegram_status.html", {
+        "client": client, "success": success, "error": error,
+    })

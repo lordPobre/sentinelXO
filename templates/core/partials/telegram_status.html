@@ -1,0 +1,9 @@
+{% if success %}
+<div style="padding:10px 12px;background:rgba(16,185,129,0.06);border:1px solid rgba(16,185,129,0.15);border-radius:8px;font-size:11px;color:#34d399;">
+  ✅ Mensaje de prueba enviado correctamente a Telegram.
+</div>
+{% else %}
+<div style="padding:10px 12px;background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.15);border-radius:8px;font-size:11px;color:#f87171;">
+  ⚠️ No se pudo enviar: {{ error }}
+</div>
+{% endif %}

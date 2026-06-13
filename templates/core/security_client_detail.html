@@ -146,6 +146,41 @@
   {% endif %}
 </div>
 
+<!-- Integraciones -->
+<div class="chart-card" style="margin-bottom:14px;">
+  <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;">
+    <span style="font-size:13px;">📲</span>
+    <span style="font-size:10px;font-weight:600;color:var(--text-4);letter-spacing:0.05em;text-transform:uppercase;">
+      Notificaciones por Telegram
+    </span>
+  </div>
+  {% if client.telegram_chat_id %}
+  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:10px;">
+    <div style="font-size:11px;color:var(--text-3);">
+      Chat configurado: <span class="mono" style="color:#60a5fa;">{{ client.telegram_chat_id }}</span><br>
+      <span style="color:var(--text-4);">Recibirá alertas críticas: anomalías de seguridad graves, viaje imposible,
+      equipos sin conexión y certificados/dominios por vencer (≤7 días).</span>
+    </div>
+    <button class="btn-ghost" style="font-size:11px;padding:6px 14px;flex-shrink:0;"
+            hx-post="{% url 'dashboard:telegram-test' client.id %}"
+            hx-target="#tg-status-{{ client.id }}" hx-swap="innerHTML">
+      Enviar prueba
+    </button>
+  </div>
+  <div id="tg-status-{{ client.id }}"></div>
+  {% else %}
+  <div style="font-size:11px;color:var(--text-4);line-height:1.6;">
+    Este cliente no tiene Telegram configurado. Para activarlo:
+    <ol style="margin:8px 0 0 18px;padding:0;color:var(--text-3);">
+      <li>Habla con <span class="mono">@{{ "SentinelXOBot" }}</span> (o el bot configurado) en Telegram.</li>
+      <li>Envía cualquier mensaje al bot, o agrégalo a un grupo.</li>
+      <li>Obtén el Chat ID (ej. con <span class="mono">@getidsbot</span>).</li>
+      <li>Configura el Chat ID en Django Admin → Clientes → {{ client.company_name }}.</li>
+    </ol>
+  </div>
+  {% endif %}
+</div>
+
 <style>
 @keyframes spin { to { transform: rotate(360deg); } }
 .htmx-idle { display: inline-flex; align-items: center; gap:4px; }

@@ -41,5 +41,6 @@ urlpatterns = [
     path("security/signin-anomaly/<int:anomaly_id>/ack/", security_views.signin_anomaly_acknowledge, name="signin-anomaly-ack"),
     path("devices/<uuid:device_id>/software/",          security_views.software_inventory_view, name="software-inventory"),
     path("devices/<uuid:device_id>/software/cve/",       security_views.software_cve_analysis, name="software-cve-analysis"),
+    path("security/<uuid:client_id>/telegram-test/",     security_views.telegram_test, name="telegram-test"),
     path("audit/", views.audit_log_view, name="audit-log"),
 ]

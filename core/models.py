@@ -33,6 +33,13 @@ class Client(models.Model):
         help_text="Si está activo, solo se envían emails al crear/resolver incidentes. "
                   "Las alertas automáticas (CPU, RAM, temperatura, SMTP) no envían email."
     )
+    telegram_chat_id = models.CharField(
+        "Chat ID de Telegram", max_length=64, blank=True,
+        help_text="Chat ID donde se enviarán alertas críticas vía Telegram "
+                  "(equipos sin conexión, anomalías de seguridad críticas, "
+                  "viaje imposible, certificados SSL por vencer). "
+                  "Deja vacío para desactivar. Ver guía de configuración."
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     # Usuarios del lado cliente que pueden ver su dashboard
