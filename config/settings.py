@@ -168,9 +168,12 @@ X_FRAME_OPTIONS                  = "DENY"      # X-Frame-Options: DENY (anti-cli
 SECURE_REFERRER_POLICY           = "strict-origin-when-cross-origin"
 
 # HTTPS — activar en producción (Railway usa HTTPS por defecto)
+# Railway usa proxy inverso — siempre confiar en X-Forwarded-Proto
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
 if not DEBUG:
-    SECURE_PROXY_SSL_HEADER      = ("HTTP_X_FORWARDED_PROTO", "https")
     SECURE_SSL_REDIRECT          = True
+    SECURE_REDIRECT_EXEMPT       = [r"^health/$"]  # Railway healthcheck va por HTTP interno
     SESSION_COOKIE_SECURE        = True
     CSRF_COOKIE_SECURE           = True
     SECURE_HSTS_SECONDS          = 31536000    # 1 año
