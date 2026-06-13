@@ -2,7 +2,7 @@
 Servicios de monitoreo: WHOIS para dominios y Microsoft Graph para M365.
 """
 import logging
-from datetime import timezone as dt_tz
+from datetime import timezone as dt_tz, datetime
 from django.utils import timezone
 
 logger = logging.getLogger("perseus")
@@ -51,6 +51,50 @@ def check_domain_whois(fqdn: str) -> dict:
     except Exception as e:
         logger.warning(f"WHOIS error para {fqdn}: {e}")
         result["error"] = str(e)
+
+    # ── Fallback RDAP ────────────────────────────────────────────────────────
+    # Algunos TLD (.dev, .app, .page — Google Registry, y otros gTLD modernos)
+    # no son parseados correctamente por python-whois. RDAP es JSON estándar
+    # y rdap.org redirige automáticamente al servidor RDAP correcto según el TLD.
+    if not result["expiry_date"]:
+        try:
+            import requests
+            resp = requests.get(
+                f"https://rdap.org/domain/{fqdn}",
+                headers={"Accept": "application/rdap+json"},
+                timeout=10,
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                for ev in data.get("events", []):
+                    action = (ev.get("eventAction") or "").lower()
+                    if action in ("expiration", "expiration date"):
+                        date_str = ev.get("eventDate")
+                        if date_str:
+                            expiry_dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+                            result["expiry_date"] = expiry_dt.date()
+                        break
+
+                if not result["registrar"]:
+                    for ent in data.get("entities", []):
+                        if "registrar" in (ent.get("roles") or []):
+                            vcard = ent.get("vcardArray")
+                            if vcard and len(vcard) > 1:
+                                for item in vcard[1]:
+                                    if item[0] == "fn" and len(item) > 3:
+                                        result["registrar"] = item[3]
+                                        break
+                            break
+
+                if result["expiry_date"] and result["error"]:
+                    # Se recuperó vía RDAP a pesar del error WHOIS inicial
+                    result["error"] = ""
+            else:
+                logger.info(f"RDAP {fqdn}: HTTP {resp.status_code}")
+        except Exception as e:
+            logger.warning(f"RDAP fallback error para {fqdn}: {e}")
+            if not result["error"]:
+                result["error"] = f"RDAP: {e}"
 
     return result
 
