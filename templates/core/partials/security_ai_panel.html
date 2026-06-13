@@ -53,20 +53,27 @@
 
   <!-- Hallazgos -->
   {% if a.hallazgos %}
-  <div style="font-size:9px;font-weight:600;color:var(--text-4);letter-spacing:0.05em;text-transform:uppercase;margin-bottom:6px;">
+  <div style="font-size:9px;font-weight:600;color:var(--text-4);letter-spacing:0.05em;text-transform:uppercase;margin-bottom:8px;">
     Hallazgos
   </div>
   {% for h in a.hallazgos %}
-  <div style="display:flex;gap:10px;padding:9px 12px;margin-bottom:5px;border-radius:8px;
-              {% if h.severidad == 'critical' %}background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.15);
-              {% elif h.severidad == 'warning' %}background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.15);
-              {% else %}background:rgba(37,99,235,0.05);border:1px solid rgba(37,99,235,0.12);{% endif %}">
-    <span style="font-size:14px;flex-shrink:0;">
-      {% if h.categoria == 'identidad' %}🔐{% elif h.categoria == 'certificados' %}🔒{% elif h.categoria == 'fortaleza' %}✅{% else %}⚙️{% endif %}
-    </span>
-    <div style="flex:1;min-width:0;">
-      <div style="font-size:11px;font-weight:600;color:#cbd5e1;margin-bottom:2px;">{{ h.titulo }}</div>
-      <div style="font-size:10px;color:var(--text-3);line-height:1.4;">{{ h.detalle }}</div>
+  <div class="sec-card {% if h.severidad == 'critical' %}sec-card--critical{% elif h.severidad == 'warning' %}sec-card--warning{% else %}sec-card--info{% endif %}">
+    <div class="sec-card-header">
+      <div class="sec-card-main">
+        <span class="sec-card-icon">
+          {% if h.categoria == 'identidad' %}🔐{% elif h.categoria == 'certificados' %}🔒{% elif h.categoria == 'fortaleza' %}✅{% else %}⚙️{% endif %}
+        </span>
+        <div class="sec-card-body">
+          <div class="sec-card-title">{{ h.titulo }}</div>
+          <div class="sec-card-desc">{{ h.detalle }}</div>
+        </div>
+      </div>
+      <div class="sec-card-meta">
+        <span class="badge {% if h.severidad == 'critical' %}badge-crit{% elif h.severidad == 'warning' %}badge-warn{% else %}badge-gray{% endif %}"
+              style="font-size:8px;padding:1px 6px;">
+          {{ h.severidad|upper }}
+        </span>
+      </div>
     </div>
   </div>
   {% endfor %}
@@ -74,18 +81,25 @@
 
   <!-- Recomendaciones -->
   {% if a.recomendaciones %}
-  <div style="font-size:9px;font-weight:600;color:var(--text-4);letter-spacing:0.05em;text-transform:uppercase;margin:10px 0 6px;">
+  <div style="font-size:9px;font-weight:600;color:var(--text-4);letter-spacing:0.05em;text-transform:uppercase;margin:14px 0 8px;">
     Recomendaciones
   </div>
   {% for r in a.recomendaciones %}
-  <div style="display:flex;align-items:flex-start;gap:8px;padding:7px 0;border-bottom:1px solid rgba(255,255,255,0.03);">
-    <span class="badge {% if r.prioridad == 'critica' %}badge-crit{% elif r.prioridad == 'alta' %}badge-warn{% else %}badge-gray{% endif %}"
-          style="font-size:8px;padding:1px 6px;flex-shrink:0;margin-top:1px;">
-      {{ r.prioridad|upper }}
-    </span>
-    <div style="flex:1;min-width:0;">
-      <div style="font-size:11px;color:#cbd5e1;">{{ r.accion }}</div>
-      {% if r.impacto %}<div style="font-size:10px;color:var(--text-4);margin-top:1px;">→ {{ r.impacto }}</div>{% endif %}
+  <div class="sec-card">
+    <div class="sec-card-header">
+      <div class="sec-card-main">
+        <span class="sec-card-icon">→</span>
+        <div class="sec-card-body">
+          <div class="sec-card-title">{{ r.accion }}</div>
+          {% if r.impacto %}<div class="sec-card-desc">{{ r.impacto }}</div>{% endif %}
+        </div>
+      </div>
+      <div class="sec-card-meta">
+        <span class="badge {% if r.prioridad == 'critica' %}badge-crit{% elif r.prioridad == 'alta' %}badge-warn{% else %}badge-gray{% endif %}"
+              style="font-size:8px;padding:1px 6px;">
+          {{ r.prioridad|upper }}
+        </span>
+      </div>
     </div>
   </div>
   {% endfor %}

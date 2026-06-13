@@ -597,3 +597,17 @@ class SecurityAnomalyEvent(models.Model):
 
     def __str__(self):
         return f"[{self.severity.upper()}] {self.device} — {self.get_anomaly_type_display()}: {self.detail[:50]}"
+
+    @property
+    def detail_summary(self):
+        """Parte descriptiva del detalle (antes de '→'), sin la ruta/comando técnico."""
+        if "→" in self.detail:
+            return self.detail.split("→", 1)[0].strip()
+        return self.detail
+
+    @property
+    def detail_code(self):
+        """Parte técnica del detalle (ruta, comando, clave de registro), si existe."""
+        if "→" in self.detail:
+            return self.detail.split("→", 1)[1].strip()
+        return None
