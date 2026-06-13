@@ -25,9 +25,27 @@ class TelemetryIngestView(APIView):
     """
     authentication_classes = []
     permission_classes = []
-    throttle_classes = []   # el agent_token ya protege este endpoint
+    throttle_classes = ["core.throttles.TelemetryRateThrottle"]
+
+    def get_throttles(self):
+        from core.throttles import TelemetryRateThrottle
+        return [TelemetryRateThrottle()]
 
     def post(self, request):
+        # ── Validación HMAC (si el secreto está configurado) ─────────────────
+        hmac_secret = getattr(settings, "SENTINEL_HMAC_SECRET", "").encode()
+        if hmac_secret:
+            sig_header = request.headers.get("X-Sentinel-Signature", "")
+            if not sig_header.startswith("sha256="):
+                logger.warning("Telemetría rechazada: falta header X-Sentinel-Signature")
+                return Response({"error": "Firma requerida"}, status=status.HTTP_401_UNAUTHORIZED)
+            import hmac as hmac_lib, hashlib
+            expected = "sha256=" + hmac_lib.new(hmac_secret, request.body, hashlib.sha256).hexdigest()
+            if not hmac_lib.compare_digest(expected, sig_header):
+                logger.warning("Telemetría rechazada: firma HMAC inválida")
+                return Response({"error": "Firma inválida"}, status=status.HTTP_401_UNAUTHORIZED)
+
+        # ── Autenticación por token ──────────────────────────────────────────
         auth_header = request.headers.get("Authorization", "")
         if not auth_header.startswith("Token "):
             return Response({"error": "Token requerido"}, status=status.HTTP_401_UNAUTHORIZED)

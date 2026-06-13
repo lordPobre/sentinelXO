@@ -1,0 +1,114 @@
+{% extends "base/layout.html" %}
+{% block title %}Configurar 2FA — Sentinel XO{% endblock %}
+{% block page_title %}Autenticación de Dos Factores{% endblock %}
+{% block page_subtitle %}<div class="mono" style="font-size:10px;color:var(--text-3);margin-top:1px;">TOTP · Google Authenticator · Authy</div>{% endblock %}
+
+{% block content %}
+{% if messages %}
+{% for message in messages %}
+<div style="padding:12px 16px;margin-bottom:14px;border-radius:8px;font-size:12px;
+  {% if message.tags == 'error' %}background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.2);color:#f87171;
+  {% else %}background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.2);color:#34d399;{% endif %}">
+  {{ message }}
+</div>
+{% endfor %}
+{% endif %}
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:800px;">
+
+  <!-- Estado actual -->
+  <div class="chart-card">
+    <div style="font-size:10px;font-weight:600;color:var(--text-4);letter-spacing:0.05em;text-transform:uppercase;margin-bottom:12px;">Estado actual</div>
+    <div style="display:flex;align-items:center;gap:10px;padding:14px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.05);border-radius:10px;margin-bottom:16px;">
+      <span style="font-size:24px;">{% if totp_cfg.is_enabled %}🔐{% else %}🔓{% endif %}</span>
+      <div>
+        <div style="font-size:13px;font-weight:600;color:#f1f5f9;">
+          {% if totp_cfg.is_enabled %}2FA Activo{% else %}2FA Inactivo{% endif %}
+        </div>
+        <div style="font-size:11px;color:var(--text-4);">
+          {% if totp_cfg.is_enabled %}
+            {% if totp_cfg.last_used %}Último uso: {{ totp_cfg.last_used|date:"d/m H:i" }}{% else %}Nunca usado{% endif %}
+          {% else %}
+            Tu cuenta no está protegida con 2FA
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    {% if totp_cfg.is_enabled %}
+    <div style="font-size:11px;color:var(--text-4);margin-bottom:12px;">Para desactivar el 2FA, verifica tu identidad con un código actual:</div>
+    <form method="POST">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="disable">
+      <input type="text" name="code" maxlength="6" placeholder="000000"
+             style="width:100%;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);
+                    border-radius:8px;padding:10px 12px;color:#f1f5f9;font-size:18px;
+                    font-family:monospace;letter-spacing:0.3em;text-align:center;
+                    outline:none;margin-bottom:10px;" inputmode="numeric">
+      <button type="submit" class="btn-ghost" style="width:100%;font-size:12px;padding:8px;color:var(--red);">
+        Desactivar 2FA
+      </button>
+    </form>
+    {% else %}
+    <form method="POST" style="margin-top:4px;">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="regenerate">
+      <button type="submit" class="btn-ghost" style="width:100%;font-size:12px;padding:8px;">
+        ↺ Regenerar secreto
+      </button>
+    </form>
+    {% endif %}
+  </div>
+
+  <!-- Configuración / QR -->
+  <div class="chart-card">
+    <div style="font-size:10px;font-weight:600;color:var(--text-4);letter-spacing:0.05em;text-transform:uppercase;margin-bottom:12px;">
+      {% if totp_cfg.is_enabled %}Tu dispositivo autenticador{% else %}Configurar autenticador{% endif %}
+    </div>
+
+    {% if qr_b64 %}
+    <div style="text-align:center;margin-bottom:14px;">
+      <img src="data:image/png;base64,{{ qr_b64 }}" alt="QR 2FA"
+           style="width:180px;height:180px;border-radius:8px;background:white;padding:8px;">
+    </div>
+    {% endif %}
+
+    <div style="margin-bottom:12px;">
+      <div style="font-size:9px;color:var(--text-4);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px;">Clave manual</div>
+      <div class="mono" style="font-size:11px;color:#60a5fa;background:rgba(37,99,235,0.08);
+                                border:1px solid rgba(37,99,235,0.12);border-radius:6px;
+                                padding:8px 10px;word-break:break-all;">{{ secret_key }}</div>
+    </div>
+
+    {% if not totp_cfg.is_enabled %}
+    <div style="font-size:11px;color:var(--text-4);margin-bottom:10px;">
+      Escanea el QR con tu app (Google Authenticator, Authy, etc.) y luego verifica con un código:
+    </div>
+    <form method="POST">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="enable">
+      <input type="text" name="code" maxlength="6" placeholder="000000"
+             style="width:100%;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);
+                    border-radius:8px;padding:10px 12px;color:#f1f5f9;font-size:18px;
+                    font-family:monospace;letter-spacing:0.3em;text-align:center;
+                    outline:none;margin-bottom:10px;" inputmode="numeric" autofocus>
+      <button type="submit" class="btn-primary" style="width:100%;font-size:13px;padding:10px;">
+        Activar 2FA
+      </button>
+    </form>
+    {% else %}
+    <div style="font-size:11px;color:var(--text-3);text-align:center;padding:10px 0;">
+      Tu dispositivo autenticador está configurado y activo.
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<div style="max-width:800px;margin-top:14px;padding:14px;background:rgba(37,99,235,0.05);
+            border:1px solid rgba(37,99,235,0.12);border-radius:10px;font-size:11px;color:var(--text-4);">
+  💡 <strong style="color:#60a5fa;">Recomendado:</strong>
+  Descarga <strong>Google Authenticator</strong> o <strong>Authy</strong> en tu teléfono.
+  Escanea el QR de arriba. Ingresa el código de 6 dígitos que genera la app para activar 2FA.
+  <br>Una vez activado, necesitarás ese código cada vez que inicies sesión en Sentinel XO.
+</div>
+{% endblock %}

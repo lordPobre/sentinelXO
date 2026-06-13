@@ -1,19 +1,22 @@
 from django.contrib import admin
 from django.http import JsonResponse
 from django.utils import timezone
-from django.urls import path, include
-from django.views.generic import RedirectView
+
 
 def health_check(request):
     """Health check endpoint para Railway."""
     return JsonResponse({"status": "ok", "time": timezone.now().isoformat()})
-
+from django.urls import path, include
+from django.views.generic import RedirectView
+from core.views_2fa import totp_verify, totp_setup
 
 urlpatterns = [
     path("health/", health_check, name="health-check"),
     path("admin/", admin.site.urls),
     path("", RedirectView.as_view(url="/dashboard/", permanent=False)),
     path("auth/", include("django.contrib.auth.urls")),
+    path("totp/verify/", totp_verify, name="totp-verify"),
+    path("totp/setup/", totp_setup, name="totp-setup"),
     path("dashboard/", include("dashboard.urls", namespace="dashboard")),
     path("monitoring/", include("monitoring.urls", namespace="monitoring")),
     path("reports/", include("reports.urls", namespace="reports")),

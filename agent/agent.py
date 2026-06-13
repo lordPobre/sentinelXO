@@ -3,7 +3,7 @@
 Sentinel XO — Agente de Telemetría v4.0
 Monitorea: CPU, RAM, disco, red, temperatura, GPU (NVIDIA/AMD/Intel)
 """
-import os, sys, platform, socket, time, json, logging, random
+import os, sys, platform, socket, time, json, logging, random, hmac, hashlib
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -29,6 +29,7 @@ SENTINEL_API_URL = os.environ.get("SENTINEL_API_URL", "http://127.0.0.1:8000/api
 INTERVAL         = int(os.environ.get("SENTINEL_INTERVAL", "5"))
 TIMEOUT          = int(os.environ.get("SENTINEL_TIMEOUT", "10"))
 SECURITY_INTERVAL = int(os.environ.get("SENTINEL_SECURITY_INTERVAL", "300"))  # cada 5 min
+HMAC_SECRET      = os.environ.get("SENTINEL_HMAC_SECRET", "").encode()        # firma HMAC-SHA256
 IS_WINDOWS       = platform.system() == "Windows"
 
 
@@ -450,14 +451,19 @@ def collect(include_security=False):
 def send(payload):
     try:
         import urllib.request
-        data = json.dumps(payload).encode()
+        data = json.dumps(payload, sort_keys=True).encode()
+        headers = {
+            "Authorization": f"Token {SENTINEL_TOKEN}",
+            "Content-Type":  "application/json",
+            "User-Agent":    f"Sentinel XO-Agent/4.1 ({platform.system()})",
+        }
+        # Firma HMAC-SHA256 del payload para validación en el servidor
+        if HMAC_SECRET:
+            sig = hmac.new(HMAC_SECRET, data, hashlib.sha256).hexdigest()
+            headers["X-Sentinel-Signature"] = f"sha256={sig}"
         req  = urllib.request.Request(
             SENTINEL_API_URL, data=data,
-            headers={
-                "Authorization": f"Token {SENTINEL_TOKEN}",
-                "Content-Type":  "application/json",
-                "User-Agent":    f"Sentinel XO-Agent/4.0 ({platform.system()})",
-            },
+            headers=headers,
             method="POST",
         )
         with urllib.request.urlopen(req, timeout=TIMEOUT) as r:

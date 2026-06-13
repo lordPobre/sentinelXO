@@ -1,0 +1,45 @@
+{% extends "base/layout.html" %}
+{% block title %}Registro de Auditoría — Sentinel XO{% endblock %}
+{% block page_title %}Registro de Auditoría{% endblock %}
+{% block page_subtitle %}<div class="mono" style="font-size:10px;color:var(--text-3);margin-top:1px;">Últimas 200 acciones · Logins · Incidentes · 2FA</div>{% endblock %}
+
+{% block content %}
+<div class="card" style="overflow:hidden;">
+  <div class="table-wrap"><table class="px-table">
+    <thead><tr>
+      <th>Fecha</th>
+      <th>Usuario</th>
+      <th>Acción</th>
+      <th class="col-hide-mobile">Recurso</th>
+      <th class="col-hide-mobile">IP</th>
+      <th>Estado</th>
+    </tr></thead>
+    <tbody>
+      {% for log in logs %}
+      <tr>
+        <td><span class="mono" style="font-size:10px;color:var(--text-4);">{{ log.timestamp|date:"d/m H:i:s" }}</span></td>
+        <td>
+          <span style="font-size:12px;font-weight:600;color:#cbd5e1;">{{ log.username|default:"—" }}</span>
+        </td>
+        <td>
+          <span class="badge {% if log.action == 'login' %}badge-ok{% elif log.action == 'logout' %}badge-gray{% elif '2fa' in log.action %}badge-blue{% elif log.action == 'incident_created' or log.action == 'incident_resolved' %}badge-warn{% else %}badge-gray{% endif %}" style="font-size:9px;">
+            {{ log.get_action_display }}
+          </span>
+        </td>
+        <td class="col-hide-mobile"><span style="font-size:11px;color:var(--text-3);">{{ log.resource|default:"—" }}</span></td>
+        <td class="col-hide-mobile"><span class="mono" style="font-size:10px;color:var(--text-4);">{{ log.ip_address|default:"—" }}</span></td>
+        <td>
+          {% if log.success %}
+            <span class="dot dot-on" title="Exitoso"></span>
+          {% else %}
+            <span class="dot dot-off" title="Fallido"></span>
+          {% endif %}
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="6" style="text-align:center;padding:40px;color:var(--text-4);">Sin registros aún.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+{% endblock %}

@@ -611,3 +611,90 @@ class SecurityAnomalyEvent(models.Model):
         if "→" in self.detail:
             return self.detail.split("→", 1)[1].strip()
         return None
+
+class UserTOTP(models.Model):
+    """Configuración de 2FA TOTP para un usuario del panel."""
+    user       = models.OneToOneField("auth.User", on_delete=models.CASCADE,
+                                       related_name="totp", verbose_name="Usuario")
+    secret     = models.CharField("Secreto TOTP", max_length=64)
+    is_enabled = models.BooleanField("2FA activo", default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_used  = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = "Configuración 2FA"
+        verbose_name_plural = "Configuraciones 2FA"
+
+    def __str__(self):
+        return f"2FA {'activo' if self.is_enabled else 'inactivo'} — {self.user.username}"
+
+    def verify(self, code: str) -> bool:
+        """Verifica un código TOTP de 6 dígitos."""
+        import pyotp
+        totp = pyotp.TOTP(self.secret)
+        return totp.verify(code, valid_window=1)
+
+class AuditLog(models.Model):
+    """Registro de acciones relevantes realizadas por usuarios en el panel."""
+
+    ACTION_CHOICES = [
+        ("login",           "Inicio de sesión"),
+        ("logout",          "Cierre de sesión"),
+        ("2fa_enabled",     "2FA activado"),
+        ("2fa_disabled",    "2FA desactivado"),
+        ("2fa_verified",    "2FA verificado"),
+        ("client_created",  "Cliente creado"),
+        ("client_updated",  "Cliente actualizado"),
+        ("incident_created","Incidente creado"),
+        ("incident_resolved","Incidente resuelto"),
+        ("report_generated","Reporte generado"),
+        ("anomaly_acked",   "Anomalía revisada"),
+        ("security_check",  "Verificación de seguridad"),
+        ("other",           "Otro"),
+    ]
+
+    user         = models.ForeignKey("auth.User", on_delete=models.SET_NULL, null=True,
+                                     blank=True, related_name="audit_logs", verbose_name="Usuario")
+    username     = models.CharField("Nombre de usuario", max_length=150, blank=True)
+    action       = models.CharField("Acción", max_length=30, choices=ACTION_CHOICES, default="other")
+    resource     = models.CharField("Recurso", max_length=200, blank=True)
+    detail       = models.TextField("Detalle", blank=True)
+    ip_address   = models.GenericIPAddressField("IP", null=True, blank=True)
+    user_agent   = models.CharField("User Agent", max_length=300, blank=True)
+    timestamp    = models.DateTimeField("Fecha/hora", auto_now_add=True)
+    success      = models.BooleanField("Exitoso", default=True)
+
+    class Meta:
+        verbose_name = "Registro de auditoría"
+        verbose_name_plural = "Registros de auditoría"
+        ordering = ["-timestamp"]
+        indexes = [models.Index(fields=["-timestamp"])]
+
+    def __str__(self):
+        return f"[{self.timestamp:%d/%m %H:%M}] {self.username} — {self.get_action_display()}"
+
+    @classmethod
+    def log(cls, request=None, user=None, action="other", resource="", detail="", success=True):
+        """Crea un registro de auditoría."""
+        try:
+            u = user or (request.user if request and request.user.is_authenticated else None)
+            ip = None
+            ua = ""
+            if request:
+                ip = (
+                    request.META.get("HTTP_X_FORWARDED_FOR", "").split(",")[0].strip()
+                    or request.META.get("REMOTE_ADDR")
+                )
+                ua = request.META.get("HTTP_USER_AGENT", "")[:300]
+            cls.objects.create(
+                user=u,
+                username=u.username if u else "",
+                action=action,
+                resource=resource,
+                detail=detail[:500],
+                ip_address=ip or None,
+                user_agent=ua,
+                success=success,
+            )
+        except Exception:
+            pass  # Nunca fallar por logging

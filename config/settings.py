@@ -47,8 +47,10 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "core.middleware.TOTPMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "core.middleware.SecurityHeadersMiddleware",
 ]
 
 ROOT_URLCONF = "config.urls"
@@ -127,8 +129,10 @@ REST_FRAMEWORK = {
         "rest_framework.throttling.UserRateThrottle",
     ],
     "DEFAULT_THROTTLE_RATES": {
-        "anon": "100/day",
-        "user": "1000/day",
+        "anon":      "100/day",
+        "user":      "1000/day",
+        "telemetry": "720/hour",   # 1 req cada 5s por agente = 720/hora máximo
+        "login":     "10/minute",  # anti-fuerza-bruta en login
     },
 }
 
@@ -153,8 +157,31 @@ RESEND_API_KEY  = os.environ.get("RESEND_API_KEY", "")
 BREVO_WEBHOOK_SECRET = os.environ.get("BREVO_WEBHOOK_SECRET", "")  # Clave para verificar webhooks
 
 # --- Sentinel XO config ---
-SENTINEL_COMPANY_NAME = os.environ.get("SENTINEL_COMPANY_NAME", "Sentinel XO")
+SENTINEL_COMPANY_NAME  = os.environ.get("SENTINEL_COMPANY_NAME", "Sentinel XO")
 SENTINEL_SUPPORT_EMAIL = os.environ.get("SENTINEL_SUPPORT_EMAIL", "soporte@sentinelxo.dev")
+SENTINEL_HMAC_SECRET   = os.environ.get("SENTINEL_HMAC_SECRET", "")  # si vacío, la validación HMAC se omite
+
+# ── Seguridad HTTP ──────────────────────────────────────────────────────────
+SECURE_CONTENT_TYPE_NOSNIFF      = True        # X-Content-Type-Options: nosniff
+SECURE_BROWSER_XSS_FILTER        = True        # X-XSS-Protection (legacy browsers)
+X_FRAME_OPTIONS                  = "DENY"      # X-Frame-Options: DENY (anti-clickjacking)
+SECURE_REFERRER_POLICY           = "strict-origin-when-cross-origin"
+
+# HTTPS — activar en producción (Railway usa HTTPS por defecto)
+if not DEBUG:
+    SECURE_PROXY_SSL_HEADER      = ("HTTP_X_FORWARDED_PROTO", "https")
+    SECURE_SSL_REDIRECT          = True
+    SESSION_COOKIE_SECURE        = True
+    CSRF_COOKIE_SECURE           = True
+    SECURE_HSTS_SECONDS          = 31536000    # 1 año
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD          = True
+
+# Sesión — expirar en 8 horas de inactividad
+SESSION_COOKIE_AGE               = 28800       # 8 horas en segundos
+SESSION_EXPIRE_AT_BROWSER_CLOSE  = False
+SESSION_COOKIE_HTTPONLY          = True
+SESSION_COOKIE_SAMESITE          = "Lax"
 
 # --- Logging básico ---
 LOGGING = {
