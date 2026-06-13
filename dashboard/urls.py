@@ -1,6 +1,5 @@
 from django.urls import path
 from . import views
-from core import views as core_views
 from core import views_alerts as alerts_views
 from core import views_security as security_views
 
@@ -12,7 +11,6 @@ urlpatterns = [
     path("admin/overview/",                         views.admin_overview,        name="admin-overview"),
     path("admin/clients/",                          views.admin_clients,         name="admin-clients"),
     path("admin/clients/<uuid:client_id>/",         views.admin_client_detail,   name="admin-client-detail"),
-    path("admin/audit/",                            core_views.audit_log_view,        name="audit-log"),
     # Portal cliente
     path("select/",                                 views.client_select,         name="client-select"),
     path("portal/<uuid:client_id>/",                views.client_portal,         name="client-portal"),
@@ -41,5 +39,7 @@ urlpatterns = [
     path("security/<uuid:client_id>/analyze/",          security_views.security_ai_analysis, name="security-ai-analysis"),
     path("security/anomaly/<int:anomaly_id>/ack/",       security_views.security_anomaly_acknowledge, name="security-anomaly-ack"),
     path("security/signin-anomaly/<int:anomaly_id>/ack/", security_views.signin_anomaly_acknowledge, name="signin-anomaly-ack"),
+    path("devices/<uuid:device_id>/software/",          security_views.software_inventory_view, name="software-inventory"),
+    path("devices/<uuid:device_id>/software/cve/",       security_views.software_cve_analysis, name="software-cve-analysis"),
     path("audit/", views.audit_log_view, name="audit-log"),
 ]

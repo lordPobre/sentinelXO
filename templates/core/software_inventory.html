@@ -1,0 +1,166 @@
+{% extends "base/layout.html" %}
+{% block title %}Software — {{ device.display_name }} — Sentinel XO{% endblock %}
+{% block page_title %}{{ device.display_name }}{% endblock %}
+{% block page_subtitle %}<div class="mono" style="font-size:10px;color:var(--text-3);margin-top:1px;">Inventario de Software · {{ client.company_name }}</div>{% endblock %}
+
+{% block content %}
+
+<div style="margin-bottom:14px;">
+  <a href="{% url 'dashboard:security-client-detail' client.id %}" class="btn-ghost" style="font-size:11px;padding:6px 12px;display:inline-flex;align-items:center;gap:6px;text-decoration:none;">
+    <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+    Volver a Seguridad
+  </a>
+</div>
+
+{% if not snapshot %}
+<div class="chart-card" style="text-align:center;padding:40px;">
+  <div style="font-size:28px;margin-bottom:12px;opacity:0.3;">💻</div>
+  <div style="font-size:14px;font-weight:600;color:#cbd5e1;margin-bottom:8px;">Sin inventario de software aún</div>
+  <div style="font-size:12px;color:var(--text-4);">
+    El agente envía el inventario de software cada 6 horas (solo Windows).
+    Espera al próximo ciclo o reinicia el servicio del agente para forzar el envío.
+  </div>
+</div>
+{% else %}
+
+<!-- Análisis CVE -->
+<div class="chart-card" style="margin-bottom:14px;">
+  <div style="display:flex;align-items:center;gap:6px;margin-bottom:12px;">
+    <span style="font-size:13px;">🧬</span>
+    <span style="font-size:10px;font-weight:600;color:#60a5fa;letter-spacing:0.05em;text-transform:uppercase;">
+      Análisis de Vulnerabilidades (CVE) — IA
+    </span>
+  </div>
+  <div id="cve-panel-{{ device.id }}">
+    {% include "core/partials/software_cve_panel.html" %}
+  </div>
+</div>
+
+<!-- Listado -->
+<div class="chart-card">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:10px;">
+    <div style="font-size:10px;font-weight:600;color:var(--text-4);letter-spacing:0.05em;text-transform:uppercase;">
+      {{ snapshot.software_list|length }} programas instalados
+    </div>
+    <input type="text" id="sw-search" class="px-input" style="max-width:260px;"
+           placeholder="Buscar programa o publicador…"
+           oninput="filterSoftware(this.value)">
+  </div>
+  <div class="mono" style="font-size:10px;color:var(--text-4);margin-bottom:10px;">
+    Actualizado: {{ snapshot.updated_at|date:"d/m/Y H:i" }}
+  </div>
+
+  <div class="table-wrap"><table class="px-table">
+    <thead><tr>
+      <th>Programa</th>
+      <th>Versión</th>
+      <th class="col-hide-mobile">Publicador</th>
+    </tr></thead>
+    <tbody id="sw-tbody">
+      {% for sw in snapshot.software_list %}
+      <tr class="sw-row" data-search="{{ sw.name|lower }} {{ sw.publisher|lower }}">
+        <td><span style="font-size:12px;color:#cbd5e1;">{{ sw.name }}</span></td>
+        <td><span class="mono" style="font-size:11px;color:var(--text-3);">{{ sw.version|default:"—" }}</span></td>
+        <td class="col-hide-mobile"><span style="font-size:11px;color:var(--text-4);">{{ sw.publisher|default:"—" }}</span></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+
+<script>
+function filterSoftware(q){
+  q=q.toLowerCase().trim();
+  document.querySelectorAll('.sw-row').forEach(r=>{
+    r.style.display = (!q || r.dataset.search.includes(q)) ? '' : 'none';
+  });
+}
+</script>
+
+{% endif %}
+
+<style>
+@keyframes spin { to { transform: rotate(360deg); } }
+.htmx-idle { display: inline-flex; align-items: center; gap:4px; }
+.htmx-request .htmx-idle { display: none; }
+.htmx-indicator { display: none; }
+.htmx-request .htmx-indicator { display: inline-flex; align-items: center; }
+
+/* ── Tarjetas de Hallazgos CVE — mismo estilo que Seguridad ──────────────── */
+.sec-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  margin-bottom: 8px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.05);
+  background: rgba(255,255,255,0.02);
+}
+.sec-card--critical { background: rgba(239,68,68,0.06); border-color: rgba(239,68,68,0.15); }
+.sec-card--warning  { background: rgba(245,158,11,0.06); border-color: rgba(245,158,11,0.15); }
+.sec-card--info     { background: rgba(37,99,235,0.05); border-color: rgba(37,99,235,0.12); }
+
+.sec-card-header {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+@media (min-width: 640px) {
+  .sec-card-header {
+    flex-direction: row;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+  }
+}
+
+.sec-card-main {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  min-width: 0;
+  flex: 1;
+}
+.sec-card-icon { font-size: 15px; flex-shrink: 0; margin-top: 1px; line-height: 1.4; }
+.sec-card-body { min-width: 0; flex: 1; }
+.sec-card-title {
+  font-size: 12px; font-weight: 600; color: #f1f5f9;
+  line-height: 1.4; word-break: break-word;
+}
+.sec-card-desc {
+  font-size: 11px; color: var(--text-3); line-height: 1.5;
+  margin-top: 4px; word-break: break-word;
+}
+
+.sec-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+@media (min-width: 640px) {
+  .sec-card-meta {
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 6px;
+  }
+}
+
+.sec-card-code {
+  font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+  font-size: 10.5px;
+  line-height: 1.6;
+  color: #94a3b8;
+  background: rgba(0,0,0,0.25);
+  border: 1px solid rgba(255,255,255,0.04);
+  border-radius: 6px;
+  padding: 8px 10px;
+  overflow-x: auto;
+  white-space: nowrap;
+  -webkit-overflow-scrolling: touch;
+}
+.sec-card-code::-webkit-scrollbar { height: 4px; }
+.sec-card-code::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+</style>
+{% endblock %}

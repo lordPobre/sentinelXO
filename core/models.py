@@ -587,6 +587,8 @@ class SecurityAnomalyEvent(models.Model):
         ("removed_startup","Programa de inicio eliminado"),
         ("new_task",       "Nueva tarea programada"),
         ("removed_task",   "Tarea programada eliminada"),
+        ("new_software",     "Nuevo software instalado"),
+        ("removed_software", "Software desinstalado"),
     ]
     SEVERITY_CHOICES = [
         ("info",     "Informativa"),
@@ -763,3 +765,20 @@ class SignInAnomalyEvent(models.Model):
         if "→" in self.detail:
             return self.detail.split("→", 1)[1].strip()
         return None
+
+class SoftwareSnapshot(models.Model):
+    """Última lista conocida de software instalado en un dispositivo."""
+
+    device = models.OneToOneField(HardwareDevice, on_delete=models.CASCADE,
+                                   related_name="software_snapshot", verbose_name="Dispositivo")
+    software_list = models.JSONField("Software instalado", default=list, blank=True)
+    updated_at    = models.DateTimeField("Actualizado", auto_now=True)
+    cve_analysis  = models.JSONField("Análisis CVE (IA)", null=True, blank=True)
+    cve_checked_at = models.DateTimeField("Análisis CVE generado", null=True, blank=True)
+
+    class Meta:
+        verbose_name = "Inventario de software"
+        verbose_name_plural = "Inventarios de software"
+
+    def __str__(self):
+        return f"Software — {self.device} ({len(self.software_list)} programas)"

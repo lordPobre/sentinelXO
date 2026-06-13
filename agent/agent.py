@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """
-Sentinel XO — Agente de Telemetría v4.0
-Monitorea: CPU, RAM, disco, red, temperatura, GPU (NVIDIA/AMD/Intel)
+Sentinel XO — Agente de Telemetría v4.2
+Monitorea: CPU, RAM, disco, red, temperatura, GPU (NVIDIA/AMD/Intel),
+huella de seguridad (administradores locales, inicio, tareas programadas)
+e inventario de software instalado
 """
 import os, sys, platform, socket, time, json, logging, random, hmac, hashlib
 from datetime import datetime, timezone
@@ -29,6 +31,7 @@ SENTINEL_API_URL = os.environ.get("SENTINEL_API_URL", "http://127.0.0.1:8000/api
 INTERVAL         = int(os.environ.get("SENTINEL_INTERVAL", "5"))
 TIMEOUT          = int(os.environ.get("SENTINEL_TIMEOUT", "10"))
 SECURITY_INTERVAL = int(os.environ.get("SENTINEL_SECURITY_INTERVAL", "300"))  # cada 5 min
+SOFTWARE_INTERVAL = int(os.environ.get("SENTINEL_SOFTWARE_INTERVAL", "21600"))  # cada 6 horas
 HMAC_SECRET      = os.environ.get("SENTINEL_HMAC_SECRET", "").encode()        # firma HMAC-SHA256
 IS_WINDOWS       = platform.system() == "Windows"
 
@@ -362,7 +365,80 @@ def get_scheduled_tasks():
         return None
 
 
-def collect_security_snapshot():
+def get_installed_software():
+    """
+    Lista de software instalado, leído desde las claves de registro Uninstall
+    (HKLM 64bit, HKLM 32bit/WOW6432Node, HKCU). Solo Windows.
+    Retorna lista de {name, version, publisher}, deduplicada.
+    """
+    if not IS_WINDOWS:
+        return None
+    items = []
+    seen = set()
+    try:
+        import winreg
+
+        uninstall_keys = [
+            (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
+                winreg.KEY_WOW64_64KEY),
+            (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
+                winreg.KEY_WOW64_32KEY),
+            (winreg.HKEY_CURRENT_USER, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall", 0),
+        ]
+        for hive, path, extra_flags in uninstall_keys:
+            try:
+                with winreg.OpenKey(hive, path, 0, winreg.KEY_READ | extra_flags) as key:
+                    i = 0
+                    while True:
+                        try:
+                            subkey_name = winreg.EnumKey(key, i)
+                            i += 1
+                        except OSError:
+                            break
+                        try:
+                            with winreg.OpenKey(key, subkey_name) as sub:
+                                def _get(name):
+                                    try:
+                                        return winreg.QueryValueEx(sub, name)[0]
+                                    except FileNotFoundError:
+                                        return None
+
+                                display_name = _get("DisplayName")
+                                if not display_name:
+                                    continue
+                                # Excluir actualizaciones/parches sin valor de inventario
+                                if _get("SystemComponent") == 1:
+                                    continue
+                                if _get("ParentKeyName"):
+                                    continue
+
+                                version   = _get("DisplayVersion") or ""
+                                publisher = _get("Publisher") or ""
+
+                                dedup_key = (display_name.strip().lower(), str(version).strip())
+                                if dedup_key in seen:
+                                    continue
+                                seen.add(dedup_key)
+                                items.append({
+                                    "name":      display_name.strip(),
+                                    "version":   str(version).strip(),
+                                    "publisher": publisher.strip(),
+                                })
+                        except OSError:
+                            continue
+            except FileNotFoundError:
+                continue
+            except OSError:
+                continue
+    except Exception as e:
+        logger.warning(f"No se pudo leer software instalado: {e}")
+        return None
+
+    items.sort(key=lambda x: x["name"].lower())
+    return items
+
+
+
     """
     Recolecta una huella de seguridad del equipo: administradores locales,
     programas de inicio y tareas programadas. Solo Windows.
@@ -385,7 +461,7 @@ def collect_security_snapshot():
     }
 
 
-def collect(include_security=False):
+def collect(include_security=False, include_software=False):
     try:
         import psutil
     except ImportError:
@@ -445,6 +521,15 @@ def collect(include_security=False):
         except Exception as e:
             logger.warning(f"Error recolectando huella de seguridad: {e}")
 
+    # Agregar inventario de software cada SOFTWARE_INTERVAL segundos (Windows)
+    if include_software:
+        try:
+            software = get_installed_software()
+            if software is not None:
+                payload["software_inventory"] = software
+        except Exception as e:
+            logger.warning(f"Error recolectando inventario de software: {e}")
+
     return payload
 
 
@@ -494,7 +579,7 @@ def main():
         logger.error("SENTINEL_TOKEN no configurado en .env")
         sys.exit(1)
 
-    logger.info(f"Sentinel XO Agent v4.0 | host={platform.node()} | intervalo={INTERVAL}s")
+    logger.info(f"Sentinel XO Agent v4.2 | host={platform.node()} | intervalo={INTERVAL}s")
     logger.info(f"Enviando a: {SENTINEL_API_URL}")
 
     # Diagnóstico inicial
@@ -519,15 +604,19 @@ def main():
     time.sleep(random.uniform(0, min(INTERVAL, 3)))
 
     last_security_send = 0.0
+    last_software_send = 0.0
 
     while True:
         try:
             now = time.monotonic()
             send_security = IS_WINDOWS and (now - last_security_send >= SECURITY_INTERVAL)
-            payload = collect(include_security=send_security)
+            send_software = IS_WINDOWS and (now - last_software_send >= SOFTWARE_INTERVAL)
+            payload = collect(include_security=send_security, include_software=send_software)
             send(payload)
             if send_security:
                 last_security_send = now
+            if send_software:
+                last_software_send = now
         except Exception as e:
             logger.error(f"Error inesperado: {e}")
         time.sleep(INTERVAL)

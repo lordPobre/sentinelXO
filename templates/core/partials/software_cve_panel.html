@@ -1,0 +1,128 @@
+{% if error %}
+<div style="padding:16px;text-align:center;">
+  <div style="font-size:12px;color:var(--red);margin-bottom:8px;">{{ error }}</div>
+  {% if snapshot %}
+  <button class="btn-ghost" style="font-size:11px;"
+          hx-post="{% url 'dashboard:software-cve-analysis' device.id %}"
+          hx-target="#cve-panel-{{ device.id }}" hx-swap="innerHTML">
+    Reintentar
+  </button>
+  {% endif %}
+</div>
+
+{% elif not snapshot.cve_analysis %}
+<div style="padding:24px;text-align:center;">
+  <div style="font-size:28px;margin-bottom:8px;opacity:0.3;">🧬</div>
+  <div style="font-size:12px;color:var(--text-4);margin-bottom:12px;">
+    Análisis de vulnerabilidades (CVE) disponible para {{ snapshot.software_list|length }} programas
+  </div>
+  <button class="btn-primary" style="font-size:12px;"
+          hx-post="{% url 'dashboard:software-cve-analysis' device.id %}"
+          hx-target="#cve-panel-{{ device.id }}" hx-swap="innerHTML"
+          hx-indicator="#cve-spinner-{{ device.id }}">
+    <span id="cve-spinner-{{ device.id }}" class="htmx-indicator">
+      <svg width="11" height="11" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="animation:spin 1s linear infinite;">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+      </svg>
+    </span>
+    <span class="htmx-idle">🧬</span>
+    Analizar vulnerabilidades
+  </button>
+</div>
+
+{% else %}
+{% with a=snapshot.cve_analysis %}
+<div>
+  <!-- Header riesgo -->
+  <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;
+              background:rgba(255,255,255,0.02);border-radius:8px;margin-bottom:10px;">
+    <div style="width:10px;height:10px;border-radius:50%;flex-shrink:0;
+                {% if a.nivel_riesgo == 'bajo' %}background:#10b981;box-shadow:0 0 8px #10b981;
+                {% elif a.nivel_riesgo == 'medio' %}background:#f59e0b;box-shadow:0 0 8px #f59e0b;
+                {% elif a.nivel_riesgo == 'alto' %}background:#ef4444;box-shadow:0 0 8px #ef4444;
+                {% else %}background:#dc2626;box-shadow:0 0 8px #dc2626;{% endif %}"></div>
+    <div style="flex:1;">
+      <div style="font-size:12px;font-weight:600;color:#f1f5f9;">{{ a.resumen }}</div>
+    </div>
+    <span style="font-size:10px;font-weight:700;padding:3px 10px;border-radius:6px;
+                 {% if a.nivel_riesgo == 'bajo' %}color:#10b981;background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.25);
+                 {% elif a.nivel_riesgo == 'medio' %}color:#f59e0b;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.25);
+                 {% elif a.nivel_riesgo == 'alto' %}color:#ef4444;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.25);
+                 {% else %}color:#dc2626;background:rgba(220,38,38,0.15);border:1px solid rgba(220,38,38,0.3);{% endif %}">
+      RIESGO {{ a.nivel_riesgo|upper }}
+    </span>
+  </div>
+
+  <!-- Hallazgos -->
+  {% if a.hallazgos %}
+  <div style="font-size:9px;font-weight:600;color:var(--text-4);letter-spacing:0.05em;text-transform:uppercase;margin-bottom:8px;">
+    Software con vulnerabilidades conocidas
+  </div>
+  {% for h in a.hallazgos %}
+  <div class="sec-card {% if h.severidad == 'critical' %}sec-card--critical{% elif h.severidad == 'warning' %}sec-card--warning{% else %}sec-card--info{% endif %}">
+    <div class="sec-card-header">
+      <div class="sec-card-main">
+        <span class="sec-card-icon">🧬</span>
+        <div class="sec-card-body">
+          <div class="sec-card-title">{{ h.software }}</div>
+          <div class="sec-card-desc">{{ h.detalle }}</div>
+        </div>
+      </div>
+      <div class="sec-card-meta">
+        <span class="badge {% if h.severidad == 'critical' %}badge-crit{% elif h.severidad == 'warning' %}badge-warn{% else %}badge-gray{% endif %}"
+              style="font-size:8px;padding:1px 6px;">
+          {{ h.severidad|upper }}
+        </span>
+      </div>
+    </div>
+    {% if h.cves_referencia %}
+    <div class="sec-card-code">{{ h.cves_referencia }}</div>
+    {% endif %}
+  </div>
+  {% endfor %}
+  {% else %}
+  <div style="padding:14px;text-align:center;font-size:11px;color:var(--text-4);">
+    No se detectó software con vulnerabilidades conocidas relevantes en este equipo.
+  </div>
+  {% endif %}
+
+  <!-- Recomendaciones -->
+  {% if a.recomendaciones %}
+  <div style="font-size:9px;font-weight:600;color:var(--text-4);letter-spacing:0.05em;text-transform:uppercase;margin:14px 0 8px;">
+    Recomendaciones
+  </div>
+  {% for r in a.recomendaciones %}
+  <div class="sec-card">
+    <div class="sec-card-header">
+      <div class="sec-card-main">
+        <span class="sec-card-icon">→</span>
+        <div class="sec-card-body">
+          <div class="sec-card-title">{{ r.accion }}</div>
+          {% if r.impacto %}<div class="sec-card-desc">{{ r.impacto }}</div>{% endif %}
+        </div>
+      </div>
+      <div class="sec-card-meta">
+        <span class="badge {% if r.prioridad == 'critica' %}badge-crit{% elif r.prioridad == 'alta' %}badge-warn{% else %}badge-gray{% endif %}"
+              style="font-size:8px;padding:1px 6px;">
+          {{ r.prioridad|upper }}
+        </span>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+  {% endif %}
+
+  <div style="margin-top:10px;display:flex;align-items:center;justify-content:space-between;">
+    <span class="mono" style="font-size:9px;color:var(--text-4);">
+      Generado: {{ snapshot.cve_checked_at|date:"d/m H:i" }} · Basado en conocimiento del modelo,
+      no en consulta en vivo a NVD/CVE
+    </span>
+    <button class="btn-ghost" style="font-size:10px;padding:4px 10px;"
+            hx-post="{% url 'dashboard:software-cve-analysis' device.id %}?force=true"
+            hx-target="#cve-panel-{{ device.id }}" hx-swap="innerHTML">
+      ↺ Regenerar
+    </button>
+  </div>
+</div>
+{% endwith %}
+{% endif %}

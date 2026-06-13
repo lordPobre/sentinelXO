@@ -559,3 +559,69 @@ def notify_signin_anomalies(client, anomalies: list):
                     f"({len(anomalies)} anomalías) → {recipients}")
     except Exception as e:
         logger.error(f"Error enviando alerta de sign-in para {client}: {e}")
+
+
+# ── Inventario de software y detección de cambios ──────────────────────────────
+
+def process_software_snapshot(device, software_list: list) -> list:
+    """
+    Compara el inventario de software recibido del agente con el último
+    conocido para el dispositivo. Crea SecurityAnomalyEvent por cada programa
+    nuevo o desinstalado, y actualiza el snapshot. Retorna las anomalías creadas.
+
+    software_list: [{"name": ..., "version": ..., "publisher": ...}, ...]
+    """
+    from core.models import SoftwareSnapshot, SecurityAnomalyEvent
+
+    def _sw_key(item):
+        return (item.get("name", "").strip().lower(), str(item.get("version", "")).strip())
+
+    new_set = {_sw_key(i) for i in software_list}
+    new_by_key = {_sw_key(i): i for i in software_list}
+
+    snap, created = SoftwareSnapshot.objects.get_or_create(device=device)
+    anomalies = []
+
+    if created or not snap.software_list:
+        snap.software_list = software_list
+        snap.save(update_fields=["software_list", "updated_at"])
+        logger.info(f"Inventario de software inicial registrado para {device.display_name} "
+                    f"({len(software_list)} programas)")
+        return anomalies
+
+    old_set = {_sw_key(i) for i in (snap.software_list or [])}
+    old_by_key = {_sw_key(i): i for i in (snap.software_list or [])}
+
+    for added_key in (new_set - old_set):
+        item = new_by_key.get(added_key, {})
+        ver = f" v{item.get('version')}" if item.get("version") else ""
+        anomalies.append(SecurityAnomalyEvent(
+            device=device, anomaly_type="new_software", severity="info",
+            detail=(f"Nuevo software instalado: {item.get('name','?')}{ver} "
+                    f"→ Publicador: {item.get('publisher') or 'desconocido'}"),
+        ))
+
+    for removed_key in (old_set - new_set):
+        item = old_by_key.get(removed_key, {})
+        ver = f" v{item.get('version')}" if item.get("version") else ""
+        anomalies.append(SecurityAnomalyEvent(
+            device=device, anomaly_type="removed_software", severity="info",
+            detail=f"Software desinstalado: {item.get('name','?')}{ver}",
+        ))
+
+    if anomalies:
+        SecurityAnomalyEvent.objects.bulk_create(anomalies)
+        logger.info(f"Cambios de software detectados en {device.display_name}: "
+                    f"{len(anomalies)} ({sum(1 for a in anomalies if a.anomaly_type=='new_software')} nuevos, "
+                    f"{sum(1 for a in anomalies if a.anomaly_type=='removed_software')} desinstalados)")
+
+    snap.software_list = software_list
+    # El análisis CVE anterior puede haber quedado desactualizado
+    if anomalies:
+        snap.cve_analysis = None
+        snap.cve_checked_at = None
+        snap.save(update_fields=["software_list", "cve_analysis", "cve_checked_at", "updated_at"])
+    else:
+        snap.save(update_fields=["software_list", "updated_at"])
+
+    return anomalies

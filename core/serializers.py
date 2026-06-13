@@ -33,6 +33,8 @@ class TelemetryIngestSerializer(serializers.Serializer):
     gpu_temp_celsius        = serializers.FloatField(required=False, allow_null=True, default=None)
     # Huella de seguridad — opcional, enviada cada N minutos por el agente (Windows)
     security_snapshot       = serializers.DictField(required=False, allow_null=True, default=None)
+    # Inventario de software — opcional, enviado cada N horas por el agente (Windows)
+    software_inventory      = serializers.ListField(required=False, allow_null=True, default=None)
 
 
 class TelemetrySnapshotSerializer(serializers.ModelSerializer):

@@ -622,6 +622,7 @@ Reglas:
 - Solo JSON, sin texto adicional"""
 
     api_key = (getattr(settings, "ANTHROPIC_API_KEY", "") or os.environ.get("ANTHROPIC_API_KEY", "")).strip()
+    logger.info(f"[security_analysis] ANTHROPIC_API_KEY presente: {bool(api_key)}, longitud: {len(api_key)}")
 
     try:
         payload = json.dumps({
@@ -648,6 +649,120 @@ Reglas:
                         f"riesgo={analysis.get('nivel_riesgo')}")
             return analysis
 
+    except urllib.error.HTTPError as e:
+        body = e.read().decode(errors="ignore")[:400]
+        logger.error(f"Error generando análisis de seguridad IA para {client.company_name}: "
+                      f"HTTP {e.code} — {body} (api_key len={len(api_key)})")
+        return None
     except Exception as e:
-        logger.error(f"Error generando análisis de seguridad IA para {client.company_name}: {e}")
+        logger.error(f"Error generando análisis de seguridad IA para {client.company_name}: {e} "
+                      f"(api_key len={len(api_key)})")
+        return None
+
+
+def generate_software_cve_analysis(device, software_list: list) -> dict | None:
+    """
+    Analiza el inventario de software de un dispositivo y, usando el
+    conocimiento del modelo sobre vulnerabilidades conocidas (CVEs), identifica
+    software desactualizado o con vulnerabilidades públicas relevantes.
+
+    Retorna un dict JSON con nivel de riesgo, hallazgos por programa y
+    recomendaciones, o None si falla.
+
+    NOTA: este análisis se basa en el conocimiento de entrenamiento del modelo,
+    no en una consulta en vivo a la base de datos NVD/CVE. Es una primera capa
+    de detección — para vulnerabilidades críticas, se recomienda verificar con
+    fuentes oficiales (nvd.nist.gov).
+    """
+    from django.conf import settings
+    company = getattr(settings, "SENTINEL_COMPANY_NAME", "Sentinel XO")
+
+    # Filtrar ruido: actualizaciones, runtimes redundantes, drivers — limitar a
+    # ~120 programas para no exceder el contexto
+    software_compact = [
+        {"name": s.get("name", ""), "version": s.get("version", ""), "publisher": s.get("publisher", "")}
+        for s in software_list[:150]
+        if s.get("name")
+    ]
+
+    prompt = f"""Eres un analista de ciberseguridad de {company}, una plataforma MSP de monitoreo de TI.
+
+A continuación tienes el inventario de software instalado en un equipo Windows:
+
+{json.dumps(software_compact, ensure_ascii=False, indent=2)}
+
+Tu tarea: identificar programas con versiones desactualizadas que tengan vulnerabilidades (CVEs)
+públicamente conocidas y relevantes (CVSS alto/crítico), basándote en tu conocimiento sobre
+seguridad de software. Enfócate en software ampliamente explotado: navegadores, lectores PDF,
+Java, runtimes, compresores de archivos, clientes de escritorio remoto, software de red, etc.
+
+Genera un análisis JSON con EXACTAMENTE esta estructura (sin markdown, solo JSON puro):
+{{
+  "nivel_riesgo": "bajo|medio|alto|critico",
+  "resumen": "Resumen ejecutivo de 1-2 oraciones sobre el estado de parches del equipo (máximo 200 caracteres)",
+  "hallazgos": [
+    {{
+      "software": "Nombre del programa y versión instalada",
+      "detalle": "Por qué es preocupante (CVEs conocidos, qué permite explotar) (máximo 180 caracteres)",
+      "severidad": "info|warning|critical",
+      "cves_referencia": "IDs de CVE relevantes si los conoces, ej. CVE-2023-1234 (opcional, deja vacío si no estás seguro)"
+    }}
+  ],
+  "recomendaciones": [
+    {{
+      "accion": "Acción concreta (ej. actualizar X a la versión Y o más reciente)",
+      "prioridad": "baja|media|alta|critica",
+      "impacto": "Qué riesgo mitiga (máximo 80 caracteres)"
+    }}
+  ]
+}}
+
+Reglas:
+- Genera entre 0 y 6 hallazgos. Si no detectas software con vulnerabilidades conocidas relevantes,
+  retorna "hallazgos": [] y nivel_riesgo "bajo" con un resumen positivo.
+- Solo incluye hallazgos donde tengas razonable confianza — no inventes CVEs específicos si no
+  estás seguro; en ese caso deja "cves_referencia" vacío y describe el riesgo en términos generales
+  (ej. "versiones anteriores a 2023 de este software tienen vulnerabilidades críticas conocidas").
+- Prioriza software con exposición a internet o que procesa archivos externos (navegadores,
+  lectores de documentos, clientes de email, herramientas de compresión, Java, Flash, software
+  de acceso remoto).
+- Ignora software de Microsoft que se actualiza vía Windows Update (a menos que sea una versión
+  de un producto ya fuera de soporte, ej. Office 2010, Windows 7 components).
+- Genera entre 0 y 4 recomendaciones, ordenadas por prioridad.
+- Solo JSON, sin texto adicional."""
+
+    api_key = (getattr(settings, "ANTHROPIC_API_KEY", "") or os.environ.get("ANTHROPIC_API_KEY", "")).strip()
+
+    try:
+        payload = json.dumps({
+            "model":      CLAUDE_MODEL,
+            "max_tokens": 1400,
+            "messages":   [{"role": "user", "content": prompt}],
+        }).encode("utf-8")
+
+        req = urllib.request.Request(CLAUDE_API_URL, data=payload, method="POST")
+        req.add_header("Content-Type", "application/json")
+        req.add_header("anthropic-version", "2023-06-01")
+        req.add_header("x-api-key", api_key)
+
+        with urllib.request.urlopen(req, timeout=45) as resp:
+            result  = json.loads(resp.read().decode())
+            raw_txt = result["content"][0]["text"].strip()
+            if raw_txt.startswith("```"):
+                raw_txt = raw_txt.split("```")[1]
+                if raw_txt.startswith("json"):
+                    raw_txt = raw_txt[4:]
+            raw_txt = raw_txt.strip()
+            analysis = json.loads(raw_txt)
+            logger.info(f"Análisis CVE generado para {device.display_name}: "
+                        f"riesgo={analysis.get('nivel_riesgo')}, "
+                        f"hallazgos={len(analysis.get('hallazgos', []))}")
+            return analysis
+
+    except urllib.error.HTTPError as e:
+        body = e.read().decode(errors="ignore")[:400]
+        logger.error(f"Error generando análisis CVE para {device.display_name}: HTTP {e.code} — {body}")
+        return None
+    except Exception as e:
+        logger.error(f"Error generando análisis CVE para {device.display_name}: {e}")
         return None

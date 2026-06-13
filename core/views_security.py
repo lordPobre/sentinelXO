@@ -193,3 +193,66 @@ def security_ai_analysis(request, client_id):
         "client": client, "latest": latest,
         "error": "No se pudo generar el análisis. Intenta de nuevo.",
     })
+
+
+@login_required
+def software_inventory_view(request, device_id):
+    """Vista de inventario de software de un dispositivo."""
+    from core.models import HardwareDevice, SoftwareSnapshot
+
+    device = get_object_or_404(HardwareDevice, pk=device_id)
+
+    if not request.user.is_staff:
+        portal = request.user.client_portals.filter(pk=device.client_id).first()
+        if not portal:
+            return HttpResponseForbidden()
+
+    snapshot = SoftwareSnapshot.objects.filter(device=device).first()
+
+    return render(request, "core/software_inventory.html", {
+        "section":  "security",
+        "device":   device,
+        "client":   device.client,
+        "snapshot": snapshot,
+    })
+
+
+@login_required
+def software_cve_analysis(request, device_id):
+    """POST — genera o regenera el análisis CVE del inventario de software."""
+    from core.models import HardwareDevice, SoftwareSnapshot
+    from core.views_ai import generate_software_cve_analysis
+
+    device = get_object_or_404(HardwareDevice, pk=device_id)
+
+    if not request.user.is_staff:
+        portal = request.user.client_portals.filter(pk=device.client_id).first()
+        if not portal:
+            return HttpResponseForbidden()
+
+    snapshot = SoftwareSnapshot.objects.filter(device=device).first()
+    if not snapshot or not snapshot.software_list:
+        return render(request, "core/partials/software_cve_panel.html", {
+            "device": device, "snapshot": None,
+            "error": "Aún no se ha recibido el inventario de software de este equipo.",
+        })
+
+    force = request.GET.get("force", "false") == "true" or request.method == "POST"
+    if snapshot.cve_analysis and not force:
+        return render(request, "core/partials/software_cve_panel.html", {
+            "device": device, "snapshot": snapshot,
+        })
+
+    analysis = generate_software_cve_analysis(device, snapshot.software_list)
+    if analysis:
+        snapshot.cve_analysis = analysis
+        snapshot.cve_checked_at = timezone.now()
+        snapshot.save(update_fields=["cve_analysis", "cve_checked_at"])
+        return render(request, "core/partials/software_cve_panel.html", {
+            "device": device, "snapshot": snapshot,
+        })
+
+    return render(request, "core/partials/software_cve_panel.html", {
+        "device": device, "snapshot": snapshot,
+        "error": "No se pudo generar el análisis. Intenta de nuevo.",
+    })
