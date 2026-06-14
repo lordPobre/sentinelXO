@@ -148,7 +148,8 @@ _PRIORITY_LABELS = {"baja": "BAJA", "media": "MEDIA", "alta": "ALTA", "critica":
 # ── Función principal ────────────────────────────────────────────────────────
 def build_security_report_pdf(client) -> bytes:
     from django.conf import settings
-    from core.models import SecurityCheck, SecurityAnomalyEvent, SignInAnomalyEvent
+    from core.models import (SecurityCheck, SecurityAnomalyEvent, SignInAnomalyEvent,
+                              HardwareDevice, SoftwareSnapshot)
 
     company = getattr(settings, "SENTINEL_COMPANY_NAME", "Sentinel XO")
     now = timezone.localtime(timezone.now())
@@ -161,6 +162,10 @@ def build_security_report_pdf(client) -> bytes:
     signin_anomalies = list(SignInAnomalyEvent.objects.filter(
         client=client
     ).order_by("-detected_at")[:50])
+    devices = list(HardwareDevice.objects.filter(client=client, is_active=True))
+    software_snapshots = list(SoftwareSnapshot.objects.filter(
+        device__client=client, device__is_active=True
+    ).select_related("device"))
 
     ai = latest.ai_summary if (latest and latest.ai_summary) else None
 
@@ -467,6 +472,119 @@ def build_security_report_pdf(client) -> bytes:
             f"<b>{open_count}</b> anomalía(s) sin revisar de un total de <b>{len(signin_anomalies)}</b> "
             f"registradas (últimas 50).",
             ps("signin_summary", fontSize=8.5, textColor=C_SLATE5)))
+
+    # ── CONECTIVIDAD DE AGENTES ──────────────────────────────────────────────
+    if devices:
+        story.append(Spacer(1, 18))
+        story += section_header("Conectividad de Agentes",
+                                 "Estado de los equipos monitoreados por Sentinel XO")
+        rows = [[th("EQUIPO"), th("TIPO"), th("ESTADO"), th("ÚLTIMO CONTACTO")]]
+        for d in devices:
+            if d.is_online:
+                estado_pill = pill_cell("EN LÍNEA", "green")
+            elif getattr(d, "is_offline", False):
+                estado_pill = pill_cell("SIN CONEXIÓN", "red")
+            else:
+                estado_pill = pill_cell("SIN DATOS", "slate")
+
+            last_seen_txt = (timezone.localtime(d.last_seen).strftime("%d/%m/%Y %H:%M")
+                              if d.last_seen else "—")
+            rows.append([
+                td(d.display_name, bold=True),
+                td(d.get_device_type_display(), size=8, color=C_SLATE5),
+                estado_pill,
+                td(last_seen_txt, size=8, color=C_SLATE5, align=TA_CENTER),
+            ])
+        t = Table(rows, colWidths=[CW*0.32, CW*0.20, CW*0.20, CW*0.28])
+        t.setStyle(TableStyle(TH_STYLE + [
+            ("ALIGN", (2,0), (2,-1), "CENTER"),
+            ("ALIGN", (3,0), (3,-1), "CENTER"),
+        ]))
+        story.append(t)
+
+    # ── INVENTARIO DE SOFTWARE Y VULNERABILIDADES (CVE) ──────────────────────
+    if software_snapshots:
+        story.append(PageBreak())
+        story += section_header("Inventario de Software y Vulnerabilidades",
+                                 "Análisis de CVEs por equipo basado en conocimiento del modelo (IA)")
+
+        for snap in software_snapshots:
+            device = snap.device
+            n_software = len(snap.software_list or [])
+            cve = snap.cve_analysis
+
+            # Encabezado por equipo
+            riesgo = (cve.get("nivel_riesgo", "—").upper() if cve else "SIN ANÁLISIS")
+            head = Table([[
+                Paragraph(f"<b>{device.display_name}</b>", ps("dev_h",
+                    fontName="Helvetica-Bold", fontSize=10.5, textColor=C_SLATE8, leading=14)),
+                Paragraph(f"{n_software} programas instalados", ps("dev_n",
+                    fontSize=8.5, textColor=C_SLATE5, leading=12, alignment=TA_RIGHT)),
+            ]], colWidths=[CW*0.7, CW*0.3])
+            head.setStyle(TableStyle([
+                ("LEFTPADDING", (0,0), (-1,-1), 0), ("RIGHTPADDING", (0,0), (-1,-1), 0),
+                ("TOPPADDING", (0,0), (-1,-1), 6), ("BOTTOMPADDING", (0,0), (-1,-1), 4),
+                ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
+            ]))
+            story.append(head)
+
+            if not cve:
+                story.append(Paragraph(
+                    "Análisis de vulnerabilidades (CVE) aún no generado para este equipo.",
+                    ps("nocve", fontSize=9, textColor=C_SLATE5)))
+                story.append(Spacer(1, 12))
+                continue
+
+            resumen_box = Table([[
+                Paragraph(cve.get("resumen", ""), ps("cve_resumen", fontSize=9.5, textColor=C_SLATE8, leading=14)),
+                pill_cell(f"RIESGO {riesgo}", _risk_pill_key(cve.get("nivel_riesgo"))),
+            ]], colWidths=[CW*0.78, CW*0.22])
+            resumen_box.setStyle(TableStyle([
+                ("BACKGROUND",    (0,0), (-1,-1), colors.HexColor("#eff6ff")),
+                ("LEFTPADDING",   (0,0), (-1,-1), 12),
+                ("RIGHTPADDING",  (0,0), (-1,-1), 12),
+                ("TOPPADDING",    (0,0), (-1,-1), 9),
+                ("BOTTOMPADDING", (0,0), (-1,-1), 9),
+                ("VALIGN",        (0,0), (-1,-1), "MIDDLE"),
+                ("ALIGN",         (1,0), (1,0),   "RIGHT"),
+                ("LINEBELOW",     (0,0), (-1,-1), 2, C_BLUE),
+            ]))
+            story.append(resumen_box)
+            story.append(Spacer(1, 8))
+
+            hallazgos = cve.get("hallazgos") or []
+            if hallazgos:
+                rows = [[th("SOFTWARE"), th("DETALLE"), th("SEVERIDAD")]]
+                for h in hallazgos:
+                    rows.append([
+                        td(h.get("software", ""), bold=True, size=8.5),
+                        td(h.get("detalle", ""), size=8, color=C_SLATE5),
+                        pill_cell(_SEVERITY_LABELS.get(h.get("severidad"), "INFO"),
+                                  _severity_pill_key(h.get("severidad"))),
+                    ])
+                t = Table(rows, colWidths=[CW*0.30, CW*0.53, CW*0.17])
+                t.setStyle(TableStyle(TH_STYLE + [("ALIGN", (2,0), (2,-1), "CENTER")]))
+                story.append(t)
+            else:
+                story.append(Paragraph(
+                    "No se detectó software con vulnerabilidades conocidas relevantes.",
+                    ps("nohallazgos", fontSize=9, textColor=C_SLATE5)))
+
+            recomendaciones = cve.get("recomendaciones") or []
+            if recomendaciones:
+                story.append(Spacer(1, 6))
+                for r in recomendaciones:
+                    story.append(Paragraph(
+                        f"→ <b>{r.get('accion','')}</b> "
+                        f"<font color='#64748b'>({_PRIORITY_LABELS.get(r.get('prioridad'), 'MEDIA')})</font>",
+                        ps("rec_item", fontSize=8.5, textColor=C_SLATE8, leading=13)))
+
+            checked = (timezone.localtime(snap.cve_checked_at).strftime("%d/%m/%Y %H:%M")
+                       if snap.cve_checked_at else "—")
+            story.append(Spacer(1, 4))
+            story.append(Paragraph(f"Análisis generado: {checked}",
+                                    ps("cve_ts", fontSize=7.5, textColor=C_SLATE5)))
+            story.append(Spacer(1, 14))
 
     # ── Build ────────────────────────────────────────────────────────────────
     doc.build(story, onFirstPage=footer_cb, onLaterPages=footer_cb)

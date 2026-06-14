@@ -114,3 +114,24 @@ def security_report_download(request, client_id):
     response = HttpResponse(pdf_bytes, content_type="application/pdf")
     response["Content-Disposition"] = f'attachment; filename="{filename}"'
     return response
+
+
+@login_required
+def system_overview_download(request):
+    """GET /reports/sistema/ — descarga el PDF de producto (funcionamiento y arquitectura)."""
+    from .system_overview import build_system_overview_pdf
+
+    if not request.user.is_staff:
+        from django.http import HttpResponseForbidden
+        return HttpResponseForbidden("Sin acceso")
+
+    try:
+        pdf_bytes = build_system_overview_pdf()
+    except Exception as e:
+        return HttpResponse(f"Error generando documento: {e}", status=500)
+
+    now = timezone.now()
+    filename = f"sentinel_xo_funcionamiento_{now.strftime('%Y%m%d')}.pdf"
+    response = HttpResponse(pdf_bytes, content_type="application/pdf")
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return response

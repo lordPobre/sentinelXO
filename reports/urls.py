@@ -11,4 +11,6 @@ urlpatterns = [
     path("device/<uuid:device_id>/", views.device_report_download, name="device-report"),
     # Reporte de postura de seguridad
     path("security/<uuid:client_id>/", views.security_report_download, name="security-report"),
+    # Documento de producto: funcionamiento y arquitectura del sistema
+    path("sistema/", views.system_overview_download, name="system-overview"),
 ]
