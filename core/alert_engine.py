@@ -9,6 +9,30 @@ from django.conf import settings
 
 logger = logging.getLogger("sentinel.alerts")
 
+
+def _trigger_ai_diagnosis(incident):
+    """
+    Dispara el diagnóstico IA de un incidente en un thread de fondo.
+
+    Se puede desactivar con SENTINEL_DISABLE_AI_DIAGNOSIS=True (lo usan los tests
+    para no llamar a la API de IA ni dejar threads tocando la base de datos).
+    """
+    if getattr(settings, "SENTINEL_DISABLE_AI_DIAGNOSIS", False):
+        return
+    try:
+        import threading
+        from core.views_ai import diagnose_incident
+
+        def run_diagnosis():
+            diag = diagnose_incident(incident)
+            if diag:
+                incident.ai_diagnosis = diag
+                incident.save(update_fields=["ai_diagnosis"])
+
+        threading.Thread(target=run_diagnosis, daemon=True).start()
+    except Exception as e:
+        logger.warning(f"Error iniciando diagnóstico IA para incidente {incident.pk}: {e}")
+
 METRIC_LABELS = {
     "cpu":       "CPU",
     "ram":       "RAM",
@@ -178,17 +202,7 @@ def _create_incident_from_alert(event):
     )
 
     # Generar diagnóstico IA en background (no bloquea el motor de alertas)
-    try:
-        import threading
-        from core.views_ai import diagnose_incident
-        def run_diagnosis():
-            diag = diagnose_incident(incident)
-            if diag:
-                incident.ai_diagnosis = diag
-                incident.save(update_fields=["ai_diagnosis"])
-        threading.Thread(target=run_diagnosis, daemon=True).start()
-    except Exception as e:
-        logger.warning(f"Error iniciando diagnóstico IA para incidente automático: {e}")
+    _trigger_ai_diagnosis(incident)
 
 
 def evaluate_snapshot(snapshot) -> list:
@@ -337,17 +351,7 @@ Saludos,
         )
 
         # Generar diagnóstico IA en background
-        try:
-            import threading
-            from core.views_ai import diagnose_incident
-            def run_diagnosis():
-                diag = diagnose_incident(incident)
-                if diag:
-                    incident.ai_diagnosis = diag
-                    incident.save(update_fields=["ai_diagnosis"])
-            threading.Thread(target=run_diagnosis, daemon=True).start()
-        except Exception as e2:
-            logger.warning(f"Error iniciando diagnóstico IA para incidente SMTP: {e2}")
+        _trigger_ai_diagnosis(incident)
     except Exception as e:
         logger.error(f"Error creando incidente SMTP: {e}")
 

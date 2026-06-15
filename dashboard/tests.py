@@ -8,7 +8,7 @@ Se centran en el control de acceso, que es lo más sensible:
 
 Se ejecutan con: python manage.py test dashboard
 """
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.contrib.auth import get_user_model
 
@@ -28,6 +28,7 @@ def _client(**kw):
     return Client.objects.create(**defaults)
 
 
+@override_settings(SECURE_SSL_REDIRECT=False)
 class AccesoNoAutenticadoTests(TestCase):
     """Las vistas protegidas redirigen al login."""
 
@@ -41,6 +42,7 @@ class AccesoNoAutenticadoTests(TestCase):
         self.assertEqual(resp.status_code, 302)
 
 
+@override_settings(SECURE_SSL_REDIRECT=False)
 class PortalAislamientoTests(TestCase):
     """Un cliente no puede acceder al portal de otro cliente."""
 
@@ -70,6 +72,7 @@ class PortalAislamientoTests(TestCase):
         self.assertEqual(resp.status_code, 200)
 
 
+@override_settings(SECURE_SSL_REDIRECT=False)
 class AdminOverviewAccesoTests(TestCase):
     """La vista de resumen global es accesible para staff autenticado."""
 

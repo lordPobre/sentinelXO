@@ -52,6 +52,7 @@ def _payload(**overrides):
     return p
 
 
+@override_settings(SECURE_SSL_REDIRECT=False, SENTINEL_DISABLE_AI_DIAGNOSIS=True)
 class TelemetryIngestTests(TestCase):
     """Endpoint POST /api/v1/telemetry/."""
 
@@ -117,6 +118,7 @@ class TelemetryIngestTests(TestCase):
         self.assertTrue(TelemetrySnapshot.objects.filter(pk=old.pk).exists())
 
 
+@override_settings(SENTINEL_DISABLE_AI_DIAGNOSIS=True)
 class AlertEngineTests(TestCase):
     """Motor de alertas: evaluate_snapshot."""
 

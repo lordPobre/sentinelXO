@@ -163,6 +163,10 @@ CELERY_ACCEPT_CONTENT = ["json"]
 # Retención de telemetría (días) — usado por la tarea core.purge_old_telemetry
 SENTINEL_TELEMETRY_RETENTION_DAYS = int(os.environ.get("SENTINEL_TELEMETRY_RETENTION_DAYS", "30"))
 
+# Permite desactivar el diagnóstico IA en background (alert_engine). Los tests lo
+# activan para no llamar a la API de IA; en producción se deja en False.
+SENTINEL_DISABLE_AI_DIAGNOSIS = os.environ.get("SENTINEL_DISABLE_AI_DIAGNOSIS", "False") == "True"
+
 # --- Email ---
 # Email — usa Brevo API HTTP (sin SMTP, compatible con Railway plan Hobby)
 EMAIL_BACKEND   = "django.core.mail.backends.dummy.EmailBackend"  # django.core.mail no se usa
