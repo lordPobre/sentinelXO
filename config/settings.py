@@ -147,6 +147,9 @@ CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
 CELERY_TASK_SERIALIZER = "json"
 CELERY_ACCEPT_CONTENT = ["json"]
 
+# Retención de telemetría (días) — usado por la tarea core.purge_old_telemetry
+SENTINEL_TELEMETRY_RETENTION_DAYS = int(os.environ.get("SENTINEL_TELEMETRY_RETENTION_DAYS", "30"))
+
 # --- Email ---
 # Email — usa Brevo API HTTP (sin SMTP, compatible con Railway plan Hobby)
 EMAIL_BACKEND   = "django.core.mail.backends.dummy.EmailBackend"  # django.core.mail no se usa

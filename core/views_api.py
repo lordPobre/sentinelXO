@@ -1,21 +1,21 @@
 import logging
+from django.conf import settings
 from django.utils import timezone
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.authentication import SessionAuthentication
 from rest_framework.authentication import BasicAuthentication
-from django.conf import settings
-from rest_framework.permissions import IsAuthenticated
-from .models import HardwareDevice, TelemetrySnapshot
-from core.throttles import TelemetryRateThrottle
-from core.models import Client
 
 
 class CsrfExemptSessionAuthentication(SessionAuthentication):
     """SessionAuthentication sin verificación CSRF — seguro para endpoints GET de solo lectura."""
     def enforce_csrf(self, request):
         pass  # no verificar CSRF
+from rest_framework.permissions import IsAuthenticated
+
+from .models import HardwareDevice, TelemetrySnapshot
+
 logger = logging.getLogger("perseus")
 
 
@@ -29,7 +29,7 @@ class TelemetryIngestView(APIView):
     throttle_classes = ["core.throttles.TelemetryRateThrottle"]
 
     def get_throttles(self):
-        
+        from core.throttles import TelemetryRateThrottle
         return [TelemetryRateThrottle()]
 
     def post(self, request):
@@ -103,10 +103,6 @@ class TelemetryIngestView(APIView):
             update_fields.append("hostname")
         device.save(update_fields=update_fields)
 
-        # Limpiar snapshots de más de 30 días
-        cutoff = timezone.now() - timezone.timedelta(days=30)
-        TelemetrySnapshot.objects.filter(device=device, captured_at__lt=cutoff).delete()
-
         logger.info(f"Telemetría recibida: {device.display_name} ({device.client})")
 
         # Evaluar reglas de alerta en background (no bloquea la respuesta)
@@ -138,6 +134,20 @@ class TelemetryIngestView(APIView):
                     logger.info(f"Huella de seguridad sin cambios para {device.display_name}")
         except Exception as e:
             logger.error(f"Error procesando huella de seguridad: {e}")
+
+        # Procesar inventario de software (si el agente lo envió esta vez)
+        try:
+            software_inventory = data.get("software_inventory")
+            if software_inventory:
+                from core.security import process_software_snapshot
+                sw_anomalies = process_software_snapshot(device, software_inventory)
+                if sw_anomalies:
+                    logger.info(
+                        f"Inventario de software actualizado para {device.display_name}: "
+                        f"{len(software_inventory)} programas, {len(sw_anomalies)} cambio(s)"
+                    )
+        except Exception as e:
+            logger.error(f"Error procesando inventario de software: {e}")
 
         return Response({"status": "ok", "device": device.display_name}, status=status.HTTP_201_CREATED)
 
@@ -215,6 +225,7 @@ class ClientLiveSummaryView(APIView):
     throttle_classes = []
 
     def get(self, request, client_id):
+        from core.models import Client
         try:
             if request.user.is_staff:
                 client = Client.objects.get(pk=client_id)

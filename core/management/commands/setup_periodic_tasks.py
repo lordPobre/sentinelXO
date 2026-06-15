@@ -92,6 +92,12 @@ class Command(BaseCommand):
                 schedule=crontab(minute="0", hour="3", day_of_week="1"),
                 description="Genera un dump comprimido de los datos críticos y lo envía por email.",
             ),
+            dict(
+                name="Purga de telemetría antigua",
+                task="core.purge_old_telemetry",
+                schedule=crontab(minute="0", hour="2"),
+                description="Elimina snapshots de telemetría más antiguos que la retención configurada (30 días).",
+            ),
         ]
 
         for t in tasks:
