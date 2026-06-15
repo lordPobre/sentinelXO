@@ -69,3 +69,5 @@ agent/.env
 
 cleanup_db.py
 test_m365.py
+sentinel_doc.py
+
