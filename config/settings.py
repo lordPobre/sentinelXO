@@ -140,8 +140,21 @@ REST_FRAMEWORK = {
 # Claude API — usado para análisis predictivo, diagnóstico de incidentes y reportes narrativos
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 
-CELERY_BROKER_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
-CELERY_RESULT_BACKEND = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
+_REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
+
+# Upstash (y otros Redis gestionados) usan TLS con el esquema rediss://. Celery
+# exige que esas URLs lleven el parámetro ssl_cert_reqs. Si falta, lo añadimos
+# aquí para no tener que editar la variable de entorno a mano en Railway.
+if _REDIS_URL.startswith("rediss://") and "ssl_cert_reqs=" not in _REDIS_URL:
+    _sep = "&" if "?" in _REDIS_URL else "?"
+    _REDIS_URL = f"{_REDIS_URL}{_sep}ssl_cert_reqs=CERT_NONE"
+
+CELERY_BROKER_URL = _REDIS_URL
+# No almacenamos resultados de tareas: son trabajos de fondo (purga, backups,
+# checks) que no se consultan después. Esto reduce la carga sobre Redis/Upstash
+# y evita el error "Retry limit exceeded" al disparar tareas desde el admin.
+CELERY_RESULT_BACKEND = None
+CELERY_TASK_IGNORE_RESULT = True
 CELERY_TIMEZONE = TIME_ZONE
 CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
 CELERY_TASK_SERIALIZER = "json"
