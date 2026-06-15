@@ -220,3 +220,32 @@ LOGGING = {
         "perseus": {"handlers": ["console"], "level": "DEBUG" if DEBUG else "INFO", "propagate": False},
     },
 }
+
+# --- Observabilidad (Sentry) ---
+# Se activa solo si SENTRY_DSN está presente. En local/desarrollo, sin la
+# variable, no envía nada. Captura automáticamente errores de Django (web) y
+# de las tareas Celery (worker/beat), con stack trace y contexto.
+SENTRY_DSN = os.environ.get("SENTRY_DSN", "")
+if SENTRY_DSN:
+    import sentry_sdk
+    from sentry_sdk.integrations.django import DjangoIntegration
+    from sentry_sdk.integrations.celery import CeleryIntegration
+    from sentry_sdk.integrations.logging import LoggingIntegration
+    import logging as _logging
+
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        integrations=[
+            DjangoIntegration(),
+            CeleryIntegration(),
+            # Envía como eventos los logs de nivel ERROR o superior
+            LoggingIntegration(level=_logging.INFO, event_level=_logging.ERROR),
+        ],
+        environment=os.environ.get("SENTRY_ENVIRONMENT", "production"),
+        release=os.environ.get("RAILWAY_GIT_COMMIT_SHA", "") or None,
+        # Muestreo de performance: 0 = sin trazas de performance (solo errores).
+        # Subir a 0.1 si más adelante quieres muestrear el 10% de las peticiones.
+        traces_sample_rate=float(os.environ.get("SENTRY_TRACES_SAMPLE_RATE", "0")),
+        # No enviar datos personales (IPs, cookies) salvo que se active explícitamente
+        send_default_pii=False,
+    )
