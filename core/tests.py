@@ -233,3 +233,96 @@ class PurgeTelemetryTaskTests(TestCase):
         from core.tasks import purge_old_telemetry
         result = purge_old_telemetry()
         self.assertEqual(result["deleted"], 0)
+
+
+@override_settings(SENTINEL_DISABLE_AI_DIAGNOSIS=True)
+class NetworkSnapshotTests(TestCase):
+    """Procesamiento y evaluación de la postura de red."""
+
+    def setUp(self):
+        self.client_obj = _client()
+        self.device = _device(self.client_obj)
+
+    def _net_sec(self, **kw):
+        base = dict(
+            wifi_encryption="WPA2-Personal",
+            wifi_ssid="OficinaWiFi",
+            network_category="Private",
+            firewall=[{"name": "Domain", "enabled": True},
+                      {"name": "Private", "enabled": True},
+                      {"name": "Public", "enabled": True}],
+            dns_servers=["8.8.8.8"],
+        )
+        base.update(kw)
+        return base
+
+    def test_primera_vez_sin_alertas(self):
+        from core.security import process_network_security
+        anomalies = process_network_security(self.device, self._net_sec())
+        self.assertEqual(len(anomalies), 0)  # línea base, sin alertas
+        self.assertTrue(hasattr(self.device, "network_snapshot"))
+
+    def test_wifi_abierta_es_critico(self):
+        from core.security import process_network_security
+        from core.models import NetworkSnapshot
+        process_network_security(self.device, self._net_sec())  # base segura
+        # Ahora se conecta a WiFi abierta
+        anomalies = process_network_security(
+            self.device, self._net_sec(wifi_encryption="", wifi_ssid="CafeWiFi"))
+        snap = NetworkSnapshot.objects.get(device=self.device)
+        self.assertEqual(snap.risk_level, "critical")
+        self.assertTrue(any(a.anomaly_type == "open_wifi" for a in anomalies))
+
+    def test_firewall_apagado_genera_alerta_critica(self):
+        from core.security import process_network_security
+        process_network_security(self.device, self._net_sec())  # base con firewall on
+        anomalies = process_network_security(
+            self.device,
+            self._net_sec(firewall=[{"name": "Public", "enabled": False},
+                                    {"name": "Private", "enabled": True},
+                                    {"name": "Domain", "enabled": True}]))
+        self.assertTrue(any(a.anomaly_type == "firewall_off" and a.severity == "critical"
+                            for a in anomalies))
+
+    def test_cambio_de_red_wifi(self):
+        from core.security import process_network_security
+        process_network_security(self.device, self._net_sec(wifi_ssid="RedA"))
+        anomalies = process_network_security(self.device, self._net_sec(wifi_ssid="RedB"))
+        self.assertTrue(any(a.anomaly_type == "network_change" for a in anomalies))
+
+    def test_cambio_de_dns_genera_alerta(self):
+        from core.security import process_network_security
+        process_network_security(self.device, self._net_sec(dns_servers=["8.8.8.8"]))
+        anomalies = process_network_security(
+            self.device, self._net_sec(dns_servers=["1.2.3.4"]))
+        self.assertTrue(any(a.anomaly_type == "dns_change" for a in anomalies))
+
+    def test_red_segura_sin_alertas(self):
+        from core.security import process_network_security
+        from core.models import NetworkSnapshot
+        process_network_security(self.device, self._net_sec())
+        anomalies = process_network_security(self.device, self._net_sec())  # sin cambios
+        snap = NetworkSnapshot.objects.get(device=self.device)
+        self.assertEqual(snap.risk_level, "ok")
+        self.assertEqual(len(anomalies), 0)
+
+    def test_estabilidad_actualiza_sin_alertas(self):
+        from core.security import update_network_stability
+        from core.models import NetworkSnapshot
+        update_network_stability(self.device, {
+            "latency_ms": 25.0, "packet_loss_percent": 0.0,
+            "wifi": {"ssid": "OficinaWiFi", "signal_percent": 85},
+        })
+        snap = NetworkSnapshot.objects.get(device=self.device)
+        self.assertEqual(snap.latency_ms, 25.0)
+        self.assertEqual(snap.wifi_signal_percent, 85)
+
+    def test_perdida_paquetes_alta_es_warning(self):
+        from core.security import process_network_security, update_network_stability
+        from core.models import NetworkSnapshot
+        process_network_security(self.device, self._net_sec())
+        update_network_stability(self.device, {"latency_ms": 30.0, "packet_loss_percent": 25.0})
+        # Re-evaluar riesgo procesando seguridad de nuevo
+        process_network_security(self.device, self._net_sec())
+        snap = NetworkSnapshot.objects.get(device=self.device)
+        self.assertIn(snap.risk_level, ("warning", "critical"))

@@ -283,10 +283,14 @@ def device_detail_live(request, device_id):
     # Últimos 60 snapshots para el historial (~5 minutos a 5s de intervalo)
     snapshots = list(device.snapshots.order_by("captured_at")[::-1][:60][::-1])
 
+    # Postura de red (puede no existir aún si el agente no la ha enviado)
+    network = getattr(device, "network_snapshot", None)
+
     return render(request, "dashboard/device_live.html", {
         "device": device,
         "client": device.client,
         "snapshots": snapshots,
+        "network": network,
         "section": "realtime",
     })
 

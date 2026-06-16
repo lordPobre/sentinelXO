@@ -596,6 +596,10 @@ class SecurityAnomalyEvent(models.Model):
         ("removed_task",   "Tarea programada eliminada"),
         ("new_software",     "Nuevo software instalado"),
         ("removed_software", "Software desinstalado"),
+        ("open_wifi",        "Red WiFi abierta (sin cifrado)"),
+        ("firewall_off",     "Firewall desactivado"),
+        ("network_change",   "Cambio de red"),
+        ("dns_change",       "Cambio de servidores DNS"),
     ]
     SEVERITY_CHOICES = [
         ("info",     "Informativa"),
@@ -789,3 +793,66 @@ class SoftwareSnapshot(models.Model):
 
     def __str__(self):
         return f"Software — {self.device} ({len(self.software_list)} programas)"
+
+
+class NetworkSnapshot(models.Model):
+    """
+    Última postura conocida de la red a la que está conectado un dispositivo.
+    Combina estabilidad (latencia, pérdida, señal WiFi) y seguridad de red
+    (perfil, firewall, DNS, cifrado WiFi). Se actualiza con la telemetría
+    (estabilidad) y con el snapshot de seguridad (seguridad de red).
+    """
+
+    RISK_CHOICES = [
+        ("ok",       "Segura"),
+        ("warning",  "Advertencia"),
+        ("critical", "Crítica"),
+        ("unknown",  "Desconocida"),
+    ]
+
+    device = models.OneToOneField(HardwareDevice, on_delete=models.CASCADE,
+                                   related_name="network_snapshot", verbose_name="Dispositivo")
+
+    # Estabilidad (de la telemetría)
+    latency_ms          = models.FloatField("Latencia (ms)", null=True, blank=True)
+    packet_loss_percent = models.FloatField("Pérdida de paquetes (%)", null=True, blank=True)
+    wifi_ssid           = models.CharField("Red WiFi (SSID)", max_length=200, blank=True, default="")
+    wifi_signal_percent = models.IntegerField("Señal WiFi (%)", null=True, blank=True)
+
+    # Seguridad de red (del snapshot de seguridad)
+    wifi_encryption  = models.CharField("Cifrado WiFi", max_length=100, blank=True, default="")
+    network_category = models.CharField("Perfil de red", max_length=50, blank=True, default="")
+    firewall         = models.JSONField("Estado del firewall", default=list, blank=True)
+    dns_servers      = models.JSONField("Servidores DNS", default=list, blank=True)
+
+    # Evaluación
+    risk_level   = models.CharField("Nivel de riesgo", max_length=10,
+                                     choices=RISK_CHOICES, default="unknown")
+    risk_reasons = models.JSONField("Motivos de riesgo", default=list, blank=True)
+
+    updated_at         = models.DateTimeField("Actualizado", auto_now=True)
+    security_checked_at = models.DateTimeField("Seguridad de red evaluada", null=True, blank=True)
+
+    class Meta:
+        verbose_name = "Postura de red"
+        verbose_name_plural = "Posturas de red"
+
+    def __str__(self):
+        return f"Red — {self.device} ({self.get_risk_level_display()})"
+
+    @property
+    def is_wifi(self):
+        return bool(self.wifi_ssid)
+
+    @property
+    def is_open_wifi(self):
+        """True si está en WiFi sin cifrado (red abierta)."""
+        enc = (self.wifi_encryption or "").lower()
+        return self.is_wifi and ("open" in enc or "abierta" in enc or enc == "")
+
+    @property
+    def firewall_all_on(self):
+        """True si todos los perfiles de firewall reportados están activos."""
+        if not self.firewall:
+            return None
+        return all(fw.get("enabled") for fw in self.firewall)

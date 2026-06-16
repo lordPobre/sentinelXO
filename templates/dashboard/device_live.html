@@ -124,6 +124,15 @@
   .info-row:last-child { border-bottom: none; }
   .info-key { font-size: 11px; color: var(--text-4); }
   .info-val { font-size: 11px; color: var(--text-2); font-family: 'JetBrains Mono', monospace; }
+  .net-block {
+    background: rgba(255,255,255,0.02);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 14px;
+  }
+  .net-label { font-size: 10px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-4); margin-bottom: 6px; }
+  .net-value { font-size: 18px; font-weight: 700; color: var(--text-2); font-family: 'JetBrains Mono', monospace; }
+  .net-unit  { font-size: 11px; font-weight: 500; color: var(--text-4); margin-left: 2px; }
   /* Responsive device_live */
   @media (max-width: 768px) {
     .gauges-grid { grid-template-columns: 1fr 1fr !important; }
@@ -237,6 +246,119 @@
       <div class="disk-name" style="color:var(--text-4);">Cargando…</div>
     </div>
   </div>
+</div>
+
+<!-- Red y conectividad -->
+<div class="chart-card" style="margin-bottom:14px;">
+  <div class="chart-title">
+    Red y conectividad
+    {% if network %}
+      {% if network.risk_level == "ok" %}
+        <span class="mono" style="font-size:10px;font-weight:600;padding:2px 8px;border-radius:5px;background:rgba(16,185,129,0.08);color:#10b981;border:1px solid rgba(16,185,129,0.2);">SEGURA</span>
+      {% elif network.risk_level == "warning" %}
+        <span class="mono" style="font-size:10px;font-weight:600;padding:2px 8px;border-radius:5px;background:rgba(245,158,11,0.08);color:#f59e0b;border:1px solid rgba(245,158,11,0.2);">ADVERTENCIA</span>
+      {% elif network.risk_level == "critical" %}
+        <span class="mono" style="font-size:10px;font-weight:600;padding:2px 8px;border-radius:5px;background:rgba(239,68,68,0.08);color:#ef4444;border:1px solid rgba(239,68,68,0.2);">CRÍTICA</span>
+      {% else %}
+        <span class="mono" style="font-size:10px;font-weight:600;padding:2px 8px;border-radius:5px;background:rgba(148,163,184,0.08);color:var(--text-4);border:1px solid rgba(148,163,184,0.15);">SIN DATOS</span>
+      {% endif %}
+    {% endif %}
+  </div>
+
+  {% if not network %}
+    <div style="color:var(--text-4);font-size:12px;padding:8px 0;">
+      Sin datos de red todavía. El agente reportará la postura de red en su próximo ciclo de seguridad.
+      <div style="font-size:10px;font-family:'JetBrains Mono',monospace;margin-top:4px;color:var(--text-4);">Requiere agente v4.2 o superior.</div>
+    </div>
+  {% else %}
+    {% if network.risk_reasons %}
+      <div style="margin-bottom:12px;display:flex;flex-direction:column;gap:5px;">
+        {% for reason in network.risk_reasons %}
+          <div style="font-size:11px;color:var(--text-2);display:flex;align-items:flex-start;gap:7px;">
+            <span style="color:{% if network.risk_level == 'critical' %}#ef4444{% else %}#f59e0b{% endif %};flex-shrink:0;">&#9656;</span>
+            <span>{{ reason }}</span>
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;">
+
+      <div class="net-block">
+        <div class="net-label">Latencia (gateway)</div>
+        <div class="net-value">
+          {% if network.latency_ms is not None %}
+            {{ network.latency_ms|floatformat:0 }}<span class="net-unit">ms</span>
+          {% else %}<span style="color:var(--text-4);">—</span>{% endif %}
+        </div>
+      </div>
+
+      <div class="net-block">
+        <div class="net-label">Pérdida de paquetes</div>
+        <div class="net-value">
+          {% if network.packet_loss_percent is not None %}
+            <span style="color:{% if network.packet_loss_percent >= 10 %}#f59e0b{% else %}#10b981{% endif %};">{{ network.packet_loss_percent|floatformat:0 }}<span class="net-unit">%</span></span>
+          {% else %}<span style="color:var(--text-4);">—</span>{% endif %}
+        </div>
+      </div>
+
+      {% if network.is_wifi %}
+      <div class="net-block">
+        <div class="net-label">Red WiFi</div>
+        <div class="net-value" style="font-size:13px;">{{ network.wifi_ssid|default:"—" }}</div>
+        {% if network.wifi_signal_percent is not None %}
+          <div style="font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--text-4);margin-top:2px;">Señal {{ network.wifi_signal_percent }}%</div>
+        {% endif %}
+      </div>
+
+      <div class="net-block">
+        <div class="net-label">Cifrado</div>
+        <div class="net-value" style="font-size:13px;">
+          {% if network.is_open_wifi %}
+            <span style="color:#ef4444;">Abierta</span>
+          {% else %}
+            {{ network.wifi_encryption|default:"—" }}
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+
+      {% if network.network_category %}
+      <div class="net-block">
+        <div class="net-label">Perfil de red</div>
+        <div class="net-value" style="font-size:13px;">{{ network.network_category }}</div>
+      </div>
+      {% endif %}
+
+      {% if network.firewall %}
+      <div class="net-block">
+        <div class="net-label">Firewall</div>
+        <div class="net-value" style="font-size:13px;">
+          {% if network.firewall_all_on %}
+            <span style="color:#10b981;">Activo</span>
+          {% else %}
+            <span style="color:#ef4444;">Parcial</span>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+
+      {% if network.dns_servers %}
+      <div class="net-block">
+        <div class="net-label">Servidores DNS</div>
+        <div class="net-value" style="font-size:12px;font-family:'JetBrains Mono',monospace;">
+          {% for dns in network.dns_servers %}{{ dns }}{% if not forloop.last %}<br>{% endif %}{% endfor %}
+        </div>
+      </div>
+      {% endif %}
+
+    </div>
+
+    <div style="font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--text-4);margin-top:10px;">
+      Actualizado hace {{ network.updated_at|timesince }}
+      {% if network.security_checked_at %}· seguridad evaluada hace {{ network.security_checked_at|timesince }}{% endif %}
+    </div>
+  {% endif %}
 </div>
 
 <!-- Temperaturas -->

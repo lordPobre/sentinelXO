@@ -103,6 +103,15 @@ class TelemetryIngestView(APIView):
             update_fields.append("hostname")
         device.save(update_fields=update_fields)
 
+        # Actualizar estabilidad de red si la telemetría trae calidad muestreada
+        try:
+            net = data.get("network") or {}
+            if any(k in net for k in ("latency_ms", "packet_loss_percent", "wifi")):
+                from core.security import update_network_stability
+                update_network_stability(device, net)
+        except Exception as e:
+            logger.warning(f"Error actualizando estabilidad de red: {e}")
+
         logger.info(f"Telemetría recibida: {device.display_name} ({device.client})")
 
         # Evaluar reglas de alerta en background (no bloquea la respuesta)
@@ -134,6 +143,21 @@ class TelemetryIngestView(APIView):
                     logger.info(f"Huella de seguridad sin cambios para {device.display_name}")
         except Exception as e:
             logger.error(f"Error procesando huella de seguridad: {e}")
+
+        # Procesar seguridad de red (si el agente la envió con el snapshot de seguridad)
+        try:
+            net_sec = data.get("network_security")
+            if net_sec:
+                from core.security import process_network_security, notify_security_anomalies
+                net_anomalies = process_network_security(device, net_sec)
+                if net_anomalies:
+                    notify_security_anomalies(device, net_anomalies)
+                    logger.info(
+                        f"Postura de red actualizada para {device.display_name}: "
+                        f"{len(net_anomalies)} cambio(s)"
+                    )
+        except Exception as e:
+            logger.error(f"Error procesando seguridad de red: {e}")
 
         # Procesar inventario de software (si el agente lo envió esta vez)
         try:

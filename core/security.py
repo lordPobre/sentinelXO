@@ -649,3 +649,142 @@ def process_software_snapshot(device, software_list: list) -> list:
         snap.save(update_fields=["software_list", "updated_at"])
 
     return anomalies
+
+
+# ─── Estabilidad y seguridad de red ──────────────────────────────────────────
+
+def update_network_stability(device, network_data: dict):
+    """
+    Actualiza la parte de estabilidad del NetworkSnapshot desde la telemetría
+    (latencia, pérdida de paquetes, señal WiFi). No genera anomalías — solo
+    refresca los valores. Llamado en cada telemetría que traiga calidad de red.
+    """
+    from core.models import NetworkSnapshot
+
+    has_quality = any(k in network_data for k in ("latency_ms", "packet_loss_percent", "wifi"))
+    if not has_quality:
+        return
+
+    snap, _ = NetworkSnapshot.objects.get_or_create(device=device)
+    snap.latency_ms = network_data.get("latency_ms")
+    snap.packet_loss_percent = network_data.get("packet_loss_percent")
+
+    wifi = network_data.get("wifi") or {}
+    if wifi:
+        snap.wifi_ssid = wifi.get("ssid") or ""
+        snap.wifi_signal_percent = wifi.get("signal_percent")
+
+    snap.save(update_fields=[
+        "latency_ms", "packet_loss_percent", "wifi_ssid",
+        "wifi_signal_percent", "updated_at",
+    ])
+
+
+def _evaluate_network_risk(snap) -> tuple:
+    """
+    Evalúa el nivel de riesgo de la red. Devuelve (risk_level, reasons).
+    """
+    reasons = []
+    level = "ok"
+
+    # WiFi abierta = crítico
+    if snap.is_open_wifi:
+        reasons.append("Conectado a una red WiFi abierta (sin cifrado).")
+        level = "critical"
+    elif snap.wifi_encryption:
+        enc = snap.wifi_encryption.lower()
+        if "wep" in enc or ("wpa" in enc and "wpa2" not in enc and "wpa3" not in enc):
+            reasons.append(f"Cifrado WiFi débil u obsoleto: {snap.wifi_encryption}.")
+            level = "warning"
+
+    # Firewall apagado = crítico
+    if snap.firewall_all_on is False:
+        off = [fw.get("name") for fw in snap.firewall if not fw.get("enabled")]
+        reasons.append(f"Firewall desactivado en: {', '.join(off)}.")
+        level = "critical"
+
+    # Pérdida de paquetes alta = warning
+    if snap.packet_loss_percent is not None and snap.packet_loss_percent >= 10:
+        reasons.append(f"Pérdida de paquetes elevada: {snap.packet_loss_percent:.0f}%.")
+        if level == "ok":
+            level = "warning"
+
+    # Latencia muy alta = warning
+    if snap.latency_ms is not None and snap.latency_ms >= 200:
+        reasons.append(f"Latencia alta hacia el gateway: {snap.latency_ms:.0f} ms.")
+        if level == "ok":
+            level = "warning"
+
+    return level, reasons
+
+
+def process_network_security(device, net_sec: dict) -> list:
+    """
+    Procesa la seguridad de red recibida con el snapshot de seguridad. Guarda
+    los datos, evalúa el riesgo, y compara contra el estado anterior para
+    detectar cambios (WiFi abierta, firewall apagado, cambio de red/DNS).
+    Retorna lista de anomalías creadas.
+    """
+    from core.models import NetworkSnapshot, SecurityAnomalyEvent
+    from django.utils import timezone
+
+    snap, created = NetworkSnapshot.objects.get_or_create(device=device)
+
+    old_ssid = snap.wifi_ssid
+    old_dns = set(snap.dns_servers or [])
+    old_fw_on = snap.firewall_all_on
+    old_open_wifi = snap.is_open_wifi
+
+    # Actualizar campos de seguridad
+    snap.wifi_encryption  = net_sec.get("wifi_encryption") or ""
+    snap.network_category = net_sec.get("network_category") or ""
+    snap.firewall         = net_sec.get("firewall") or []
+    snap.dns_servers      = net_sec.get("dns_servers") or []
+    if net_sec.get("wifi_ssid"):
+        snap.wifi_ssid = net_sec.get("wifi_ssid")
+
+    # Evaluar riesgo
+    level, reasons = _evaluate_network_risk(snap)
+    snap.risk_level = level
+    snap.risk_reasons = reasons
+    snap.security_checked_at = timezone.now()
+    snap.save()
+
+    anomalies = []
+
+    # Primera vez: solo línea base, sin alertas (pero sí evalúa riesgo)
+    if created:
+        logger.info(f"Postura de red inicial registrada para {device.display_name}")
+        return anomalies
+
+    def _anomaly(atype, severity, detail):
+        ev = SecurityAnomalyEvent.objects.create(
+            device=device, anomaly_type=atype, severity=severity, detail=detail,
+        )
+        anomalies.append(ev)
+
+    # WiFi abierta (nueva)
+    if snap.is_open_wifi and not old_open_wifi:
+        _anomaly("open_wifi", "warning",
+                 f"El equipo se conectó a una red WiFi abierta: {snap.wifi_ssid or '(desconocida)'}.")
+
+    # Firewall apagado (cambió de on a off)
+    if old_fw_on is not False and snap.firewall_all_on is False:
+        off = [fw.get("name") for fw in snap.firewall if not fw.get("enabled")]
+        _anomaly("firewall_off", "critical",
+                 f"Firewall desactivado en: {', '.join(off)}.")
+
+    # Cambio de red WiFi
+    if old_ssid and snap.wifi_ssid and old_ssid != snap.wifi_ssid:
+        _anomaly("network_change", "info",
+                 f"Cambio de red WiFi: '{old_ssid}' → '{snap.wifi_ssid}'.")
+
+    # Cambio de servidores DNS
+    new_dns = set(snap.dns_servers or [])
+    if old_dns and new_dns and old_dns != new_dns:
+        added = new_dns - old_dns
+        if added:
+            _anomaly("dns_change", "warning",
+                     f"Cambio en servidores DNS. Nuevos: {', '.join(sorted(added))}.")
+
+    return anomalies

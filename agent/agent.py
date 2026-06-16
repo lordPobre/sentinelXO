@@ -32,6 +32,7 @@ INTERVAL         = int(os.environ.get("SENTINEL_INTERVAL", "5"))
 TIMEOUT          = int(os.environ.get("SENTINEL_TIMEOUT", "10"))
 SECURITY_INTERVAL = int(os.environ.get("SENTINEL_SECURITY_INTERVAL", "300"))  # cada 5 min
 SOFTWARE_INTERVAL = int(os.environ.get("SENTINEL_SOFTWARE_INTERVAL", "21600"))  # cada 6 horas
+NET_QUALITY_INTERVAL = int(os.environ.get("SENTINEL_NETQUALITY_INTERVAL", "60"))  # cada 60 s
 HMAC_SECRET      = os.environ.get("SENTINEL_HMAC_SECRET", "").encode()        # firma HMAC-SHA256
 IS_WINDOWS       = platform.system() == "Windows"
 
@@ -217,12 +218,100 @@ def get_gpu_stats():
     return None  # sin GPU detectable
 
 
+def _ping_gateway():
+    """
+    Mide latencia (ms) y pérdida de paquetes (%) haciendo ping al gateway por
+    defecto. Devuelve (latency_ms, packet_loss_pct) o (None, None) si falla.
+    """
+    try:
+        import subprocess, re
+        # Obtener gateway por defecto
+        if IS_WINDOWS:
+            out = subprocess.run(["ipconfig"], capture_output=True, text=True,
+                                 timeout=8, encoding="cp850", errors="ignore").stdout
+            m = re.search(r"(?:Default Gateway|Puerta de enlace predeterminada)[ .]*:\s*([\d.]+)", out)
+            gateway = m.group(1) if m else None
+        else:
+            out = subprocess.run(["ip", "route"], capture_output=True, text=True,
+                                 timeout=8, errors="ignore").stdout
+            m = re.search(r"default via ([\d.]+)", out)
+            gateway = m.group(1) if m else None
+
+        if not gateway:
+            return None, None
+
+        # 4 pings al gateway
+        if IS_WINDOWS:
+            r = subprocess.run(["ping", "-n", "4", "-w", "1000", gateway],
+                               capture_output=True, text=True, timeout=12,
+                               encoding="cp850", errors="ignore").stdout
+            # Latencia media
+            lat = re.search(r"(?:Average|Media)[ =]*([\d]+)ms", r)
+            loss = re.search(r"\((\d+)%\s*(?:loss|perdidos)\)", r)
+        else:
+            r = subprocess.run(["ping", "-c", "4", "-W", "1", gateway],
+                               capture_output=True, text=True, timeout=12,
+                               errors="ignore").stdout
+            lat = re.search(r"= [\d.]+/([\d.]+)/", r)
+            loss = re.search(r"(\d+)% packet loss", r)
+
+        latency = float(lat.group(1)) if lat else None
+        packet_loss = float(loss.group(1)) if loss else None
+        return latency, packet_loss
+    except Exception:
+        return None, None
+
+
+def _wifi_info():
+    """
+    Devuelve dict con info de la conexión WiFi (solo Windows): SSID, señal %,
+    tipo de cifrado. Si no hay WiFi (cable) o falla, devuelve {}.
+    """
+    if not IS_WINDOWS:
+        return {}
+    try:
+        import subprocess, re
+        out = subprocess.run(["netsh", "wlan", "show", "interfaces"],
+                             capture_output=True, text=True, timeout=10,
+                             encoding="cp850", errors="ignore").stdout
+        if not out or ("There is no wireless" in out or "no hay interfaz" in out.lower()):
+            return {}
+
+        def grab(*patterns):
+            for p in patterns:
+                m = re.search(p + r"\s*:\s*(.+)", out)
+                if m:
+                    return m.group(1).strip()
+            return None
+
+        ssid = grab(r"\bSSID", r"\bSSID")
+        signal = grab(r"(?:Signal|Señal)")
+        auth = grab(r"(?:Authentication|Autenticación)")
+        signal_pct = None
+        if signal:
+            sm = re.search(r"(\d+)", signal)
+            signal_pct = int(sm.group(1)) if sm else None
+
+        return {
+            "ssid": ssid,
+            "signal_percent": signal_pct,
+            "encryption": auth,  # ej: WPA2-Personal, WPA3-Personal, "Open"/"Abierta"
+        }
+    except Exception:
+        return {}
+
+
 def get_network_stats():
-    """Bytes enviados/recibidos desde el arranque."""
+    """
+    Métricas de red: bytes/paquetes (contadores), más latencia, pérdida de
+    paquetes y calidad WiFi. Estos últimos solo se muestrean cuando se solicita
+    (sample_quality=True) para no hacer ping en cada ciclo.
+    """
+    stats = {}
     try:
         import psutil
         net = psutil.net_io_counters()
-        return {
+        stats = {
             "bytes_sent":   net.bytes_sent,
             "bytes_recv":   net.bytes_recv,
             "packets_sent": net.packets_sent,
@@ -230,6 +319,81 @@ def get_network_stats():
         }
     except Exception:
         return {}
+
+    return stats
+
+
+def get_network_quality():
+    """
+    Muestreo de calidad de red (latencia, pérdida, WiFi). Más costoso que
+    get_network_stats, se llama con menor frecuencia.
+    """
+    latency, packet_loss = _ping_gateway()
+    quality = {
+        "latency_ms": latency,
+        "packet_loss_percent": packet_loss,
+    }
+    wifi = _wifi_info()
+    if wifi:
+        quality["wifi"] = wifi
+    return quality
+
+
+def get_network_security():
+    """
+    Postura de seguridad de la red a la que está conectado el equipo (Windows):
+    - Perfil de red (Public/Private/DomainAuthenticated)
+    - Estado del firewall por perfil
+    - Servidores DNS configurados
+    - Tipo de cifrado WiFi (si aplica)
+    Devuelve dict, o None si no es Windows.
+    """
+    if not IS_WINDOWS:
+        return None
+    try:
+        import subprocess, re, json as _json
+        result = {}
+
+        # Perfil de red + cifrado WiFi vía PowerShell
+        ps_cmd = (
+            "$p = Get-NetConnectionProfile | Select-Object -First 1; "
+            "$fw = Get-NetFirewallProfile | Select-Object Name,Enabled; "
+            "$o = @{ network_category = $p.NetworkCategory; "
+            "interface_alias = $p.InterfaceAlias; "
+            "firewall = ($fw | ForEach-Object { @{ name=$_.Name; enabled=[bool]$_.Enabled } }) }; "
+            "$o | ConvertTo-Json -Compress -Depth 4"
+        )
+        out = subprocess.run(["powershell", "-NoProfile", "-Command", ps_cmd],
+                             capture_output=True, text=True, timeout=15,
+                             encoding="utf-8", errors="ignore").stdout.strip()
+        if out:
+            try:
+                data = _json.loads(out)
+                result["network_category"] = data.get("network_category")
+                result["interface_alias"] = data.get("interface_alias")
+                fw = data.get("firewall")
+                if isinstance(fw, dict):
+                    fw = [fw]
+                result["firewall"] = fw or []
+            except Exception:
+                pass
+
+        # DNS configurados
+        dns_out = subprocess.run(["ipconfig", "/all"], capture_output=True, text=True,
+                                 timeout=10, encoding="cp850", errors="ignore").stdout
+        dns_servers = re.findall(r"(?:DNS Servers|Servidores DNS)[ .]*:\s*([\d.]+)", dns_out)
+        # Capturar también líneas de continuación de DNS (IPs sueltas indentadas)
+        result["dns_servers"] = dns_servers
+
+        # Cifrado WiFi (reutiliza _wifi_info)
+        wifi = _wifi_info()
+        if wifi:
+            result["wifi_encryption"] = wifi.get("encryption")
+            result["wifi_ssid"] = wifi.get("ssid")
+
+        return result
+    except Exception as e:
+        return {"error": str(e)[:200]}
 
 
 def get_local_admins():
@@ -461,7 +625,7 @@ def collect_security_snapshot():
     }
 
 
-def collect(include_security=False, include_software=False):
+def collect(include_security=False, include_software=False, include_net_quality=False):
     try:
         import psutil
     except ImportError:
@@ -489,6 +653,15 @@ def collect(include_security=False, include_software=False):
     temperatures = get_temperatures()
     network      = get_network_stats()
     gpu          = get_gpu_stats()
+
+    # Muestrear calidad de red (latencia, pérdida, WiFi) solo periódicamente
+    if include_net_quality:
+        try:
+            quality = get_network_quality()
+            if quality:
+                network = {**network, **quality}
+        except Exception as e:
+            logger.warning(f"Error muestreando calidad de red: {e}")
 
     payload = {
         "timestamp":        datetime.now(timezone.utc).isoformat(),
@@ -520,6 +693,13 @@ def collect(include_security=False, include_software=False):
                 payload["security_snapshot"] = sec
         except Exception as e:
             logger.warning(f"Error recolectando huella de seguridad: {e}")
+        # Seguridad de red (perfil, firewall, DNS, cifrado WiFi)
+        try:
+            net_sec = get_network_security()
+            if net_sec is not None:
+                payload["network_security"] = net_sec
+        except Exception as e:
+            logger.warning(f"Error recolectando seguridad de red: {e}")
 
     # Agregar inventario de software cada SOFTWARE_INTERVAL segundos (Windows)
     if include_software:
@@ -605,18 +785,23 @@ def main():
 
     last_security_send = 0.0
     last_software_send = 0.0
+    last_netq_send = 0.0
 
     while True:
         try:
             now = time.monotonic()
             send_security = IS_WINDOWS and (now - last_security_send >= SECURITY_INTERVAL)
             send_software = IS_WINDOWS and (now - last_software_send >= SOFTWARE_INTERVAL)
-            payload = collect(include_security=send_security, include_software=send_software)
+            send_netq = (now - last_netq_send >= NET_QUALITY_INTERVAL)
+            payload = collect(include_security=send_security, include_software=send_software,
+                              include_net_quality=send_netq)
             send(payload)
             if send_security:
                 last_security_send = now
             if send_software:
                 last_software_send = now
+            if send_netq:
+                last_netq_send = now
         except Exception as e:
             logger.error(f"Error inesperado: {e}")
         time.sleep(INTERVAL)
