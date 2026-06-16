@@ -1,5 +1,22 @@
 import django.db.models.deletion
-from django.db import migrations, models
+from django.db import migrations, models, connection
+
+
+class CreateModelIfNotExists(migrations.CreateModel):
+    """
+    Igual que CreateModel, pero si la tabla ya existe en la base de datos,
+    omite el CREATE TABLE (solo actualiza el estado de Django). Evita el error
+    'relation already exists' cuando web, worker y beat corren migrate casi
+    a la vez en el mismo deploy.
+    """
+
+    def database_forwards(self, app_label, schema_editor, from_state, to_state):
+        model = to_state.apps.get_model(app_label, self.name)
+        table = model._meta.db_table
+        existing = connection.introspection.table_names()
+        if table in existing:
+            return  # la tabla ya existe: no recrear
+        super().database_forwards(app_label, schema_editor, from_state, to_state)
 
 
 class Migration(migrations.Migration):
@@ -9,7 +26,7 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.CreateModel(
+        CreateModelIfNotExists(
             name='NetworkSnapshot',
             fields=[
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
