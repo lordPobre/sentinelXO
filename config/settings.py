@@ -160,6 +160,19 @@ CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
 CELERY_TASK_SERIALIZER = "json"
 CELERY_ACCEPT_CONTENT = ["json"]
 
+# Estabilidad de la conexión al broker (Aiven/Valkey cierra conexiones ociosas).
+# Reintentar la conexión al arrancar y mantener un heartbeat para que el broker
+# no corte la conexión por inactividad. La reconexión automática ya funciona,
+# esto reduce las caídas y el ruido en los logs.
+CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
+CELERY_BROKER_HEARTBEAT = 30
+CELERY_BROKER_TRANSPORT_OPTIONS = {
+    "socket_keepalive": True,
+    "visibility_timeout": 3600,  # 1h: si una tarea no se confirma, se reencola
+}
+# Cancela tareas de larga duración si se pierde la conexión (recomendado por Celery)
+CELERY_WORKER_CANCEL_LONG_RUNNING_TASKS_ON_CONNECTION_LOSS = True
+
 # Retención de telemetría (días) — usado por la tarea core.purge_old_telemetry
 SENTINEL_TELEMETRY_RETENTION_DAYS = int(os.environ.get("SENTINEL_TELEMETRY_RETENTION_DAYS", "30"))
 
