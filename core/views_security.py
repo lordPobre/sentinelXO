@@ -73,23 +73,35 @@ def security_client_detail(request, client_id):
             return HttpResponseForbidden()
 
     latest = SecurityCheck.objects.filter(client=client).order_by("-checked_at").first()
-    anomalies = SecurityAnomalyEvent.objects.filter(
+
+    # Todas las anomalías de agente abiertas (sin límite) + las últimas 20 revisadas.
+    # Antes se recortaba a [:20] ANTES de contar, lo que descuadraba el conteo del
+    # dashboard (que cuenta todas las abiertas) con lo mostrado en el detalle.
+    open_anomalies = list(SecurityAnomalyEvent.objects.filter(
+        device__client=client, status="open"
+    ).select_related("device").order_by("-detected_at"))
+    reviewed_anomalies = list(SecurityAnomalyEvent.objects.filter(
         device__client=client
-    ).select_related("device").order_by("-detected_at")[:20]
+    ).exclude(status="open").select_related("device").order_by("-detected_at")[:20])
+    anomalies = open_anomalies + reviewed_anomalies
 
     from core.models import SignInAnomalyEvent
-    signin_anomalies = SignInAnomalyEvent.objects.filter(
+    open_signin = list(SignInAnomalyEvent.objects.filter(
+        client=client, status="open"
+    ).order_by("-detected_at"))
+    reviewed_signin = list(SignInAnomalyEvent.objects.filter(
         client=client
-    ).order_by("-detected_at")[:20]
+    ).exclude(status="open").order_by("-detected_at")[:20])
+    signin_anomalies = open_signin + reviewed_signin
 
     return render(request, "core/security_client_detail.html", {
         "section":        "security",
         "client":         client,
         "latest":         latest,
         "anomalies":      anomalies,
-        "anomalies_open": sum(1 for a in anomalies if a.status == "open"),
+        "anomalies_open": len(open_anomalies),
         "signin_anomalies":      signin_anomalies,
-        "signin_anomalies_open": sum(1 for a in signin_anomalies if a.status == "open"),
+        "signin_anomalies_open": len(open_signin),
         "m365_configured": bool(getattr(client, "m365_tenant", None) and client.m365_tenant.is_active),
     })
 

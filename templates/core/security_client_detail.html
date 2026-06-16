@@ -104,8 +104,36 @@
     </div>
     {% if anomalies %}
       {% for anomaly in anomalies %}
-        {% include "core/partials/security_anomaly_row.html" %}
+        {% if anomaly.status == 'open' %}
+          {% include "core/partials/security_anomaly_row.html" %}
+        {% endif %}
       {% endfor %}
+
+      {% comment %} Sección colapsable de anomalías ya revisadas (se oculta vía JS si está vacía) {% endcomment %}
+      <details class="sec-reviewed" id="reviewed-section" style="display:none;">
+        <summary class="sec-reviewed-summary">
+          <span class="sec-reviewed-chevron">▸</span>
+          Anomalías revisadas
+          <span class="sec-reviewed-count" id="reviewed-count"></span>
+        </summary>
+        <div class="sec-reviewed-list">
+          {% for anomaly in anomalies %}
+            {% if anomaly.status != 'open' %}
+              <div class="sec-card-mini">
+                <span class="sec-card-mini-icon">
+                  {% if anomaly.anomaly_type == 'new_admin' %}🚨
+                  {% elif anomaly.anomaly_type == 'removed_admin' %}👤
+                  {% elif anomaly.anomaly_type == 'new_startup' or anomaly.anomaly_type == 'new_task' %}⚙️
+                  {% else %}ℹ️{% endif %}
+                </span>
+                <span class="sec-card-mini-title">{{ anomaly.device.display_name }} — {{ anomaly.get_anomaly_type_display }}</span>
+                <span class="sec-card-mini-desc">{{ anomaly.detail_summary }}</span>
+                <span class="sec-card-mini-date mono">{{ anomaly.detected_at|date:"d/m H:i" }}</span>
+              </div>
+            {% endif %}
+          {% endfor %}
+        </div>
+      </details>
     {% else %}
     <div style="padding:14px;text-align:center;font-size:11px;color:var(--text-4);">
       Sin anomalías detectadas. El agente revisa administradores locales, programas de inicio
@@ -274,8 +302,95 @@
   margin-top: 2px;
   border-top: 1px solid rgba(255,255,255,0.04);
 }
+
+/* Sección colapsable de anomalías revisadas */
+.sec-reviewed {
+  margin-top: 10px;
+  border: 1px solid rgba(255,255,255,0.04);
+  border-radius: 8px;
+  background: rgba(255,255,255,0.012);
+}
+.sec-reviewed-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-3);
+  list-style: none;
+  user-select: none;
+}
+.sec-reviewed-summary::-webkit-details-marker { display: none; }
+.sec-reviewed-chevron {
+  font-size: 9px;
+  color: var(--text-4);
+  transition: transform 0.15s ease;
+}
+.sec-reviewed[open] .sec-reviewed-chevron { transform: rotate(90deg); }
+.sec-reviewed-count {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  color: var(--text-4);
+  background: rgba(255,255,255,0.04);
+  padding: 1px 7px;
+  border-radius: 10px;
+}
+.sec-reviewed-list {
+  padding: 0 8px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.sec-card-mini {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  opacity: 0.55;
+}
+.sec-card-mini:hover { opacity: 0.85; background: rgba(255,255,255,0.02); }
+.sec-card-mini-icon { font-size: 11px; flex-shrink: 0; }
+.sec-card-mini-title {
+  color: var(--text-3);
+  text-decoration: line-through;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.sec-card-mini-desc {
+  color: var(--text-4);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
+}
+.sec-card-mini-date {
+  font-size: 9px;
+  color: var(--text-4);
+  flex-shrink: 0;
+}
+@media (max-width: 640px) {
+  .sec-card-mini { flex-wrap: wrap; }
+  .sec-card-mini-desc { white-space: normal; flex-basis: 100%; }
+}
 </style>
 <script>
+// Mostrar la sección de revisadas solo si hay alguna, y poner el contador
+(function() {
+  var section = document.getElementById("reviewed-section");
+  if (!section) return;
+  var count = section.querySelectorAll(".sec-card-mini").length;
+  if (count > 0) {
+    section.style.display = "";
+    var badge = document.getElementById("reviewed-count");
+    if (badge) badge.textContent = count;
+  }
+})();
+
 // Recargar la página completa después de verificar para actualizar timestamps y cards
 document.body.addEventListener("htmx:afterSwap", function(evt) {
   if (evt.detail.target && evt.detail.target.id && evt.detail.target.id.startsWith("sec-status-")) {
