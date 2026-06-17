@@ -192,6 +192,43 @@ def m365_check_now(request):
     return render(request, "emailmon/partials/m365_status.html", {"result": result})
 
 
+@login_required
+def send_test(request):
+    """
+    POST /email/test/send/
+    Envía un email de prueba (vía Resend) al correo del usuario o al indicado.
+    Devuelve un fragmento HTML con el resultado para mostrar en el dashboard.
+    """
+    if not request.user.is_staff:
+        from django.http import HttpResponseForbidden
+        return HttpResponseForbidden()
+
+    if request.method != "POST":
+        from django.http import HttpResponseNotAllowed
+        return HttpResponseNotAllowed(["POST"])
+
+    from .services import send_test_email
+    to = request.POST.get("email") or request.user.email
+    if not to:
+        return HttpResponse(
+            '<div style="font-size:12px;color:#f87171;">'
+            'No hay un email de destino. Configura tu correo en tu perfil.</div>'
+        )
+
+    result = send_test_email(to)
+    if result.get("success"):
+        return HttpResponse(
+            f'<div style="font-size:12px;color:#10b981;">'
+            f'✓ Email de prueba enviado a {to}. Revisa tu bandeja.</div>'
+        )
+    else:
+        err = result.get("error", "error desconocido")
+        return HttpResponse(
+            f'<div style="font-size:12px;color:#f87171;word-break:break-word;">'
+            f'✗ Falló el envío: {err}</div>'
+        )
+
+
 def m365_dashboard(request):
     """Panel de monitoreo M365 — muestra estado SMTP y Graph API por cliente."""
     if not request.user.is_staff:
