@@ -267,17 +267,22 @@
         </span>
       </div>
       {% for log in group.logs %}
-      <div style="display:flex;align-items:center;gap:10px;padding:9px 18px;border-bottom:1px solid rgba(255,255,255,0.03);">
-        <span class="dot {% if log.status == 'sent' %}dot-on{% elif log.status == 'failed' %}dot-off{% else %}dot-warn{% endif %}" style="flex-shrink:0;"></span>
+      <div style="display:flex;align-items:flex-start;gap:10px;padding:10px 18px;border-bottom:1px solid rgba(255,255,255,0.03);">
+        <span class="dot {% if log.status == 'sent' %}dot-on{% elif log.status == 'failed' %}dot-off{% else %}dot-warn{% endif %}" style="flex-shrink:0;margin-top:4px;"></span>
         <div style="flex:1;min-width:0;">
-          <div style="font-size:11px;color:#94a3b8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+          <div style="font-size:11px;color:#cbd5e1;line-height:1.45;word-break:break-word;">
             {{ log.subject|default:"(sin asunto)" }}
           </div>
-          <div class="mono" style="font-size:10px;color:var(--text-4);">
+          <div class="mono" style="font-size:10px;color:var(--text-4);margin-top:2px;">
             {{ log.sent_at|date:"d/m H:i" }}{% if log.recipient %} → {{ log.recipient }}{% endif %}
           </div>
+          {% if log.status == 'failed' and log.error_msg %}
+          <div class="mono" style="font-size:10px;color:#f87171;margin-top:4px;background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.12);border-radius:5px;padding:4px 7px;line-height:1.5;word-break:break-word;">
+            {{ log.error_msg }}
+          </div>
+          {% endif %}
         </div>
-        <span class="badge {% if log.status == 'sent' %}badge-ok{% elif log.status == 'failed' %}badge-crit{% else %}badge-gray{% endif %}" style="font-size:9px;padding:1px 6px;flex-shrink:0;">
+        <span class="badge {% if log.status == 'sent' %}badge-ok{% elif log.status == 'failed' %}badge-crit{% else %}badge-gray{% endif %}" style="font-size:9px;padding:1px 6px;flex-shrink:0;margin-top:2px;">
           {% if log.status == 'sent' %}Enviado{% elif log.status == 'failed' %}Fallido{% else %}{{ log.status }}{% endif %}
         </span>
       </div>
