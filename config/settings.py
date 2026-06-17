@@ -168,6 +168,18 @@ CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
 CELERY_BROKER_HEARTBEAT = 30
 CELERY_BROKER_TRANSPORT_OPTIONS = {
     "socket_keepalive": True,
+    # Parámetros TCP keepalive (Linux): empieza a sondear a los 60s de inactividad,
+    # reenvía cada 30s, hasta 3 intentos. Mantiene viva la conexión TCP para que
+    # Aiven no la cierre por inactividad.
+    "socket_keepalive_options": {
+        # socket.TCP_KEEPIDLE=4, TCP_KEEPINTVL=5, TCP_KEEPCNT=6 (valores numéricos
+        # para no depender del import de socket aquí)
+        4: 60,
+        5: 30,
+        6: 3,
+    },
+    # Verifica proactivamente la salud de la conexión cada 30s
+    "health_check_interval": 30,
     "visibility_timeout": 3600,  # 1h: si una tarea no se confirma, se reencola
 }
 # Cancela tareas de larga duración si se pierde la conexión (recomendado por Celery)
