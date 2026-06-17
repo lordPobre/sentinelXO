@@ -155,67 +155,6 @@ def htmx_device_detail(request, device_id):
 
 
 @login_required
-def htmx_incident_create(request, client_id):
-    """Fragmento HTMX: crea un incidente, envía notificación y devuelve la fila."""
-    if request.method == "POST":
-        from core.notifications import notify_incident_created
-        client   = get_object_or_404(Client, pk=client_id)
-        title    = request.POST.get("title", "Sin título").strip()
-        severity = request.POST.get("severity", "medium")
-        category = request.POST.get("category", "other")
-        description = request.POST.get("description", "")
-        notify   = request.POST.get("notify", "true") != "false"
-
-        # Detectar categoría automáticamente si no se especificó
-        if category == "other" and title:
-            t = title.lower()
-            if any(w in t for w in ["dominio", "domain", "dns", "vence", "renovar"]):
-                category = "domain"
-            elif any(w in t for w in ["email", "correo", "smtp", "brevo", "mail"]):
-                category = "email"
-            elif any(w in t for w in ["licencia", "m365", "microsoft", "office"]):
-                category = "license"
-            elif any(w in t for w in ["red", "network", "wifi", "internet", "conexión"]):
-                category = "network"
-            elif any(w in t for w in ["cpu", "ram", "disco", "equipo", "pc", "laptop",
-                                       "servidor", "hardware", "memoria"]):
-                category = "hardware"
-
-        incident = MaintenanceIncident.objects.create(
-            client=client,
-            title=title or "Sin título",
-            description=description,
-            severity=severity,
-            category=category,
-            notify_email=notify,
-        )
-
-        # Enviar notificación en background (no bloquea la respuesta HTMX)
-        if notify:
-            try:
-                notify_incident_created(incident)
-            except Exception as e:
-                logger.warning(f"Error enviando notificación de incidente: {e}")
-
-        # Generar diagnóstico IA en background (no bloquea la respuesta HTMX)
-        try:
-            import threading
-            from core.views_ai import diagnose_incident
-            def run_diagnosis():
-                diag = diagnose_incident(incident)
-                if diag:
-                    incident.ai_diagnosis = diag
-                    incident.save(update_fields=["ai_diagnosis"])
-            threading.Thread(target=run_diagnosis, daemon=True).start()
-        except Exception as e:
-            logger.warning(f"Error iniciando diagnóstico IA: {e}")
-
-        return render(request, "dashboard/partials/incident_row.html",
-                      {"incident": incident})
-    return HttpResponse(status=405)
-
-
-@login_required
 def htmx_incident_resolve(request, incident_id):
     """Fragmento HTMX: marca incidente como resuelto, notifica y devuelve la fila."""
     if request.method == "POST":

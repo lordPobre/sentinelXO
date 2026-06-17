@@ -51,6 +51,7 @@ class Client(models.Model):
     class Meta:
         verbose_name = "Cliente"
         verbose_name_plural = "Clientes"
+        ordering = ["company_name"]
 
     def get_alert_recipients(self) -> list:
         """Retorna todos los emails que deben recibir alertas de este cliente."""
@@ -63,7 +64,6 @@ class Client(models.Model):
                 if email and "@" in email and email not in recipients:
                     recipients.append(email)
         return recipients
-        ordering = ["company_name"]
 
     def __str__(self):
         return self.company_name

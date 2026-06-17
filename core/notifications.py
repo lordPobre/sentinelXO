@@ -28,6 +28,7 @@ CATEGORY_LABELS = {
     "email":    "Email / SMTP",
     "license":  "Licencia M365",
     "network":  "Red",
+    "connectivity": "Conectividad del Agente",
     "other":    "Otro",
 }
 
