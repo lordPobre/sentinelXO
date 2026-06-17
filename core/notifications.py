@@ -207,7 +207,7 @@ def notify_incident_resolved(incident) -> bool:
         return False
 
     company = getattr(settings, "SENTINEL_COMPANY_NAME", "Sentinel XO")
-    support = getattr(settings, "SENTINEL_SUPPORT_EMAIL", "soporte@sentinelxo.dev")
+    support = getattr(settings, "SENTINEL_SUPPORT_EMAIL", "soporte@perseustechnology.dev")
     resolved_at = timezone.localtime(incident.resolved_at).strftime("%d/%m/%Y a las %H:%M") if incident.resolved_at else "—"
 
     subject = f"✅ [{company}] Incidente resuelto: {incident.title[:60]}"
