@@ -98,45 +98,42 @@
   </div>
   <div style="padding:14px 18px;border-top:1px solid var(--border);background:rgba(255,255,255,0.01);">
     <div style="font-size:9px;font-weight:600;letter-spacing:0.09em;text-transform:uppercase;color:var(--text-4);margin-bottom:10px;">Registrar incidente</div>
-    <div style="display:flex;gap:8px;margin-bottom:8px;">
-      <input type="text" id="new-incident-title" class="px-input" style="flex:1;" placeholder="Título del incidente…">
-      <select id="new-incident-category" class="px-input" style="width:150px;">
-        <option value="other">Auto-detectar</option>
-        <option value="hardware">Hardware / Equipo</option>
-        <option value="domain">Dominio</option>
-        <option value="email">Email / SMTP</option>
-        <option value="license">Licencia M365</option>
-        <option value="network">Red</option>
-      </select>
-      <select id="new-incident-severity" class="px-input" style="width:100px;">
-        <option value="low">Baja</option>
-        <option value="medium" selected>Media</option>
-        <option value="high">Alta</option>
-        <option value="critical">Crítica</option>
-      </select>
-    </div>
-    <div style="display:flex;align-items:center;justify-content:space-between;">
-      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
-        <input type="checkbox" id="new-incident-notify" checked
-               style="accent-color:#2563eb;width:14px;height:14px;">
-        <span style="font-size:11px;color:var(--text-3);">
-          Notificar por email a
-          <span style="color:#60a5fa;">{{ client.contact_email }}</span>
-        </span>
-      </label>
-      <button class="btn-primary"
-              hx-post="{% url 'dashboard:htmx-incident-create' client.id %}"
-              hx-vals="js:{
-                title: document.getElementById('new-incident-title').value,
-                severity: document.getElementById('new-incident-severity').value,
-                category: document.getElementById('new-incident-category').value,
-                notify: document.getElementById('new-incident-notify').checked ? 'true' : 'false'
-              }"
-              hx-target="#incidents-list" hx-swap="afterbegin"
-              onclick="setTimeout(()=>{document.getElementById('new-incident-title').value=''},100)">
-        <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v14M5 12h14"/></svg>
-        Registrar y notificar
-      </button>
+    <div id="incident-form-fields">
+      <div style="display:flex;gap:8px;margin-bottom:8px;">
+        <input type="text" name="title" id="new-incident-title" class="px-input" style="flex:1;" placeholder="Título del incidente…">
+        <select name="category" id="new-incident-category" class="px-input" style="width:150px;">
+          <option value="other">Auto-detectar</option>
+          <option value="hardware">Hardware / Equipo</option>
+          <option value="domain">Dominio</option>
+          <option value="email">Email / SMTP</option>
+          <option value="license">Licencia M365</option>
+          <option value="network">Red</option>
+        </select>
+        <select name="severity" id="new-incident-severity" class="px-input" style="width:100px;">
+          <option value="low">Baja</option>
+          <option value="medium" selected>Media</option>
+          <option value="high">Alta</option>
+          <option value="critical">Crítica</option>
+        </select>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;">
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+          <input type="checkbox" name="notify" value="true" id="new-incident-notify" checked
+                 style="accent-color:#2563eb;width:14px;height:14px;">
+          <span style="font-size:11px;color:var(--text-3);">
+            Notificar por email a
+            <span style="color:#60a5fa;">{{ client.contact_email }}</span>
+          </span>
+        </label>
+        <button type="button" class="btn-primary"
+                hx-post="{% url 'dashboard:htmx-incident-create' client.id %}"
+                hx-include="#incident-form-fields"
+                hx-target="#incidents-list" hx-swap="afterbegin"
+                onclick="setTimeout(()=>{document.getElementById('new-incident-title').value=''},100)">
+          <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v14M5 12h14"/></svg>
+          Registrar y notificar
+        </button>
+      </div>
     </div>
   </div>
 </div>

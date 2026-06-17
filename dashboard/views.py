@@ -183,7 +183,9 @@ def htmx_incident_create(request, client_id):
         severity = request.POST.get("severity", "medium")
         category = request.POST.get("category", "other")
         description = request.POST.get("description", "")
-        notify   = request.POST.get("notify", "true") != "false"
+        # El checkbox 'notify' solo llega en el POST si está marcado.
+        # Si no viene, significa que el usuario lo desmarcó → no notificar.
+        notify   = request.POST.get("notify") == "true"
 
         # Detectar categoría automáticamente si no se especificó
         if category == "other" and title:
