@@ -58,6 +58,9 @@ def _resend_send(subject: str, body: str, to: list[str],
             headers={
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type":  "application/json",
+                # Resend rechaza con 403/1010 los requests HTTP sin User-Agent.
+                # (Los SDK lo agregan solo; al usar urllib directo hay que ponerlo.)
+                "User-Agent":    "SentinelXO/1.0",
             },
             method="POST",
         )
@@ -87,7 +90,10 @@ def check_resend_api() -> SmtpCheck:
     try:
         req = urllib.request.Request(
             "https://api.resend.com/domains",
-            headers={"Authorization": f"Bearer {api_key}"},
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "User-Agent":    "SentinelXO/1.0",
+            },
             method="GET",
         )
         with urllib.request.urlopen(req, timeout=10) as resp:
