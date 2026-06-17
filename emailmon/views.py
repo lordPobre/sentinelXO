@@ -1,156 +1,17 @@
 import json
-from django.shortcuts import render, redirect
-from django.contrib.auth.decorators import login_required
-from django.contrib import messages
-from django.http import JsonResponse
-from django.utils import timezone
-from django.db.models import Count, Q
-from .models import EmailLog, SmtpCheck
-from .services import send_test_email, check_smtp_connectivity
-
-
-@login_required
-def email_dashboard(request):
-    """Panel principal de monitoreo de email."""
-    if not request.user.is_staff:
-        return redirect("dashboard:home")
-
-    # Estadísticas de las últimas 24h
-    since_24h = timezone.now() - timezone.timedelta(hours=24)
-    since_7d  = timezone.now() - timezone.timedelta(days=7)
-
-    logs_24h   = EmailLog.objects.filter(sent_at__gte=since_24h)
-    sent_24h   = logs_24h.filter(status="sent").count()
-    failed_24h = logs_24h.filter(status="failed").count()
-
-    logs_7d    = EmailLog.objects.filter(sent_at__gte=since_7d)
-    sent_7d    = logs_7d.filter(status="sent").count()
-    failed_7d  = logs_7d.filter(status="failed").count()
-
-    # Último check SMTP
-    latest_check = SmtpCheck.objects.first()
-
-    # Uptime SMTP últimas 24h (% de checks OK)
-    checks_24h = SmtpCheck.objects.filter(checked_at__gte=since_24h)
-    total_checks = checks_24h.count()
-    ok_checks    = checks_24h.filter(status="ok").count()
-    smtp_uptime  = round((ok_checks / total_checks * 100), 1) if total_checks > 0 else None
-
-    # Logs recientes
-    recent_logs   = EmailLog.objects.select_related("client")[:50]
-    recent_checks = SmtpCheck.objects.all()[:24]
-
-    # Checks SMTP para gráfico (últimas 24 verificaciones)
-    chart_checks = list(SmtpCheck.objects.order_by("-checked_at")[:48])
-    chart_checks.reverse()
-    chart_data = {
-        "labels": [timezone.localtime(c.checked_at).strftime("%H:%M") for c in chart_checks],
-        "ms":     [c.response_ms or 0 for c in chart_checks],
-        "status": [c.status for c in chart_checks],
-    }
-
-    context = {
-        "sent_24h":     sent_24h,
-        "failed_24h":   failed_24h,
-        "sent_7d":      sent_7d,
-        "failed_7d":    failed_7d,
-        "latest_check": latest_check,
-        "smtp_uptime":  smtp_uptime,
-        "recent_logs":  recent_logs,
-        "recent_checks": recent_checks,
-        "chart_data_json": json.dumps(chart_data),
-        "section": "email",
-    }
-    return render(request, "emailmon/dashboard.html", context)
-
-
-@login_required
-def smtp_check_now(request):
-    """HTMX: ejecuta un check SMTP en tiempo real y devuelve el resultado."""
-    if not request.user.is_staff:
-        return JsonResponse({"error": "Sin acceso"}, status=403)
-
-    if request.method == "POST":
-        check = check_smtp_connectivity()
-        return render(request, "emailmon/partials/smtp_status.html", {"check": check})
-
-    return JsonResponse({"error": "Método no permitido"}, status=405)
-
-
-@login_required
-def send_test(request):
-    """Envía un email de prueba al email del usuario logueado."""
-    if not request.user.is_staff:
-        return redirect("dashboard:home")
-
-    if request.method == "POST":
-        to = request.POST.get("email", request.user.email)
-        if not to:
-            messages.error(request, "Ingresa un email de destino.")
-            return redirect("emailmon:dashboard")
-
-        result = send_test_email(to)
-        if result["success"]:
-            messages.success(request, f"Email de prueba enviado a {to} — SMTP {result['smtp_ms']}ms")
-        else:
-            messages.error(request, f"Error: {result['error']} (SMTP: {result['smtp_status']})")
-
-    return redirect("emailmon:dashboard")
-
-
-@login_required
-def live_status(request):
-    """
-    GET /email/live/
-    HTMX polling cada 10s — devuelve el fragmento completo de estado en tiempo real.
-    Ejecuta un check SMTP automáticamente si el último tiene más de 1 hora.
-    """
-    if not request.user.is_staff:
-        from django.http import HttpResponseForbidden
-        return HttpResponseForbidden()
-
-    from django.utils import timezone
-    # live_status usa el último check de Resend (envío) — sin auto-check que contamine M365
-    latest_check = SmtpCheck.objects.filter(
-        smtp_host__icontains="resend"
-    ).order_by("-checked_at").first()
-
-    since_24h = timezone.now() - timezone.timedelta(hours=24)
-
-    # Uptime = checks de Resend (envío de emails)
-    checks_24h   = SmtpCheck.objects.filter(
-        smtp_host__icontains="resend",
-        checked_at__gte=since_24h,
-    )
-    total_checks = checks_24h.count()
-    ok_checks    = checks_24h.filter(status="ok").count()
-    smtp_uptime  = round((ok_checks / total_checks * 100), 1) if total_checks > 0 else None
-
-    logs_24h      = EmailLog.objects.filter(sent_at__gte=since_24h)
-    sent_24h      = logs_24h.filter(status="sent").count()
-    failed_24h    = logs_24h.filter(status="failed").count()
-    recent_logs   = EmailLog.objects.select_related("client")[:20]
-    recent_checks = SmtpCheck.objects.all()[:12]
-
-    return render(request, "emailmon/partials/live_panel.html", {
-        "latest_check":  latest_check,
-        "smtp_uptime":   smtp_uptime,
-        "sent_24h":      sent_24h,
-        "failed_24h":    failed_24h,
-        "recent_logs":   recent_logs,
-        "recent_checks": recent_checks,
-        "now":           timezone.now(),
-    })
-
-
-import json
 import hmac
 import hashlib
 import logging
+from django.shortcuts import render, redirect
+from django.contrib.auth.decorators import login_required
+from django.http import JsonResponse
+from django.utils import timezone
+from django.db.models import Count, Q
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 from django.http import HttpResponse, HttpResponseBadRequest, HttpResponseForbidden
 from django.conf import settings
+from .models import EmailLog, SmtpCheck
 
 logger = logging.getLogger("perseus")
 

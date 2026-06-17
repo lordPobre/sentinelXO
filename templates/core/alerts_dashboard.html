@@ -26,6 +26,15 @@
 
 {% block content %}
 
+{% if migration_pending %}
+<div style="padding:40px;text-align:center;">
+  <div style="font-size:28px;margin-bottom:12px;opacity:0.3;">⚙️</div>
+  <div style="font-size:14px;font-weight:600;color:#cbd5e1;margin-bottom:8px;">Migración pendiente</div>
+  <div style="font-size:12px;color:var(--text-4);">Las tablas de alertas se están creando. Railway aplicará la migración en el próximo deploy.</div>
+  <div class="mono" style="font-size:11px;color:var(--text-4);margin-top:8px;">core_alertrule · core_alertevent</div>
+</div>
+{% else %}
+
 <!-- KPIs -->
 <div class="kpi-grid-4" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px;">
   <div class="kpi-card fu" style="{% if firing_critical %}border-color:rgba(239,68,68,0.3);{% endif %}">
@@ -234,6 +243,56 @@
   </div>
 </div>
 
+<!-- Registro de notificaciones enviadas, separado por tipo -->
+<div style="margin-top:18px;">
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+    <span style="font-size:13px;">📬</span>
+    <span style="font-size:13px;font-weight:600;color:#cbd5e1;">Notificaciones enviadas</span>
+    <span class="mono" style="font-size:10px;color:var(--text-4);">por tipo · estado de entrega</span>
+  </div>
+
+  {% if notifications %}
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:14px;">
+    {% for group in notifications %}
+    <div class="card" style="overflow:hidden;">
+      <div class="card-header">
+        <span class="card-title">{{ group.label }}</span>
+        <span style="display:flex;gap:6px;align-items:center;flex-shrink:0;">
+          {% if group.sent_count %}
+            <span class="badge badge-ok" style="font-size:9px;padding:1px 6px;">{{ group.sent_count }} enviados</span>
+          {% endif %}
+          {% if group.failed_count %}
+            <span class="badge badge-crit" style="font-size:9px;padding:1px 6px;">{{ group.failed_count }} fallidos</span>
+          {% endif %}
+        </span>
+      </div>
+      {% for log in group.logs %}
+      <div style="display:flex;align-items:center;gap:10px;padding:9px 18px;border-bottom:1px solid rgba(255,255,255,0.03);">
+        <span class="dot {% if log.status == 'sent' %}dot-on{% elif log.status == 'failed' %}dot-off{% else %}dot-warn{% endif %}" style="flex-shrink:0;"></span>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:11px;color:#94a3b8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+            {{ log.subject|default:"(sin asunto)" }}
+          </div>
+          <div class="mono" style="font-size:10px;color:var(--text-4);">
+            {{ log.sent_at|date:"d/m H:i" }}{% if log.recipient %} → {{ log.recipient }}{% endif %}
+          </div>
+        </div>
+        <span class="badge {% if log.status == 'sent' %}badge-ok{% elif log.status == 'failed' %}badge-crit{% else %}badge-gray{% endif %}" style="font-size:9px;padding:1px 6px;flex-shrink:0;">
+          {% if log.status == 'sent' %}Enviado{% elif log.status == 'failed' %}Fallido{% else %}{{ log.status }}{% endif %}
+        </span>
+      </div>
+      {% endfor %}
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="card" style="padding:28px;text-align:center;font-size:12px;color:var(--text-4);">
+    Sin notificaciones registradas todavía. Aquí aparecerán las alertas de vencimiento,
+    reportes mensuales y notificaciones de incidentes que el sistema envíe, agrupadas por tipo.
+  </div>
+  {% endif %}
+</div>
+
 <script>
 const CSRF = document.cookie.split(';').map(c=>c.trim()).find(c=>c.startsWith('csrftoken='))?.split('=')[1]||'';
 function post(url,data,cb){
@@ -300,4 +359,5 @@ function updateThresholdHint(metric){
   }
 }
 </script>
+{% endif %}
 {% endblock %}

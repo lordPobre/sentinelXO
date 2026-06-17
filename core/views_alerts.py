@@ -11,6 +11,8 @@ from .models import AlertRule, AlertEvent, Client, HardwareDevice
 
 @login_required
 def alerts_dashboard(request):
+    """Vista principal del panel de alertas."""
+    # Verificar que las tablas existen (pueden no existir si la migración no se aplicó)
     try:
         from django.db import connection
         tables = connection.introspection.table_names()
@@ -28,6 +30,7 @@ def alerts_dashboard(request):
     except Exception:
         pass
 
+    # Staff ve todos los clientes, cliente ve solo el suyo
     if request.user.is_staff:
         clients       = Client.objects.filter(is_active=True).prefetch_related("devices")
         events_qs     = AlertEvent.objects.filter(status="firing").select_related(
@@ -50,6 +53,7 @@ def alerts_dashboard(request):
         all_events    = AlertEvent.objects.filter(
             device__client=portal).select_related("device").order_by("-fired_at")[:100]
 
+    # Contadores ANTES del slice
     firing_critical = events_qs.filter(severity="critical").count()
     firing_warning  = events_qs.filter(severity="warning").count()
     resolved_today  = AlertEvent.objects.filter(
@@ -57,14 +61,21 @@ def alerts_dashboard(request):
         resolved_at__date=timezone.now().date(),
     ).count()
 
+    # Slice para el template
     events = events_qs[:50]
 
+    # Dispositivos disponibles para el formulario de reglas
     if request.user.is_staff:
         devices = HardwareDevice.objects.filter(is_active=True).select_related("client")
     else:
         portal = request.user.client_portals.first()
         devices = HardwareDevice.objects.filter(
             client=portal, is_active=True) if portal else HardwareDevice.objects.none()
+
+    # Registro de notificaciones enviadas, agrupado por tipo (rescatado del
+    # antiguo dashboard SMTP). Es un registro de notificaciones, no de email,
+    # por eso vive aquí en Alertas.
+    notifications = _build_notification_log(request.user)
 
     return render(request, "core/alerts_dashboard.html", {
         "section":          "alerts",
@@ -77,14 +88,66 @@ def alerts_dashboard(request):
         "firing_warning":   firing_warning,
         "resolved_today":   resolved_today,
         "total_rules":      rules.count(),
+        "notifications":    notifications,
         "METRIC_CHOICES":   AlertRule.METRIC_CHOICES,
         "SEVERITY_CHOICES": AlertRule.SEVERITY_CHOICES,
     })
 
 
+def _build_notification_log(user):
+    """
+    Construye el registro de notificaciones enviadas, agrupado por tipo.
+    Devuelve una lista de grupos: cada uno con su etiqueta, ícono, y los
+    últimos envíos de esa categoría (con su estado de entrega).
+    """
+    from emailmon.models import EmailLog
+
+    try:
+        from django.db import connection
+        if "emailmon_emaillog" not in connection.introspection.table_names():
+            return []
+    except Exception:
+        return []
+
+    # Mapa de categoría -> etiqueta legible. Incluye las que usa el código
+    # aunque no estén en CATEGORY_CHOICES (connectivity, email, hardware).
+    GROUPS = [
+        ("alert",        "Alertas de vencimiento / SSL"),
+        ("incident",     "Notificaciones de incidente"),
+        ("report",       "Reportes mensuales"),
+        ("connectivity", "Conectividad"),
+        ("other",        "Otras notificaciones"),
+    ]
+
+    qs = EmailLog.objects.all()
+    if not user.is_staff:
+        portal = user.client_portals.first()
+        if portal:
+            qs = qs.filter(client=portal)
+        else:
+            return []
+
+    groups = []
+    for cat, label in GROUPS:
+        logs = list(qs.filter(category=cat).select_related("client")[:15])
+        if not logs:
+            continue
+        sent_count   = sum(1 for l in logs if l.status == "sent")
+        failed_count = sum(1 for l in logs if l.status == "failed")
+        groups.append({
+            "category":     cat,
+            "label":        label,
+            "logs":         logs,
+            "sent_count":   sent_count,
+            "failed_count": failed_count,
+        })
+    return groups
+
+
 @login_required
 @require_POST
 def alert_rule_create(request):
+    """Crea una nueva regla de alerta vía POST."""
     try:
         client_id  = request.POST.get("client_id")
         device_id  = request.POST.get("device_id") or None
@@ -117,6 +180,7 @@ def alert_rule_create(request):
 @login_required
 @require_POST
 def alert_rule_toggle(request, rule_id):
+    """Activa/desactiva una regla."""
     rule = get_object_or_404(AlertRule, pk=rule_id)
     rule.is_active = not rule.is_active
     rule.save(update_fields=["is_active"])
@@ -126,6 +190,7 @@ def alert_rule_toggle(request, rule_id):
 @login_required
 @require_POST
 def alert_rule_delete(request, rule_id):
+    """Elimina una regla."""
     rule = get_object_or_404(AlertRule, pk=rule_id)
     rule.delete()
     return JsonResponse({"status": "ok"})
@@ -134,6 +199,7 @@ def alert_rule_delete(request, rule_id):
 @login_required
 @require_POST
 def alert_event_resolve(request, event_id):
+    """Marca un evento de alerta como resuelto."""
     event = get_object_or_404(AlertEvent, pk=event_id)
     event.status      = "resolved"
     event.resolved_at = timezone.now()
@@ -144,6 +210,7 @@ def alert_event_resolve(request, event_id):
 @login_required
 @require_POST
 def alert_event_silence(request, event_id):
+    """Silencia un evento (no crea más alertas para este)."""
     event = get_object_or_404(AlertEvent, pk=event_id)
     event.status = "silenced"
     event.save(update_fields=["status"])
