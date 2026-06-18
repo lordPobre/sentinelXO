@@ -1,8 +1,9 @@
-<div style="background:#0d1117;border:1px solid rgba(255,255,255,0.06);border-radius:14px;overflow:hidden;position:relative;">
+<div style="background:var(--card);border:1px solid var(--border);border-radius:14px;overflow:hidden;position:relative;">
   {% if snap %}
   <div style="position:absolute;top:0;left:0;right:0;height:1px;
     background:linear-gradient(90deg,transparent,
-    {% if snap.cpu_percent > 90 %}rgba(239,68,68,0.6){% elif snap.cpu_percent > 70 %}rgba(245,158,11,0.5){% else %}rgba(37,99,235,0.4){% endif %},transparent);">
+    {% if snap.cpu_percent > 90 %}rgba(255,59,107,0.7){% elif snap.cpu_percent > 70 %}rgba(255,176,46,0.6){% else %}rgba(34,230,255,0.5){% endif %},transparent);
+    box-shadow:0 0 10px {% if snap.cpu_percent > 90 %}rgba(255,59,107,0.45){% elif snap.cpu_percent > 70 %}rgba(255,176,46,0.4){% else %}rgba(34,230,255,0.4){% endif %};">
   </div>
   {% endif %}
 
@@ -11,7 +12,7 @@
     <div style="display:flex;align-items:center;gap:9px;min-width:0;">
       <span class="dot {% if device.is_online %}dot-on{% elif device.status == 'warning' %}dot-warn{% else %}dot-off{% endif %}"></span>
       <div style="min-width:0;">
-        <div style="font-size:13px;font-weight:600;color:#cbd5e1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ device.display_name }}</div>
+        <div style="font-size:13px;font-weight:600;color:var(--text-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ device.display_name }}</div>
         <div class="mono" style="font-size:9px;color:var(--text-4);margin-top:1px;">{{ device.os|default:"—" }}</div>
       </div>
     </div>
@@ -31,9 +32,9 @@
       <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px;">
         <span style="font-size:9px;font-weight:600;letter-spacing:0.07em;text-transform:uppercase;color:var(--text-4);">CPU</span>
         <span class="mono" style="font-size:16px;font-weight:700;
-          {% if snap.cpu_percent > 90 %}color:#ef4444;
-          {% elif snap.cpu_percent > 70 %}color:#f59e0b;
-          {% else %}color:#60a5fa;{% endif %}">
+          {% if snap.cpu_percent > 90 %}color:var(--red);
+          {% elif snap.cpu_percent > 70 %}color:var(--amber);
+          {% else %}color:var(--accent-soft);{% endif %}">
           {{ snap.cpu_percent|floatformat:0 }}%
         </span>
       </div>
@@ -50,9 +51,9 @@
       <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px;">
         <span style="font-size:9px;font-weight:600;letter-spacing:0.07em;text-transform:uppercase;color:var(--text-4);">RAM</span>
         <span class="mono" style="font-size:16px;font-weight:700;
-          {% if snap.ram_used_percent > 90 %}color:#ef4444;
-          {% elif snap.ram_used_percent > 75 %}color:#f59e0b;
-          {% else %}color:#10b981;{% endif %}">
+          {% if snap.ram_used_percent > 90 %}color:var(--red);
+          {% elif snap.ram_used_percent > 75 %}color:var(--amber);
+          {% else %}color:var(--green);{% endif %}">
           {{ snap.ram_used_percent|floatformat:0 }}%
         </span>
       </div>
@@ -67,7 +68,7 @@
 
   <!-- Discos -->
   {% if snap.disk_usage %}
-  <div style="padding:0 16px 12px;border-top:1px solid rgba(255,255,255,0.03);padding-top:10px;">
+  <div style="padding:0 16px 12px;border-top:1px solid var(--border-faint);padding-top:10px;">
     {% for disk in snap.disk_usage %}
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:{% if not forloop.last %}6px{% else %}0{% endif %};">
       <span class="mono" style="font-size:10px;color:var(--text-3);min-width:28px;">{{ disk.mountpoint|truncatechars:4 }}</span>
@@ -82,13 +83,13 @@
   {% endif %}
 
   <!-- Footer: uptime y ram total -->
-  <div style="padding:8px 16px;border-top:1px solid rgba(255,255,255,0.03);display:flex;justify-content:space-between;background:rgba(255,255,255,0.01);">
+  <div style="padding:8px 16px;border-top:1px solid var(--border-faint);display:flex;justify-content:space-between;background:rgba(120,160,220,0.02);">
     <span class="mono" style="font-size:10px;color:var(--text-4);">
       Uptime <span style="color:var(--text-3);">{{ snap.uptime_human }}</span>
     </span>
     {% if uptime_today is not None %}
     <span class="mono" style="font-size:10px;color:var(--text-4);">
-      Hoy <span style="color:{% if uptime_today >= 99 %}#10b981{% elif uptime_today >= 95 %}#f59e0b{% else %}#ef4444{% endif %};">{{ uptime_today }}%</span>
+      Hoy <span style="color:{% if uptime_today >= 99 %}var(--green){% elif uptime_today >= 95 %}var(--amber){% else %}var(--red){% endif %};">{{ uptime_today }}%</span>
     </span>
     {% endif %}
     <span class="mono" style="font-size:10px;color:var(--text-4);">
@@ -119,21 +120,24 @@
       ctx.strokeStyle = color;
       ctx.lineWidth = 1.5;
       ctx.lineJoin = 'round';
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 6;
       data.forEach((v, i) => {
         const x = i * step;
         const y = H - (v / 100) * H;
         i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
       });
       ctx.stroke();
+      ctx.shadowBlur = 0;
       // Fill debajo
       ctx.lineTo((data.length - 1) * step, H);
       ctx.lineTo(0, H);
       ctx.closePath();
-      ctx.fillStyle = color.replace(')', ', 0.08)').replace('rgb', 'rgba');
+      ctx.fillStyle = color.replace(')', ', 0.10)').replace('rgb', 'rgba');
       ctx.fill();
     }
-    spark('cpu-{{ device.id }}', cpuData, '#3b82f6');
-    spark('ram-{{ device.id }}', ramData, '#10b981');
+    spark('cpu-{{ device.id }}', cpuData, '#2f7bff');
+    spark('ram-{{ device.id }}', ramData, '#00f5a0');
   })();
   </script>
 

@@ -416,6 +416,44 @@
     .toast-warning { background: #161005; color: var(--warn);        border-color: var(--warn-line); }
     .toast-info    { background: #060d18; color: var(--accent-soft); border-color: var(--info-line); }
 
+    /* ── Override neón para paneles con estilo propio ──────────────
+       Estas clases viven en el <style> local de varias plantillas
+       (device_live, realtime, security_*, software_inventory). El prefijo
+       `body` sube la especificidad para ganarles sin editar cada plantilla. */
+
+    body .chart-card,
+    body .disk-block,
+    body .net-block {
+      background: var(--card) !important;
+      border: 1px solid var(--border) !important;
+    }
+    body .summary-stat {
+      background: linear-gradient(160deg, var(--surface-2), var(--card)) !important;
+      border: 1px solid var(--border) !important;
+    }
+    body .chart-card { position: relative; }
+    body .chart-card::before {
+      content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px; pointer-events: none;
+      background: linear-gradient(90deg, transparent, var(--cyan), var(--purple), transparent);
+      box-shadow: 0 0 10px var(--cyan-glow);
+    }
+
+    /* Tarjetas de hallazgos / anomalías de seguridad */
+    body .sec-card            { background: rgba(120,160,220,0.03) !important; border-color: var(--border) !important; }
+    body .sec-card--critical  { background: var(--danger-tint)  !important; border-color: var(--danger-line)  !important; box-shadow: 0 0 16px rgba(255,59,107,0.10) !important; }
+    body .sec-card--warning   { background: var(--warn-tint)    !important; border-color: var(--warn-line)    !important; }
+    body .sec-card--info      { background: var(--info-tint)    !important; border-color: var(--info-line)    !important; }
+    body .sec-card--ack       { background: rgba(120,160,220,0.015) !important; border-color: var(--border-soft) !important; }
+
+    /* Tarjetas de dispositivo en el monitor en vivo */
+    body .device-card           { background: var(--card) !important; }
+    body .device-card.online    { border-color: var(--success-line) !important; box-shadow: 0 0 18px rgba(0,245,160,0.10) !important; }
+    body .device-card.warning   { border-color: var(--warn-line)    !important; box-shadow: 0 0 18px rgba(255,176,46,0.10) !important; }
+    body .device-card.offline   { border-color: var(--danger-line)  !important; }
+    body .device-card.online::before  { background: linear-gradient(90deg, transparent, var(--success), transparent) !important; box-shadow: 0 0 10px var(--success-glow); }
+    body .device-card.warning::before { background: linear-gradient(90deg, transparent, var(--warn), transparent) !important; box-shadow: 0 0 10px var(--warn-glow); }
+    body .device-card.offline::before { background: linear-gradient(90deg, transparent, var(--danger), transparent) !important; box-shadow: 0 0 10px var(--danger-glow); }
+
     /* ── Responsive helpers ────────────────────────────────────── */
     .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 
