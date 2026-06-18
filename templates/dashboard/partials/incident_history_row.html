@@ -1,0 +1,10 @@
+<div style="display:flex;align-items:center;gap:10px;padding:9px 18px;border-bottom:1px solid var(--border-faint);" class="row-hover">
+  <span class="dot dot-on" style="flex-shrink:0;"></span>
+  <div style="flex:1;min-width:0;">
+    <div style="font-size:12px;color:var(--text-3);text-decoration:line-through;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ incident.title }}</div>
+    <div class="mono" style="font-size:10px;color:var(--text-4);margin-top:1px;">
+      {% if incident.resolved_at %}Resuelto {{ incident.resolved_at|date:"d/m/Y H:i" }}{% else %}Resuelto{% endif %}{% if incident.device %} · {{ incident.device.display_name }}{% endif %} · {{ incident.get_severity_display }}
+    </div>
+  </div>
+  <span class="badge badge-ok" style="flex-shrink:0;">✓ Resuelto</span>
+</div>

@@ -1,0 +1,14 @@
+{% comment %}
+Respuesta del resolver (HTMX).
+- El cuerpo principal queda vacío: el target (la fila abierta #incident-<id>)
+  se reemplaza por nada → desaparece de la lista de abiertos.
+- Out-of-band: se re-renderiza la lista del histórico y se actualiza el contador.
+{% endcomment %}
+<div id="incidents-history-list" hx-swap-oob="true">
+  {% for incident in incidents_history %}
+    {% include "dashboard/partials/incident_history_row.html" %}
+  {% empty %}
+  <div style="padding:18px;text-align:center;font-size:12px;color:var(--text-4);">Sin incidentes resueltos todavía.</div>
+  {% endfor %}
+</div>
+<span id="incident-history-count" hx-swap-oob="true" class="hist-count mono">{{ history_count }} resuelto{{ history_count|pluralize:"s" }}</span>

@@ -66,13 +66,20 @@ def admin_client_detail(request, client_id):
     devices = client.devices.filter(is_active=True).prefetch_related("snapshots")
     domains = client.domains.all()
     licenses = client.m365_licenses.filter(capability_status="Enabled", total_licenses__lt=10000, total_licenses__gt=0)
-    incidents = client.incidents.order_by("-created_at")[:20]
+
+    # Incidentes: abiertos en la lista principal; resueltos al histórico colapsable.
+    incidents = client.incidents.filter(is_resolved=False).order_by("-created_at")[:30]
+    incidents_history = client.incidents.filter(is_resolved=True).order_by("-resolved_at")[:30]
+    history_count = client.incidents.filter(is_resolved=True).count()
+
     context = {
         "client": client,
         "devices": devices,
         "domains": domains,
         "licenses": licenses,
         "incidents": incidents,
+        "incidents_history": incidents_history,
+        "history_count": history_count,
         "section": "clients",
     }
     return render(request, "dashboard/admin_client_detail.html", context)
@@ -238,7 +245,13 @@ def htmx_incident_create(request, client_id):
 
 @login_required
 def htmx_incident_resolve(request, incident_id):
-    """Fragmento HTMX: marca incidente como resuelto, notifica y devuelve la fila."""
+    """Fragmento HTMX: marca un incidente como resuelto, notifica y mueve el
+    incidente al histórico en vivo.
+
+    Devuelve un cuerpo vacío para el target (la fila abierta se elimina) más dos
+    fragmentos out-of-band: la lista del histórico re-renderizada y el contador
+    actualizado. Así el resuelto deja de ocupar espacio en la lista de abiertos.
+    """
     if request.method == "POST":
         from core.notifications import notify_incident_resolved
         incident = get_object_or_404(MaintenanceIncident, pk=incident_id)
@@ -250,8 +263,14 @@ def htmx_incident_resolve(request, incident_id):
         except Exception as e:
             logger.warning(f"Error enviando notificación de resolución: {e}")
 
-        return render(request, "dashboard/partials/incident_row.html",
-                      {"incident": incident})
+        client = incident.client
+        incidents_history = client.incidents.filter(is_resolved=True).order_by("-resolved_at")[:30]
+        history_count = client.incidents.filter(is_resolved=True).count()
+
+        return render(request, "dashboard/partials/incident_resolve_response.html", {
+            "incidents_history": incidents_history,
+            "history_count": history_count,
+        })
     return HttpResponse(status=405)
 
 

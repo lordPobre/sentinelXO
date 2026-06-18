@@ -8,10 +8,40 @@
   Generar reporte
 </a>
 <a href="{% url 'dashboard:client-portal' client.id %}" class="btn-ghost"><span class="btn-txt">Vista cliente</span></a>
-<a href="{% url 'dashboard:realtime' client.id %}" class="btn-primary" style="background:rgba(16,185,129,0.15);color:var(--green);border:1px solid rgba(16,185,129,0.25);">
+<a href="{% url 'dashboard:realtime' client.id %}" class="btn-primary" style="background:rgba(0,245,160,0.12);color:var(--green);border:1px solid var(--success-line);box-shadow:0 0 16px rgba(0,245,160,0.18);">
   <span class="dot dot-on dot-pulse" style="width:6px;height:6px;flex-shrink:0;"></span>
   <span class="btn-txt">Monitor en vivo</span>
 </a>
+{% endblock %}
+
+{% block extra_head %}
+<style>
+  /* Histórico de incidentes resueltos — colapsable */
+  .incident-history {
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: rgba(120,160,220,0.012);
+    overflow: hidden;
+    margin-top: 12px;
+  }
+  .incident-history > summary {
+    display: flex; align-items: center; gap: 8px;
+    padding: 12px 18px; cursor: pointer;
+    font-size: 12px; font-weight: 600; color: var(--text-3);
+    list-style: none; user-select: none;
+  }
+  .incident-history > summary:hover { color: var(--text-2); }
+  .incident-history > summary::-webkit-details-marker { display: none; }
+  .hist-chevron { font-size: 9px; color: var(--text-4); transition: transform 0.15s ease; }
+  .incident-history[open] .hist-chevron { transform: rotate(90deg); }
+  .hist-count {
+    font-size: 9px; color: var(--text-4);
+    background: var(--raise); border: 1px solid var(--border);
+    padding: 1px 8px; border-radius: 10px;
+  }
+  /* Fade-out suave al resolver */
+  #incidents-list > [id^="incident-"].htmx-swapping { opacity: 0; transition: opacity 0.25s ease; }
+</style>
 {% endblock %}
 
 {% block content %}
@@ -29,7 +59,7 @@
       <td>
         <div style="display:flex;align-items:center;gap:8px;">
           <span class="dot {% if device.is_online %}dot-on{% elif device.status == 'warning' %}dot-warn{% else %}dot-off{% endif %}"></span>
-          <span style="font-weight:600;color:#cbd5e1;">{{ device.display_name }}</span>
+          <span style="font-weight:600;color:var(--text-2);">{{ device.display_name }}</span>
         </div>
       </td>
       <td><span class="badge badge-gray">{{ device.get_device_type_display }}</span></td>
@@ -63,9 +93,9 @@
   <div class="card fu-1" style="overflow:hidden;">
     <div class="card-header"><span class="card-title">Dominios</span></div>
     {% for domain in domains %}
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:11px 18px;border-bottom:1px solid rgba(255,255,255,0.03);">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:11px 18px;border-bottom:1px solid var(--border-faint);">
       <div>
-        <div class="mono" style="font-size:12px;color:#94a3b8;">{{ domain.fqdn }}</div>
+        <div class="mono" style="font-size:12px;color:var(--text-3);">{{ domain.fqdn }}</div>
         <div style="font-size:10px;color:var(--text-4);margin-top:1px;">{{ domain.expiry_date|date:"d/m/Y"|default:"Sin fecha" }}</div>
       </div>
       <span class="badge {% if domain.status == 'critical' or domain.status == 'expired' %}badge-crit{% elif domain.status == 'warning' %}badge-warn{% elif domain.status == 'ok' %}badge-ok{% else %}badge-gray{% endif %}">
@@ -89,14 +119,17 @@
   </div>
 </div>
 
-<!-- Incidentes -->
+<!-- Incidentes (abiertos) -->
 <div class="card fu-2" style="overflow:hidden;">
-  <div class="card-header"><span class="card-title">Incidentes</span></div>
+  <div class="card-header">
+    <span class="card-title">Incidentes abiertos</span>
+    <span class="mono" style="font-size:10px;color:var(--text-4);">{{ incidents|length }} abierto{{ incidents|length|pluralize:"s" }}</span>
+  </div>
   <div id="incidents-list">
     {% for incident in incidents %}{% include "dashboard/partials/incident_row.html" %}
-    {% empty %}<div style="padding:28px;text-align:center;font-size:12px;color:var(--text-4);">Sin incidentes.</div>{% endfor %}
+    {% empty %}<div style="padding:28px;text-align:center;font-size:12px;color:var(--text-4);">Sin incidentes abiertos.</div>{% endfor %}
   </div>
-  <div style="padding:14px 18px;border-top:1px solid var(--border);background:rgba(255,255,255,0.01);">
+  <div style="padding:14px 18px;border-top:1px solid var(--border);background:rgba(120,160,220,0.01);">
     <div style="font-size:9px;font-weight:600;letter-spacing:0.09em;text-transform:uppercase;color:var(--text-4);margin-bottom:10px;">Registrar incidente</div>
     <div id="incident-form-fields">
       <div style="display:flex;gap:8px;margin-bottom:8px;">
@@ -119,10 +152,10 @@
       <div style="display:flex;align-items:center;justify-content:space-between;">
         <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
           <input type="checkbox" name="notify" value="true" id="new-incident-notify" checked
-                 style="accent-color:#2563eb;width:14px;height:14px;">
+                 style="accent-color:var(--accent);width:14px;height:14px;">
           <span style="font-size:11px;color:var(--text-3);">
             Notificar por email a
-            <span style="color:#60a5fa;">{{ client.contact_email }}</span>
+            <span style="color:var(--accent-soft);">{{ client.contact_email }}</span>
           </span>
         </label>
         <button type="button" class="btn-primary"
@@ -137,4 +170,20 @@
     </div>
   </div>
 </div>
+
+<!-- Histórico de incidentes resueltos -->
+<details class="incident-history fu-3" id="incident-history">
+  <summary>
+    <span class="hist-chevron">▸</span>
+    Histórico de resueltos
+    <span id="incident-history-count" class="hist-count mono">{{ history_count }} resuelto{{ history_count|pluralize:"s" }}</span>
+  </summary>
+  <div id="incidents-history-list">
+    {% for incident in incidents_history %}
+      {% include "dashboard/partials/incident_history_row.html" %}
+    {% empty %}
+    <div style="padding:18px;text-align:center;font-size:12px;color:var(--text-4);">Sin incidentes resueltos todavía.</div>
+    {% endfor %}
+  </div>
+</details>
 {% endblock %}
