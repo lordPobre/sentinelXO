@@ -3,95 +3,129 @@
 
 {% block body %}
 <style>
-  /* Animaciones para el fondo tecnológico */
   @keyframes float {
-    0%, 100% { transform: translateY(0px) scale(1); }
-    50% { transform: translateY(-30px) scale(1.05); }
+    0%, 100% { transform: translateY(0) scale(1); }
+    50%      { transform: translateY(-30px) scale(1.05); }
   }
   @keyframes float-reverse {
-    0%, 100% { transform: translateY(0px) scale(1); }
-    50% { transform: translateY(30px) scale(0.95); }
+    0%, 100% { transform: translateY(0) scale(1); }
+    50%      { transform: translateY(30px) scale(0.95); }
   }
-  @keyframes scan {
-    0% { transform: translateY(-100%); opacity: 0; }
-    10% { opacity: 0.5; }
-    90% { opacity: 0.5; }
+  @keyframes scan-down {
+    0%   { transform: translateY(-100%); opacity: 0; }
+    10%  { opacity: 0.9; }
+    90%  { opacity: 0.9; }
     100% { transform: translateY(100vh); opacity: 0; }
   }
-  
-  /* Capas del fondo */
-  .bg-sentinel {
-    background: #0f172a; /* Slate 900 base */
-    background: radial-gradient(circle at 50% 50%, #1e293b 0%, #0f172a 100%);
-  }
-  
-  .tech-grid {
-    position: absolute;
-    inset: 0;
-    background-image: 
-      linear-gradient(rgba(37, 99, 235, 0.08) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(37, 99, 235, 0.08) 1px, transparent 1px);
-    background-size: 40px 40px;
-    /* Efecto de difuminado circular hacia los bordes */
-    mask-image: radial-gradient(ellipse at center, rgba(0,0,0,1) 15%, rgba(0,0,0,0) 80%);
-    -webkit-mask-image: radial-gradient(ellipse at center, rgba(0,0,0,1) 15%, rgba(0,0,0,0) 80%);
-    pointer-events: none;
-  }
-  
-  .tech-dots {
-    position: absolute;
-    inset: 0;
-    background-image: radial-gradient(rgba(148, 163, 184, 0.15) 1px, transparent 1px);
-    background-size: 20px 20px;
-    /* Difuminado desde arriba hacia el centro */
-    mask-image: radial-gradient(ellipse at top, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0) 60%);
-    -webkit-mask-image: radial-gradient(ellipse at top, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0) 60%);
-    pointer-events: none;
+  @keyframes logo-flicker {
+    0%, 100% { filter: drop-shadow(0 0 8px rgba(34,230,255,0.55)); }
+    50%      { filter: drop-shadow(0 0 14px rgba(34,230,255,0.85)); }
   }
 
-  .scan-line {
-    position: absolute;
-    top: 0;
-    left: 0;
+  .login-stage {
+    min-height: 100vh;
+    display: flex; align-items: center; justify-content: center;
+    padding: 24px; position: relative; overflow: hidden;
+    background:
+      radial-gradient(circle at 20% 18%, rgba(34,230,255,0.10), transparent 42%),
+      radial-gradient(circle at 82% 84%, rgba(155,107,255,0.10), transparent 46%),
+      #05070d;
+  }
+  .tech-grid {
+    position: absolute; inset: 0; pointer-events: none;
+    background-image:
+      linear-gradient(rgba(34,230,255,0.06) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(34,230,255,0.06) 1px, transparent 1px);
+    background-size: 42px 42px;
+    mask-image: radial-gradient(ellipse at center, rgba(0,0,0,1) 12%, rgba(0,0,0,0) 78%);
+    -webkit-mask-image: radial-gradient(ellipse at center, rgba(0,0,0,1) 12%, rgba(0,0,0,0) 78%);
+  }
+  .glow-orb { position: absolute; border-radius: 50%; pointer-events: none; }
+  .scan-beam {
+    position: absolute; top: 0; left: 0; width: 100%; height: 2px; z-index: 0; pointer-events: none;
+    background: linear-gradient(90deg, transparent, rgba(34,230,255,0.65), rgba(155,107,255,0.4), transparent);
+    box-shadow: 0 0 16px rgba(34,230,255,0.7);
+    animation: scan-down 8s linear infinite;
+  }
+  .login-card {
+    padding: 28px;
+    background: rgba(10,15,26,0.72);
+    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+    border: 1px solid rgba(34,230,255,0.14);
+    border-radius: 16px;
+    box-shadow: 0 0 0 1px rgba(34,230,255,0.04), 0 24px 60px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.04);
+    position: relative; overflow: hidden;
+  }
+  .login-card::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+    background: linear-gradient(90deg, transparent, #22e6ff, #9b6bff, transparent);
+    box-shadow: 0 0 12px rgba(34,230,255,0.55);
+  }
+  .login-field {
     width: 100%;
-    height: 3px;
-    background: linear-gradient(90deg, transparent, rgba(37, 99, 235, 0.4), transparent);
-    box-shadow: 0 0 12px rgba(37, 99, 235, 0.6);
-    animation: scan 8s linear infinite;
-    pointer-events: none;
-    z-index: 0;
+    background: rgba(5,7,13,0.6);
+    border: 1px solid rgba(120,160,220,0.12);
+    border-radius: 9px;
+    color: #eaf2ff; font-size: 13px; font-family: 'Plus Jakarta Sans', sans-serif;
+    padding: 11px 13px; outline: none;
+    transition: border-color .15s, box-shadow .15s, background .15s;
+  }
+  .login-field::placeholder { color: #586a88; }
+  .login-field:focus {
+    border-color: rgba(34,230,255,0.55);
+    background: rgba(34,230,255,0.05);
+    box-shadow: 0 0 16px rgba(34,230,255,0.18);
+  }
+  .login-btn {
+    width: 100%; justify-content: center;
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 12px; border: none; border-radius: 9px; cursor: pointer;
+    background: linear-gradient(90deg, #2f7bff, #22e6ff);
+    color: #04060d; font-size: 13px; font-weight: 700; font-family: inherit; letter-spacing: 0.01em;
+    box-shadow: 0 0 20px rgba(34,230,255,0.35);
+    transition: box-shadow .2s, transform .1s, filter .2s;
+  }
+  .login-btn:hover  { box-shadow: 0 0 30px rgba(34,230,255,0.6); filter: brightness(1.05); }
+  .login-btn:active { transform: scale(0.98); }
+  .login-label {
+    display: block; font-size: 10px; font-weight: 600; letter-spacing: 0.08em;
+    text-transform: uppercase; color: #586a88; margin-bottom: 6px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .scan-beam, .glow-orb, .login-mark { animation: none !important; }
   }
 </style>
 
-<div class="bg-sentinel" style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;position:relative;overflow:hidden;">
-  
-  <!-- Elementos del fondo tecnológico -->
-  <div class="tech-grid"></div>
-  <div class="tech-dots"></div>
-  <div class="scan-line"></div>
+<div class="login-stage">
 
-  <!-- Resplandores animados (Glow orbs) -->
-  <div style="position:absolute;top:-10%;left:-10%;width:50vw;height:50vw;max-width:600px;max-height:600px;border-radius:50%;background:radial-gradient(circle,rgba(37,99,235,0.08) 0%,transparent 65%);pointer-events:none;animation:float 12s ease-in-out infinite;"></div>
-  <div style="position:absolute;bottom:-10%;right:-10%;width:40vw;height:40vw;max-width:500px;max-height:500px;border-radius:50%;background:radial-gradient(circle,rgba(124,58,237,0.06) 0%,transparent 65%);pointer-events:none;animation:float-reverse 15s ease-in-out infinite;"></div>
+  <div class="tech-grid"></div>
+  <div class="scan-beam"></div>
+
+  <div class="glow-orb" style="top:-12%;left:-10%;width:48vw;height:48vw;max-width:560px;max-height:560px;
+       background:radial-gradient(circle, rgba(34,230,255,0.12) 0%, transparent 66%); animation:float 12s ease-in-out infinite;"></div>
+  <div class="glow-orb" style="bottom:-12%;right:-10%;width:40vw;height:40vw;max-width:480px;max-height:480px;
+       background:radial-gradient(circle, rgba(155,107,255,0.12) 0%, transparent 66%); animation:float-reverse 15s ease-in-out infinite;"></div>
 
   <div class="fu" style="width:100%;max-width:380px;position:relative;z-index:1;">
+
     <!-- Brand -->
-    <div style="text-align:center;margin-bottom:32px;">
-      <svg width="46" height="46" viewBox="0 0 34 34" fill="none">
-        <rect x="8" y="8" width="18" height="18" rx="2" transform="rotate(45 17 17)" stroke="#2563eb" stroke-width="1" fill="none"/>
-        <line x1="17" y1="11" x2="17" y2="23" stroke="#2563eb" stroke-width="1.5" stroke-linecap="round"/>
-        <line x1="11" y1="17" x2="23" y2="17" stroke="#2563eb" stroke-width="1.5" stroke-linecap="round"/>
-        <circle cx="17" cy="17" r="2.5" fill="#2563eb"/>
-        <circle cx="17" cy="17" r="1" fill="white"/>
+    <div style="text-align:center;margin-bottom:30px;">
+      <svg class="login-mark" width="48" height="48" viewBox="0 0 34 34" fill="none"
+           style="filter:drop-shadow(0 0 8px rgba(34,230,255,0.55));animation:logo-flicker 3.5s ease-in-out infinite;">
+        <rect x="8" y="8" width="18" height="18" rx="2" transform="rotate(45 17 17)" stroke="#22e6ff" stroke-width="1.2" fill="none"/>
+        <line x1="17" y1="10" x2="17" y2="24" stroke="#22e6ff" stroke-width="1.6" stroke-linecap="round"/>
+        <line x1="10" y1="17" x2="24" y2="17" stroke="#9b6bff" stroke-width="1.6" stroke-linecap="round"/>
+        <circle cx="17" cy="17" r="2.6" fill="#22e6ff"/>
+        <circle cx="17" cy="17" r="1" fill="#fff"/>
       </svg>
-      <div style="font-size:18px;font-weight:700;color:#f1f5f9;letter-spacing:-0.02em;margin-bottom:4px;">Sentinel XO</div>
-      <div class="mono" style="font-size:10px;color:var(--text-4);letter-spacing:0.08em;">XO CONTROL PANEL</div>
+      <div style="font-size:19px;font-weight:800;color:#fff;letter-spacing:-0.02em;margin:10px 0 4px;text-shadow:0 0 16px rgba(34,230,255,0.4);">Sentinel XO</div>
+      <div class="mono" style="font-size:10px;color:#22e6ff;letter-spacing:0.28em;opacity:0.85;">XO CONTROL PANEL</div>
     </div>
 
     <!-- Card -->
-    <div class="card accent-top" style="padding:28px; background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.05);">
+    <div class="login-card">
       {% if form.errors %}
-      <div style="margin-bottom:16px;padding:10px 14px;background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.2);border-radius:8px;color:#ef4444;font-size:12px;">
+      <div style="margin-bottom:16px;padding:10px 14px;background:rgba(255,59,107,0.08);border:1px solid rgba(255,59,107,0.26);border-radius:9px;color:#ff3b6b;font-size:12px;box-shadow:0 0 14px rgba(255,59,107,0.12);">
         Credenciales incorrectas. Intenta nuevamente.
       </div>
       {% endif %}
@@ -101,26 +135,26 @@
         <input type="hidden" name="next" value="{{ next }}">
 
         <div style="margin-bottom:14px;">
-          <label style="display:block;font-size:10px;font-weight:600;letter-spacing:0.07em;text-transform:uppercase;color:var(--text-4);margin-bottom:6px;">Usuario</label>
+          <label class="login-label">Usuario</label>
           <input type="text" name="username" id="id_username" autocomplete="username" required
-                 class="px-input" placeholder="usuario" autofocus style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255,255,255,0.08); color: #f1f5f9;">
+                 class="login-field" placeholder="usuario" autofocus>
         </div>
 
         <div style="margin-bottom:24px;">
-          <label style="display:block;font-size:10px;font-weight:600;letter-spacing:0.07em;text-transform:uppercase;color:var(--text-4);margin-bottom:6px;">Contraseña</label>
+          <label class="login-label">Contraseña</label>
           <input type="password" name="password" id="id_password" autocomplete="current-password" required
-                 class="px-input" placeholder="••••••••" style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255,255,255,0.08); color: #f1f5f9;">
+                 class="login-field" placeholder="••••••••">
         </div>
 
-        <button type="submit" class="btn-primary" style="width:100%;justify-content:center;padding:11px;font-size:13px; box-shadow: 0 4px 14px rgba(37, 99, 235, 0.3);">
+        <button type="submit" class="login-btn">
           Ingresar al panel
-          <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M12 5l7 7-7 7"/></svg>
+          <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M5 12h14M12 5l7 7-7 7"/></svg>
         </button>
       </form>
     </div>
 
-    <p class="mono" style="text-align:center;font-size:10px;color:var(--text-4);margin-top:20px; opacity: 0.8;">
-      ¿Problemas? <a href="mailto:{{ SENTINEL_SUPPORT_EMAIL }}" style="color:#60a5fa;text-decoration:none;transition: color 0.2s;">{{ SENTINEL_SUPPORT_EMAIL }}</a>
+    <p class="mono" style="text-align:center;font-size:10px;color:#586a88;margin-top:20px;opacity:0.85;">
+      ¿Problemas? <a href="mailto:{{ SENTINEL_SUPPORT_EMAIL }}" style="color:#6fd3ff;text-decoration:none;">{{ SENTINEL_SUPPORT_EMAIL }}</a>
     </p>
   </div>
 </div>
