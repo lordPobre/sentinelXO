@@ -42,7 +42,6 @@ class Client(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    # Usuarios del lado cliente que pueden ver su dashboard
     portal_users = models.ManyToManyField(
         User, related_name="client_portals", blank=True,
         verbose_name="Usuarios del portal"
@@ -106,7 +105,6 @@ class HardwareDevice(models.Model):
     last_seen = models.DateTimeField("Último contacto", null=True, blank=True)
     registered_at = models.DateTimeField("Registrado", auto_now_add=True)
 
-    # Estado de conectividad (monitoreo de agente offline)
     is_offline      = models.BooleanField("Sin conexión", default=False)
     offline_since   = models.DateTimeField("Sin conexión desde", null=True, blank=True)
     offline_notified = models.BooleanField("Alerta offline enviada", default=False)
@@ -171,7 +169,6 @@ class TelemetrySnapshot(models.Model):
     cpu_freq_mhz   = models.FloatField("CPU Freq (MHz)", null=True, blank=True)
     cpu_cores      = models.IntegerField("Núcleos físicos", null=True, blank=True)
     cpu_threads    = models.IntegerField("Hilos lógicos", null=True, blank=True)
-    # GPU (opcional — solo si el equipo tiene GPU detectable)
     gpu_name                = models.CharField("GPU", max_length=200, blank=True, default="")
     gpu_usage_percent       = models.FloatField("GPU %", null=True, blank=True)
     gpu_memory_used_percent = models.FloatField("VRAM %", null=True, blank=True)
@@ -222,7 +219,6 @@ class Domain(models.Model):
     notes = models.TextField("Notas", blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
-    # Certificado SSL
     ssl_expiry_date  = models.DateField("Vencimiento SSL", null=True, blank=True)
     ssl_issuer       = models.CharField("Emisor SSL", max_length=200, blank=True)
     ssl_status       = models.CharField("Estado SSL", max_length=20,
@@ -303,7 +299,6 @@ class M365Tenant(models.Model):
                   "Ej: it@vcchile.cl — debe ser un usuario con licencia Exchange activa."
     )
 
-    # Monitoreo de inicios de sesión sospechosos
     known_countries   = models.JSONField("Países conocidos", default=list, blank=True,
                                           help_text="Países desde los que se ha iniciado sesión "
                                                      "anteriormente (baseline). Se actualiza automáticamente.")
@@ -435,7 +430,6 @@ class MonthlyReport(models.Model):
     generated_at = models.DateTimeField("Generado", null=True, blank=True)
     sent_at = models.DateTimeField("Enviado", null=True, blank=True)
     error_message = models.TextField("Error", blank=True)
-    # Resumen que se almacena en el reporte
     summary_data = models.JSONField("Datos del resumen", default=dict)
 
     class Meta:
@@ -532,15 +526,12 @@ class SecurityCheck(models.Model):
                                verbose_name="Cliente")
     checked_at = models.DateTimeField("Verificado", auto_now_add=True)
 
-    # Secure Score (Microsoft)
     secure_score        = models.FloatField("Secure Score", null=True, blank=True)
     secure_score_max    = models.FloatField("Secure Score máximo", null=True, blank=True)
 
-    # MFA
     mfa_registered      = models.IntegerField("Usuarios con MFA", null=True, blank=True)
     mfa_total           = models.IntegerField("Usuarios totales", null=True, blank=True)
 
-    # Detalle / errores
     check_details = models.JSONField("Detalle", default=dict, blank=True)
     error_msg     = models.TextField("Error", blank=True)
     ai_summary    = models.JSONField("Análisis IA", null=True, blank=True,
@@ -728,7 +719,7 @@ class AuditLog(models.Model):
                 success=success,
             )
         except Exception:
-            pass  # Nunca fallar por logging
+            pass  
 
 class SignInAnomalyEvent(models.Model):
     """Inicio de sesión M365 sospechoso detectado vía Microsoft Graph (/auditLogs/signIns)."""
@@ -813,19 +804,16 @@ class NetworkSnapshot(models.Model):
     device = models.OneToOneField(HardwareDevice, on_delete=models.CASCADE,
                                    related_name="network_snapshot", verbose_name="Dispositivo")
 
-    # Estabilidad (de la telemetría)
     latency_ms          = models.FloatField("Latencia (ms)", null=True, blank=True)
     packet_loss_percent = models.FloatField("Pérdida de paquetes (%)", null=True, blank=True)
     wifi_ssid           = models.CharField("Red WiFi (SSID)", max_length=200, blank=True, default="")
     wifi_signal_percent = models.IntegerField("Señal WiFi (%)", null=True, blank=True)
 
-    # Seguridad de red (del snapshot de seguridad)
     wifi_encryption  = models.CharField("Cifrado WiFi", max_length=100, blank=True, default="")
     network_category = models.CharField("Perfil de red", max_length=50, blank=True, default="")
     firewall         = models.JSONField("Estado del firewall", default=list, blank=True)
     dns_servers      = models.JSONField("Servidores DNS", default=list, blank=True)
 
-    # Evaluación
     risk_level   = models.CharField("Nivel de riesgo", max_length=10,
                                      choices=RISK_CHOICES, default="unknown")
     risk_reasons = models.JSONField("Motivos de riesgo", default=list, blank=True)

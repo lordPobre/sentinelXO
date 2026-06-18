@@ -4,7 +4,13 @@ Consulta Secure Score y estado de MFA vía Microsoft Graph API.
 """
 import logging
 import requests as req_lib
+from collections import defaultdict
+from core.models import SecurityCheck, SecuritySnapshot, SecurityAnomalyEvent, SignInAnomalyEvent, SoftwareSnapshot, NetworkSnapshot
 from monitoring.services import get_graph_token
+from django.conf import settings
+from emailmon.services import send_tracked_email
+from django.utils import timezone
+from datetime import timedelta
 
 logger = logging.getLogger("sentinel.security")
 
@@ -17,7 +23,6 @@ def check_m365_security_posture(client) -> dict:
 
     Guarda el resultado como SecurityCheck y lo retorna.
     """
-    from core.models import SecurityCheck
 
     result = {
         "client":  str(client),
@@ -52,7 +57,6 @@ def check_m365_security_posture(client) -> dict:
     mfa_registered, mfa_total = None, None
 
     # ── 2. Secure Score ─────────────────────────────────────────────────────
-    # Requiere permiso SecurityEvents.Read.All (Application)
     try:
         resp = req_lib.get(
             "https://graph.microsoft.com/v1.0/security/secureScores?$top=1",
@@ -96,11 +100,7 @@ def check_m365_security_posture(client) -> dict:
         logger.error(f"Security check error (secureScore) para {client}: {e}")
 
     # ── 3. Estado de MFA por usuario ────────────────────────────────────────
-    # El reporte /reports/authenticationMethods/userRegistrationDetails requiere
-    # Azure AD Premium P1/P2. Como alternativa compatible con cualquier tenant,
-    # consultamos los métodos de autenticación registrados por cada usuario
-    # individualmente vía /users/{id}/authentication/methods (Application:
-    # UserAuthenticationMethod.Read.All).
+
     try:
         users_resp = req_lib.get(
             "https://graph.microsoft.com/v1.0/users"
@@ -114,7 +114,6 @@ def check_m365_security_posture(client) -> dict:
             mfa_registered = 0
             no_mfa_users   = []
 
-            # Métodos que NO cuentan como MFA (solo contraseña)
             non_mfa_methods = {"#microsoft.graph.passwordAuthenticationMethod"}
 
             for u in all_users:
@@ -133,7 +132,6 @@ def check_m365_security_posture(client) -> dict:
                         else:
                             no_mfa_users.append(u.get("userPrincipalName"))
                     else:
-                        # Si no podemos verificar un usuario, no lo contamos en el total
                         mfa_total -= 1
                 except Exception:
                     mfa_total -= 1
@@ -224,8 +222,6 @@ def process_security_snapshot(device, snapshot_data: dict) -> list:
 
     snapshot_data: {"local_admins": [...], "startup_programs": [...], "scheduled_tasks": [...]}
     """
-    from core.models import SecuritySnapshot, SecurityAnomalyEvent
-
     new_admins  = set(snapshot_data.get("local_admins") or [])
     new_startup = snapshot_data.get("startup_programs") or []
     new_tasks   = snapshot_data.get("scheduled_tasks") or []
@@ -237,7 +233,6 @@ def process_security_snapshot(device, snapshot_data: dict) -> list:
     anomalies = []
 
     if created:
-        # Primera huella — establece la línea base, sin generar anomalías
         snap.local_admins     = sorted(new_admins)
         snap.startup_programs = new_startup
         snap.scheduled_tasks  = new_tasks
@@ -295,7 +290,6 @@ def process_security_snapshot(device, snapshot_data: dict) -> list:
         logger.warning(f"Anomalías de seguridad detectadas en {device.display_name}: "
                        f"{len(anomalies)} ({', '.join(a.anomaly_type for a in anomalies)})")
 
-    # Actualizar snapshot con el estado actual
     snap.local_admins     = sorted(new_admins)
     snap.startup_programs = new_startup
     snap.scheduled_tasks  = new_tasks
@@ -308,9 +302,6 @@ def notify_security_anomalies(device, anomalies: list):
     """Envía un email consolidado por las anomalías de seguridad detectadas."""
     if not anomalies:
         return
-
-    from django.conf import settings
-    from emailmon.services import send_tracked_email
 
     client = device.client
     company = getattr(settings, "SENTINEL_COMPANY_NAME", "Sentinel XO")
@@ -342,7 +333,6 @@ def notify_security_anomalies(device, anomalies: list):
             subject=subject, body=message, to=recipients,
             category="alert", client=client,
         )
-        from core.models import SecurityAnomalyEvent
         SecurityAnomalyEvent.objects.filter(
             id__in=[a.id for a in anomalies]
         ).update(notified=True)
@@ -351,7 +341,6 @@ def notify_security_anomalies(device, anomalies: list):
     except Exception as e:
         logger.error(f"Error enviando alerta de seguridad para {device.display_name}: {e}")
 
-    # Telegram solo para anomalías críticas (ej. nuevo administrador local)
     critical = [a for a in anomalies if a.severity == "critical"]
     if critical:
         from core.notifications_telegram import notify_telegram
@@ -365,10 +354,7 @@ def notify_security_anomalies(device, anomalies: list):
 
 
 # ── Monitor de inicios de sesión sospechosos M365 ──────────────────────────────
-# Usa /auditLogs/signIns — disponible sin Azure AD Premium P1/P2, solo requiere
-# el permiso AuditLog.Read.All (Application) que ya se usa para la cobertura MFA.
-
-IMPOSSIBLE_TRAVEL_WINDOW_HOURS = 3   # ventana máxima entre países distintos
+IMPOSSIBLE_TRAVEL_WINDOW_HOURS = 3 
 NON_RISK_VALUES = {None, "none", "hidden", ""}
 
 
@@ -384,10 +370,6 @@ def check_signin_anomalies(client) -> list:
     Crea SignInAnomalyEvent por cada anomalía y notifica por email.
     Retorna la lista de anomalías creadas.
     """
-    from django.utils import timezone
-    from datetime import timedelta
-    from core.models import SignInAnomalyEvent
-
     anomalies = []
 
     if not (hasattr(client, "m365_tenant") and client.m365_tenant and client.m365_tenant.is_active):
@@ -405,7 +387,6 @@ def check_signin_anomalies(client) -> list:
 
     headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
 
-    # Ventana de búsqueda: desde la última revisión, o últimas 24h en la primera ejecución
     now = timezone.now()
     since = tenant.last_signin_check or (now - timedelta(hours=24))
     since_iso = since.strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -431,14 +412,12 @@ def check_signin_anomalies(client) -> list:
 
     signins = resp.json().get("value", [])
 
-    # Solo inicios de sesión exitosos (errorCode == 0)
     successes = [s for s in signins if (s.get("status") or {}).get("errorCode") == 0]
 
     known_countries = set(tenant.known_countries or [])
     is_first_run = len(known_countries) == 0 and tenant.last_signin_check is None
 
     if is_first_run:
-        # Primera ejecución — establece la línea base de países conocidos sin alertar
         for s in successes:
             country = ((s.get("location") or {}).get("countryOrRegion") or "").strip()
             if country:
@@ -479,7 +458,6 @@ def check_signin_anomalies(client) -> list:
             ))
 
     # ── 2. Viaje imposible ────────────────────────────────────────────────
-    from collections import defaultdict
     by_user = defaultdict(list)
     for s in successes:
         country = ((s.get("location") or {}).get("countryOrRegion") or "").strip()
@@ -510,7 +488,6 @@ def check_signin_anomalies(client) -> list:
                             f"→ {dt_prev.strftime('%d/%m %H:%M')} → {dt_curr.strftime('%d/%m %H:%M')} UTC"),
                 ))
 
-    # Guardar anomalías y actualizar baseline/checkpoint
     if anomalies:
         SignInAnomalyEvent.objects.bulk_create(anomalies)
         logger.warning(f"check_signin_anomalies: {len(anomalies)} anomalía(s) para {client} "
@@ -530,9 +507,6 @@ def notify_signin_anomalies(client, anomalies: list):
     """Envía un email consolidado por las anomalías de inicio de sesión detectadas."""
     if not anomalies:
         return
-
-    from django.conf import settings
-    from emailmon.services import send_tracked_email
 
     company = getattr(settings, "SENTINEL_COMPANY_NAME", "Sentinel XO")
     recipients = client.get_alert_recipients()
@@ -563,7 +537,6 @@ def notify_signin_anomalies(client, anomalies: list):
             subject=subject, body=message, to=recipients,
             category="alert", client=client,
         )
-        from core.models import SignInAnomalyEvent
         SignInAnomalyEvent.objects.filter(
             id__in=[a.id for a in anomalies]
         ).update(notified=True)
@@ -572,7 +545,6 @@ def notify_signin_anomalies(client, anomalies: list):
     except Exception as e:
         logger.error(f"Error enviando alerta de sign-in para {client}: {e}")
 
-    # Telegram solo para anomalías críticas (viaje imposible, sign-in de alto riesgo)
     critical = [a for a in anomalies if a.severity == "critical"]
     if critical:
         from core.notifications_telegram import notify_telegram
@@ -584,7 +556,6 @@ def notify_signin_anomalies(client, anomalies: list):
             + "\n".join(tg_lines)
         )
 
-
 # ── Inventario de software y detección de cambios ──────────────────────────────
 
 def process_software_snapshot(device, software_list: list) -> list:
@@ -595,8 +566,6 @@ def process_software_snapshot(device, software_list: list) -> list:
 
     software_list: [{"name": ..., "version": ..., "publisher": ...}, ...]
     """
-    from core.models import SoftwareSnapshot, SecurityAnomalyEvent
-
     def _sw_key(item):
         return (item.get("name", "").strip().lower(), str(item.get("version", "")).strip())
 
@@ -640,7 +609,6 @@ def process_software_snapshot(device, software_list: list) -> list:
                     f"{sum(1 for a in anomalies if a.anomaly_type=='removed_software')} desinstalados)")
 
     snap.software_list = software_list
-    # El análisis CVE anterior puede haber quedado desactualizado
     if anomalies:
         snap.cve_analysis = None
         snap.cve_checked_at = None
@@ -659,8 +627,6 @@ def update_network_stability(device, network_data: dict):
     (latencia, pérdida de paquetes, señal WiFi). No genera anomalías — solo
     refresca los valores. Llamado en cada telemetría que traiga calidad de red.
     """
-    from core.models import NetworkSnapshot
-
     has_quality = any(k in network_data for k in ("latency_ms", "packet_loss_percent", "wifi"))
     if not has_quality:
         return
@@ -687,7 +653,6 @@ def _evaluate_network_risk(snap) -> tuple:
     reasons = []
     level = "ok"
 
-    # WiFi abierta = crítico
     if snap.is_open_wifi:
         reasons.append("Conectado a una red WiFi abierta (sin cifrado).")
         level = "critical"
@@ -697,19 +662,16 @@ def _evaluate_network_risk(snap) -> tuple:
             reasons.append(f"Cifrado WiFi débil u obsoleto: {snap.wifi_encryption}.")
             level = "warning"
 
-    # Firewall apagado = crítico
     if snap.firewall_all_on is False:
         off = [fw.get("name") for fw in snap.firewall if not fw.get("enabled")]
         reasons.append(f"Firewall desactivado en: {', '.join(off)}.")
         level = "critical"
 
-    # Pérdida de paquetes alta = warning
     if snap.packet_loss_percent is not None and snap.packet_loss_percent >= 10:
         reasons.append(f"Pérdida de paquetes elevada: {snap.packet_loss_percent:.0f}%.")
         if level == "ok":
             level = "warning"
 
-    # Latencia muy alta = warning
     if snap.latency_ms is not None and snap.latency_ms >= 200:
         reasons.append(f"Latencia alta hacia el gateway: {snap.latency_ms:.0f} ms.")
         if level == "ok":
@@ -725,9 +687,6 @@ def process_network_security(device, net_sec: dict) -> list:
     detectar cambios (WiFi abierta, firewall apagado, cambio de red/DNS).
     Retorna lista de anomalías creadas.
     """
-    from core.models import NetworkSnapshot, SecurityAnomalyEvent
-    from django.utils import timezone
-
     snap, created = NetworkSnapshot.objects.get_or_create(device=device)
 
     old_ssid = snap.wifi_ssid
@@ -735,7 +694,6 @@ def process_network_security(device, net_sec: dict) -> list:
     old_fw_on = snap.firewall_all_on
     old_open_wifi = snap.is_open_wifi
 
-    # Actualizar campos de seguridad
     snap.wifi_encryption  = net_sec.get("wifi_encryption") or ""
     snap.network_category = net_sec.get("network_category") or ""
     snap.firewall         = net_sec.get("firewall") or []
@@ -743,7 +701,6 @@ def process_network_security(device, net_sec: dict) -> list:
     if net_sec.get("wifi_ssid"):
         snap.wifi_ssid = net_sec.get("wifi_ssid")
 
-    # Evaluar riesgo
     level, reasons = _evaluate_network_risk(snap)
     snap.risk_level = level
     snap.risk_reasons = reasons
@@ -752,7 +709,6 @@ def process_network_security(device, net_sec: dict) -> list:
 
     anomalies = []
 
-    # Primera vez: solo línea base, sin alertas (pero sí evalúa riesgo)
     if created:
         logger.info(f"Postura de red inicial registrada para {device.display_name}")
         return anomalies
@@ -763,23 +719,19 @@ def process_network_security(device, net_sec: dict) -> list:
         )
         anomalies.append(ev)
 
-    # WiFi abierta (nueva)
     if snap.is_open_wifi and not old_open_wifi:
         _anomaly("open_wifi", "warning",
                  f"El equipo se conectó a una red WiFi abierta: {snap.wifi_ssid or '(desconocida)'}.")
 
-    # Firewall apagado (cambió de on a off)
     if old_fw_on is not False and snap.firewall_all_on is False:
         off = [fw.get("name") for fw in snap.firewall if not fw.get("enabled")]
         _anomaly("firewall_off", "critical",
                  f"Firewall desactivado en: {', '.join(off)}.")
 
-    # Cambio de red WiFi
     if old_ssid and snap.wifi_ssid and old_ssid != snap.wifi_ssid:
         _anomaly("network_change", "info",
                  f"Cambio de red WiFi: '{old_ssid}' → '{snap.wifi_ssid}'.")
 
-    # Cambio de servidores DNS
     new_dns = set(snap.dns_servers or [])
     if old_dns and new_dns and old_dns != new_dns:
         added = new_dns - old_dns

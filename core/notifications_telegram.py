@@ -4,6 +4,8 @@ Bot único de Sentinel XO (SENTINEL_TELEGRAM_BOT_TOKEN), un chat_id por cliente.
 """
 import logging
 import requests
+from django.conf import settings
+from django.utils import timezone
 
 logger = logging.getLogger("sentinel.telegram")
 
@@ -15,8 +17,6 @@ def send_telegram_message(chat_id: str, text: str) -> tuple[bool, str]:
     Envía un mensaje de texto a un chat de Telegram vía el bot de Sentinel XO.
     Retorna (success, error_msg).
     """
-    from django.conf import settings
-
     bot_token = getattr(settings, "SENTINEL_TELEGRAM_BOT_TOKEN", "")
     if not bot_token:
         return False, "SENTINEL_TELEGRAM_BOT_TOKEN no configurado"
@@ -49,7 +49,7 @@ def notify_telegram(client, text: str) -> bool:
     """
     chat_id = (getattr(client, "telegram_chat_id", "") or "").strip()
     if not chat_id:
-        return True  # no configurado — no es un error
+        return True  
 
     success, error = send_telegram_message(chat_id, text)
     if success:
@@ -61,9 +61,6 @@ def notify_telegram(client, text: str) -> bool:
 
 def send_telegram_test(client) -> tuple[bool, str]:
     """Envía un mensaje de prueba al chat configurado del cliente. Para botón 'Probar'."""
-    from django.conf import settings
-    from django.utils import timezone
-
     company = getattr(settings, "SENTINEL_COMPANY_NAME", "Sentinel XO")
     chat_id = (getattr(client, "telegram_chat_id", "") or "").strip()
 

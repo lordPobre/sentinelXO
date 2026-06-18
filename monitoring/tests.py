@@ -8,10 +8,8 @@ así que se prueba aquí. Son tests de lógica pura, sin red ni WHOIS real.
 Se ejecutan con: python manage.py test monitoring
 """
 from datetime import timedelta
-
 from django.test import TestCase
 from django.utils import timezone
-
 from core.models import Client, Domain
 
 
@@ -99,7 +97,6 @@ class DomainSslStatusTests(TestCase):
         self.assertEqual(self._ssl_status_for(-1), "expired")
 
     def test_ssl_con_error_es_unknown(self):
-        # Un error de conexión SSL deja el estado en unknown, sin importar la fecha
         self.assertEqual(self._ssl_status_for(60, error="handshake failed"), "unknown")
 
 
@@ -110,6 +107,5 @@ class DomainUniquenessTests(TestCase):
         c1 = _client()
         c2 = _client()
         _domain(c1, fqdn="compartido.cl")
-        # No debe lanzar: la unicidad es por (client, fqdn)
         _domain(c2, fqdn="compartido.cl")
         self.assertEqual(Domain.objects.filter(fqdn="compartido.cl").count(), 2)

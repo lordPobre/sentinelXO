@@ -1,10 +1,13 @@
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth.decorators import login_required
-from django.http import HttpResponse
+from django.http import HttpResponse, HttpResponseForbidden
 from django.contrib import messages
 from django.utils import timezone
-from core.models import Client, MonthlyReport
+from core.models import HardwareDevice, Client, MonthlyReport
+from .device_report import build_device_report_pdf
+from .system_overview import build_system_overview_pdf
 from .generator import build_report_pdf
+from .security_report import build_security_report_pdf
 
 
 @login_required
@@ -28,7 +31,6 @@ def report_download(request, report_id):
 @login_required
 def report_generate_now(request, client_id):
     """Genera un reporte manualmente (GET o POST). Genera sincrónicamente y redirige al detalle."""
-    from django.utils import timezone
     client = get_object_or_404(Client, pk=client_id)
     now = timezone.now()
     try:
@@ -55,13 +57,8 @@ def device_report_download(request, device_id):
     GET /reports/device/<device_id>/?year=2026&month=6&granularity=daily
     Genera y descarga el reporte PDF individual de un dispositivo.
     """
-    from django.utils import timezone
-    from core.models import HardwareDevice
-    from .device_report import build_device_report_pdf
-
     device = get_object_or_404(HardwareDevice, pk=device_id, is_active=True)
 
-    # Solo staff o usuarios del portal del cliente
     if not request.user.is_staff:
         if not request.user.client_portals.filter(pk=device.client_id).exists():
             from django.http import HttpResponseForbidden
@@ -95,8 +92,6 @@ def device_report_download(request, device_id):
 @login_required
 def security_report_download(request, client_id):
     """GET /reports/security/<client_id>/ — descarga el PDF de postura de seguridad."""
-    from .security_report import build_security_report_pdf
-
     client = get_object_or_404(Client, pk=client_id)
 
     if not request.user.is_staff:
@@ -119,10 +114,7 @@ def security_report_download(request, client_id):
 @login_required
 def system_overview_download(request):
     """GET /reports/sistema/ — descarga el PDF de producto (funcionamiento y arquitectura)."""
-    from .system_overview import build_system_overview_pdf
-
     if not request.user.is_staff:
-        from django.http import HttpResponseForbidden
         return HttpResponseForbidden("Sin acceso")
 
     try:

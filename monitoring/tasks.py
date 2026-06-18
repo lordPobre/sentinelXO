@@ -1,6 +1,12 @@
 import logging
 from celery import shared_task
 from django.utils import timezone
+from core.models import Domain
+from .services import refresh_domain, sync_m365_client
+from core.models import Client, Domain
+from django.core.mail import send_mail
+from emailmon.services import send_tracked_email
+from django.conf import settings
 
 logger = logging.getLogger("perseus")
 
@@ -8,9 +14,6 @@ logger = logging.getLogger("perseus")
 @shared_task(name="monitoring.refresh_all_domains")
 def refresh_all_domains():
     """Tarea diaria: actualiza estado WHOIS de todos los dominios activos."""
-    from core.models import Domain
-    from .services import refresh_domain
-
     domains = Domain.objects.filter(client__is_active=True)
     ok = 0
     errors = 0
@@ -29,8 +32,6 @@ def refresh_all_domains():
 @shared_task(name="monitoring.refresh_single_domain")
 def refresh_single_domain(domain_id: int):
     """Actualiza un dominio específico (usado desde el dashboard con HTMX)."""
-    from core.models import Domain
-    from .services import refresh_domain
     try:
         domain = Domain.objects.get(pk=domain_id)
         refresh_domain(domain)
@@ -42,9 +43,6 @@ def refresh_single_domain(domain_id: int):
 @shared_task(name="monitoring.sync_m365_all_clients")
 def sync_m365_all_clients():
     """Cada 4 horas: sincroniza licencias M365 de todos los clientes configurados."""
-    from core.models import Client
-    from .services import sync_m365_client
-
     clients = Client.objects.filter(is_active=True, m365_tenant__is_active=True)
     results = {"ok": 0, "errors": 0}
     for client in clients:
@@ -63,10 +61,6 @@ def check_expiry_alerts():
     Diario: envía alertas por email si hay dominios próximos a vencer.
     Alerta a 90, 30 y 7 días.
     """
-    from core.models import Domain
-    from django.core.mail import send_mail
-    from django.conf import settings
-
     alert_thresholds = [90, 30, 7]
     today = timezone.now().date()
 
@@ -82,7 +76,6 @@ def check_expiry_alerts():
                 f"— {settings.SENTINEL_COMPANY_NAME}"
             )
             try:
-                from emailmon.services import send_tracked_email
                 send_tracked_email(
                     subject=subject,
                     body=message,
@@ -110,7 +103,6 @@ def check_expiry_alerts():
                 f"— {settings.SENTINEL_COMPANY_NAME}"
             )
             try:
-                from emailmon.services import send_tracked_email
                 send_tracked_email(
                     subject=subject,
                     body=message,

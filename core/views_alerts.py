@@ -3,18 +3,18 @@ Sentinel XO — Vistas del sistema de alertas
 """
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render, get_object_or_404
-from django.http import JsonResponse
+from django.http import JsonResponse, Http404
 from django.views.decorators.http import require_POST
 from django.utils import timezone
+from emailmon.models import EmailLog
 from .models import AlertRule, AlertEvent, Client, HardwareDevice
+from django.db import connection
 
 
 @login_required
 def alerts_dashboard(request):
     """Vista principal del panel de alertas."""
-    # Verificar que las tablas existen (pueden no existir si la migración no se aplicó)
     try:
-        from django.db import connection
         tables = connection.introspection.table_names()
         if "core_alertrule" not in tables or "core_alertevent" not in tables:
             return render(request, "core/alerts_dashboard.html", {
@@ -30,7 +30,6 @@ def alerts_dashboard(request):
     except Exception:
         pass
 
-    # Staff ve todos los clientes, cliente ve solo el suyo
     if request.user.is_staff:
         clients       = Client.objects.filter(is_active=True).prefetch_related("devices")
         events_qs     = AlertEvent.objects.filter(status="firing").select_related(
@@ -42,7 +41,6 @@ def alerts_dashboard(request):
     else:
         portal = request.user.client_portals.first()
         if not portal:
-            from django.http import Http404
             raise Http404
         clients       = Client.objects.filter(pk=portal.pk)
         events_qs     = AlertEvent.objects.filter(
@@ -53,7 +51,6 @@ def alerts_dashboard(request):
         all_events    = AlertEvent.objects.filter(
             device__client=portal).select_related("device").order_by("-fired_at")[:100]
 
-    # Contadores ANTES del slice
     firing_critical = events_qs.filter(severity="critical").count()
     firing_warning  = events_qs.filter(severity="warning").count()
     resolved_today  = AlertEvent.objects.filter(
@@ -61,10 +58,8 @@ def alerts_dashboard(request):
         resolved_at__date=timezone.now().date(),
     ).count()
 
-    # Slice para el template
     events = events_qs[:50]
 
-    # Dispositivos disponibles para el formulario de reglas
     if request.user.is_staff:
         devices = HardwareDevice.objects.filter(is_active=True).select_related("client")
     else:
@@ -72,9 +67,6 @@ def alerts_dashboard(request):
         devices = HardwareDevice.objects.filter(
             client=portal, is_active=True) if portal else HardwareDevice.objects.none()
 
-    # Registro de notificaciones enviadas, agrupado por tipo (rescatado del
-    # antiguo dashboard SMTP). Es un registro de notificaciones, no de email,
-    # por eso vive aquí en Alertas.
     notifications = _build_notification_log(request.user)
 
     return render(request, "core/alerts_dashboard.html", {
@@ -100,7 +92,7 @@ def _build_notification_log(user):
     Devuelve una lista de grupos: cada uno con su etiqueta, ícono, y los
     últimos envíos de esa categoría (con su estado de entrega).
     """
-    from emailmon.models import EmailLog
+    
 
     try:
         from django.db import connection
@@ -109,8 +101,6 @@ def _build_notification_log(user):
     except Exception:
         return []
 
-    # Mapa de categoría -> etiqueta legible. Incluye las que usa el código
-    # aunque no estén en CATEGORY_CHOICES (connectivity, email, hardware).
     GROUPS = [
         ("alert",        "Alertas de vencimiento / SSL"),
         ("incident",     "Notificaciones de incidente"),

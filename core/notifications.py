@@ -5,6 +5,9 @@ Se llama automáticamente al crear un incidente desde el dashboard.
 import logging
 from django.conf import settings
 from django.utils import timezone
+from django.db.models import F
+from django.core.mail import send_mail
+from emailmon.services import send_tracked_email
 
 logger = logging.getLogger("perseus")
 
@@ -40,10 +43,8 @@ def _get_recipients(incident) -> list[str]:
     - Dominio / Email / Licencia → contacto del cliente (jefe / responsable TI)
     Siempre incluye el email del cliente.
     """
-    # Usar el método centralizado del modelo — incluye contact_email + alert_emails
     recipients = list(incident.client.get_alert_recipients())
 
-    # Usuarios del portal también reciben si es incidente de hardware
     if incident.device and incident.category == "hardware":
         for user in incident.client.portal_users.filter(email__isnull=False):
             if user.email and user.email not in recipients:
@@ -68,7 +69,6 @@ def _build_body(incident) -> str:
     severity     = SEVERITY_LABELS.get(incident.severity, incident.severity)
     created_at   = timezone.localtime(incident.created_at).strftime("%d/%m/%Y a las %H:%M")
 
-    # Detalle específico según categoría
     detail_lines = []
     if incident.category == "hardware" and incident.device:
         detail_lines += [
@@ -77,7 +77,6 @@ def _build_body(incident) -> str:
             f"  Último contacto: {incident.device.last_seen.strftime('%d/%m/%Y %H:%M') if incident.device.last_seen else '—'}",
         ]
     elif incident.category == "domain":
-        # Buscar dominios con problemas del cliente
         domains = incident.client.domains.filter(
             status__in=["critical", "warning", "expired"]
         )
@@ -149,7 +148,7 @@ Saludos,
 
 
 def models_f_total():
-    from django.db.models import F
+    
     return F("total_licenses")
 
 
@@ -171,7 +170,6 @@ def notify_incident_created(incident) -> bool:
     body    = _build_body(incident)
 
     try:
-        from emailmon.services import send_tracked_email
         success = send_tracked_email(
             subject=subject,
             body=body,
@@ -187,9 +185,7 @@ def notify_incident_created(incident) -> bool:
         return success
 
     except Exception as e:
-        # Fallback a send_mail si emailmon no está disponible
         try:
-            from django.core.mail import send_mail
             send_mail(subject, body, settings.DEFAULT_FROM_EMAIL,
                       recipients, fail_silently=True)
             logger.info(f"Notificación enviada (fallback): {incident.title[:50]}")
@@ -234,7 +230,6 @@ Saludos,
 """
 
     try:
-        from emailmon.services import send_tracked_email
         return send_tracked_email(
             subject=subject,
             body=body,

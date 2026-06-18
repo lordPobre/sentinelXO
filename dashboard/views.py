@@ -1,25 +1,26 @@
 import logging
+import threading
+from core.views_ai import diagnose_incident
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth.decorators import login_required
-from django.http import HttpResponse
-from django.db.models import Count, Q
+from django.http import HttpResponse, HttpResponseForbidden
+from django.db.models import Count, Q, F
 from django.utils import timezone
+from core.models import AuditLog
+from core.notifications import notify_incident_created, notify_incident_resolved
 from core.models import (Client, HardwareDevice, TelemetrySnapshot,
                           Domain, M365License, MaintenanceIncident)
 
 logger = logging.getLogger("perseus")
 
-
 def _is_admin(user):
     return user.is_staff or user.is_superuser
-
 
 @login_required
 def home(request):
     """Redirige al dashboard correcto según el rol del usuario."""
     if _is_admin(request.user):
         return redirect("dashboard:admin-overview")
-    # Usuario de cliente
     clients = request.user.client_portals.filter(is_active=True)
     if clients.count() == 1:
         return redirect("dashboard:client-portal", client_id=clients.first().id)
@@ -66,8 +67,6 @@ def admin_client_detail(request, client_id):
     devices = client.devices.filter(is_active=True).prefetch_related("snapshots")
     domains = client.domains.all()
     licenses = client.m365_licenses.filter(capability_status="Enabled", total_licenses__lt=10000, total_licenses__gt=0)
-
-    # Incidentes: abiertos en la lista principal; resueltos al histórico colapsable.
     incidents = client.incidents.filter(is_resolved=False).order_by("-created_at")[:30]
     incidents_history = client.incidents.filter(is_resolved=True).order_by("-resolved_at")[:30]
     history_count = client.incidents.filter(is_resolved=True).count()
@@ -115,7 +114,6 @@ def client_portal(request, client_id):
         is_resolved=True
     ).count()
 
-    # Uptime del mes actual
     month_start = timezone.now().replace(day=1, hour=0, minute=0, second=0)
     total_snaps = TelemetrySnapshot.objects.filter(
         device__client=client, captured_at__gte=month_start
@@ -125,7 +123,6 @@ def client_portal(request, client_id):
     ).count()
     uptime_percent = round((online_snaps / total_snaps * 100), 1) if total_snaps > 0 else None
 
-    # Estado de alertas
     domains_critical = domains.filter(status__in=["critical", "expired"]).count()
     domains_warning = domains.filter(status="warning").count()
     licenses_full = licenses.filter(consumed_licenses__gte=models_gte_total()).count() if licenses.exists() else 0
@@ -146,9 +143,8 @@ def client_portal(request, client_id):
 
 
 def models_gte_total():
-    from django.db.models import F
+    
     return F("total_licenses")
-
 
 # ─── HTMX fragments ──────────────────────────────────────────────────────────
 
@@ -156,11 +152,9 @@ def models_gte_total():
 def htmx_device_detail(request, device_id):
     """Fragmento HTMX: detalle de un dispositivo con sus últimos snapshots."""
     device = get_object_or_404(HardwareDevice, pk=device_id)
-    snapshots = list(device.snapshots.all()[:24])  # últimas 24 capturas (~6h a 15 min)
-
-    # Construir puntos para sparklines SVG (CPU/RAM) en orden cronológico
+    snapshots = list(device.snapshots.all()[:24])  
     cpu_points = ram_points = ""
-    chrono = list(reversed(snapshots))  # más antiguo primero
+    chrono = list(reversed(snapshots))  
     if len(chrono) >= 2:
         n = len(chrono)
         def to_points(values):
@@ -184,17 +178,14 @@ def htmx_device_detail(request, device_id):
 def htmx_incident_create(request, client_id):
     """Fragmento HTMX: crea un incidente, envía notificación y devuelve la fila."""
     if request.method == "POST":
-        from core.notifications import notify_incident_created
+        
         client   = get_object_or_404(Client, pk=client_id)
         title    = request.POST.get("title", "Sin título").strip()
         severity = request.POST.get("severity", "medium")
         category = request.POST.get("category", "other")
         description = request.POST.get("description", "")
-        # El checkbox 'notify' solo llega en el POST si está marcado.
-        # Si no viene, significa que el usuario lo desmarcó → no notificar.
         notify   = request.POST.get("notify") == "true"
 
-        # Detectar categoría automáticamente si no se especificó
         if category == "other" and title:
             t = title.lower()
             if any(w in t for w in ["dominio", "domain", "dns", "vence", "renovar"]):
@@ -218,17 +209,13 @@ def htmx_incident_create(request, client_id):
             notify_email=notify,
         )
 
-        # Enviar notificación en background (no bloquea la respuesta HTMX)
         if notify:
             try:
                 notify_incident_created(incident)
             except Exception as e:
                 logger.warning(f"Error enviando notificación de incidente: {e}")
 
-        # Generar diagnóstico IA en background (no bloquea la respuesta HTMX)
         try:
-            import threading
-            from core.views_ai import diagnose_incident
             def run_diagnosis():
                 diag = diagnose_incident(incident)
                 if diag:
@@ -253,11 +240,9 @@ def htmx_incident_resolve(request, incident_id):
     actualizado. Así el resuelto deja de ocupar espacio en la lista de abiertos.
     """
     if request.method == "POST":
-        from core.notifications import notify_incident_resolved
         incident = get_object_or_404(MaintenanceIncident, pk=incident_id)
         incident.resolve()
 
-        # Notificar resolución
         try:
             notify_incident_resolved(incident)
         except Exception as e:
@@ -295,16 +280,13 @@ def device_detail_live(request, device_id):
     """Vista de detalle en tiempo real de un dispositivo específico."""
     device = get_object_or_404(HardwareDevice, pk=device_id, is_active=True)
 
-    # Verificar acceso
     if not _is_admin(request.user):
         if not request.user.client_portals.filter(pk=device.client_id).exists():
             from django.http import HttpResponseForbidden
             return HttpResponseForbidden()
 
-    # Últimos 60 snapshots para el historial (~5 minutos a 5s de intervalo)
     snapshots = list(device.snapshots.order_by("captured_at")[::-1][:60][::-1])
 
-    # Postura de red (puede no existir aún si el agente no la ha enviado)
     network = getattr(device, "network_snapshot", None)
 
     return render(request, "dashboard/device_live.html", {
@@ -315,15 +297,11 @@ def device_detail_live(request, device_id):
         "section": "realtime",
     })
 
-
-
 @login_required
 def audit_log_view(request):
     """Vista del log de auditoría — solo staff."""
     if not request.user.is_staff:
-        from django.http import HttpResponseForbidden
         return HttpResponseForbidden()
-    from core.models import AuditLog
     logs = AuditLog.objects.select_related("user").order_by("-timestamp")[:200]
     return render(request, "dashboard/audit_log.html", {
         "section": "audit",

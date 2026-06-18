@@ -8,8 +8,9 @@ exacto del PDF, pero sí que se genera sin excepciones y con la firma correcta.
 Se ejecutan con: python manage.py test reports
 """
 from django.test import TestCase
-
 from core.models import Client, HardwareDevice
+from reports.security_report import build_security_report_pdf
+from reports.system_overview import build_system_overview_pdf
 
 
 def _client(**kw):
@@ -27,11 +28,10 @@ class SystemOverviewPdfTests(TestCase):
     """PDF de producto (funcionamiento y arquitectura)."""
 
     def test_genera_pdf_valido(self):
-        from reports.system_overview import build_system_overview_pdf
+        
         pdf = build_system_overview_pdf()
         self.assertIsInstance(pdf, bytes)
         self.assertGreater(len(pdf), 1000)
-        # Cabecera mágica de un archivo PDF
         self.assertTrue(pdf.startswith(b"%PDF-"))
 
 
@@ -39,9 +39,6 @@ class SecurityReportPdfTests(TestCase):
     """PDF de postura de seguridad por cliente."""
 
     def test_genera_pdf_sin_datos(self):
-        # Un cliente recién creado (sin dispositivos ni checks) no debe romper
-        # la generación: el reporte debe salir igual, aunque sea con secciones vacías.
-        from reports.security_report import build_security_report_pdf
         client = _client()
         pdf = build_security_report_pdf(client)
         self.assertIsInstance(pdf, bytes)
@@ -49,7 +46,6 @@ class SecurityReportPdfTests(TestCase):
         self.assertTrue(pdf.startswith(b"%PDF-"))
 
     def test_genera_pdf_con_dispositivo(self):
-        from reports.security_report import build_security_report_pdf
         client = _client()
         HardwareDevice.objects.create(client=client, hostname="PC-REPORTE")
         pdf = build_security_report_pdf(client)

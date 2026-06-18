@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.utils.html import format_html, mark_safe
 from .models import (Client, HardwareDevice, TelemetrySnapshot, Domain,
                      M365Tenant, M365License, MaintenanceIncident, MonthlyReport)
-
+from .models import AlertRule, AlertEvent
 
 @admin.register(Client)
 class ClientAdmin(admin.ModelAdmin):
@@ -46,8 +46,6 @@ class TelemetryInline(admin.TabularInline):
         return False
 
     def get_queryset(self, request):
-        # Limitar a los últimos 10 — un dispositivo puede tener miles de snapshots
-        # (cada 5s), y mostrarlos todos excede DATA_UPLOAD_MAX_NUMBER_FIELDS.
         qs = super().get_queryset(request).order_by("-captured_at")
         ids = list(qs.values_list("pk", flat=True)[:10])
         return qs.filter(pk__in=ids)
@@ -154,7 +152,6 @@ class MonthlyReportAdmin(admin.ModelAdmin):
     readonly_fields = ["generated_at", "sent_at", "summary_data"]
 
 # ── Alertas ────────────────────────────────────────────────────────────────────
-from .models import AlertRule, AlertEvent
 
 @admin.register(AlertRule)
 class AlertRuleAdmin(admin.ModelAdmin):

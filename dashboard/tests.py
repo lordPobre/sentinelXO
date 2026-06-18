@@ -11,7 +11,6 @@ Se ejecutan con: python manage.py test dashboard
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.contrib.auth import get_user_model
-
 from core.models import Client
 
 User = get_user_model()
@@ -60,7 +59,6 @@ class PortalAislamientoTests(TestCase):
     def test_cliente_no_ve_portal_ajeno(self):
         self.client.login(username="user_a", password="pass12345")
         resp = self.client.get(reverse("dashboard:client-portal", args=[self.client_b.id]))
-        # get_object_or_404 sobre client_portals → 404, no 200
         self.assertEqual(resp.status_code, 404)
 
     def test_admin_ve_cualquier_portal(self):

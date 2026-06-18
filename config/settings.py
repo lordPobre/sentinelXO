@@ -1,4 +1,9 @@
 import os
+import sentry_sdk
+import logging as _logging
+from sentry_sdk.integrations.django import DjangoIntegration
+from sentry_sdk.integrations.celery import CeleryIntegration
+from sentry_sdk.integrations.logging import LoggingIntegration
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -10,7 +15,6 @@ SECRET_KEY = os.environ.get("SECRET_KEY", "dev-insecure-key-change-in-production
 DEBUG = os.environ.get("DEBUG", "False") == "True"
 ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS", "localhost 127.0.0.1").split()
 
-# Railway — agregar dominio público y healthcheck automáticamente
 RAILWAY_PUBLIC_DOMAIN = os.environ.get("RAILWAY_PUBLIC_DOMAIN", "")
 if RAILWAY_PUBLIC_DOMAIN:
     ALLOWED_HOSTS.append(RAILWAY_PUBLIC_DOMAIN)
@@ -18,7 +22,6 @@ if RAILWAY_PUBLIC_DOMAIN:
 else:
     CSRF_TRUSTED_ORIGINS = os.environ.get("CSRF_TRUSTED_ORIGINS", "").split()
 
-# Railway usa este host para verificar el healthcheck
 ALLOWED_HOSTS.append("healthcheck.railway.app")
 
 INSTALLED_APPS = [
@@ -28,11 +31,9 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
-    # Terceros
     "rest_framework",
     "rest_framework.authtoken",
     "django_celery_beat",
-    # Sentinel XO apps
     "core",
     "monitoring",
     "reports",
@@ -108,7 +109,6 @@ USE_TZ = True
 # --- Archivos estáticos ---
 STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
-# Solo incluir static/ si existe (evita warning en producción)
 _static_dir = BASE_DIR / "static"
 STATICFILES_DIRS = [_static_dir] if _static_dir.exists() else []
 STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
@@ -131,104 +131,78 @@ REST_FRAMEWORK = {
     "DEFAULT_THROTTLE_RATES": {
         "anon":      "100/day",
         "user":      "1000/day",
-        "telemetry": "720/hour",   # 1 req cada 5s por agente = 720/hora máximo
-        "login":     "10/minute",  # anti-fuerza-bruta en login
+        "telemetry": "720/hour",   
+        "login":     "10/minute",  
     },
 }
 
 # --- Celery ---
-# Claude API — usado para análisis predictivo, diagnóstico de incidentes y reportes narrativos
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 
 _REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 
-# Upstash (y otros Redis gestionados) usan TLS con el esquema rediss://. Celery
-# exige que esas URLs lleven el parámetro ssl_cert_reqs. Si falta, lo añadimos
-# aquí para no tener que editar la variable de entorno a mano en Railway.
 if _REDIS_URL.startswith("rediss://") and "ssl_cert_reqs=" not in _REDIS_URL:
     _sep = "&" if "?" in _REDIS_URL else "?"
     _REDIS_URL = f"{_REDIS_URL}{_sep}ssl_cert_reqs=CERT_NONE"
 
 CELERY_BROKER_URL = _REDIS_URL
-# No almacenamos resultados de tareas: son trabajos de fondo (purga, backups,
-# checks) que no se consultan después. Esto reduce la carga sobre Redis/Upstash
-# y evita el error "Retry limit exceeded" al disparar tareas desde el admin.
 CELERY_RESULT_BACKEND = None
 CELERY_TASK_IGNORE_RESULT = True
 CELERY_TIMEZONE = TIME_ZONE
 CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
 CELERY_TASK_SERIALIZER = "json"
 CELERY_ACCEPT_CONTENT = ["json"]
-
-# Estabilidad de la conexión al broker (Aiven/Valkey cierra conexiones ociosas).
-# Reintentar la conexión al arrancar y mantener un heartbeat para que el broker
-# no corte la conexión por inactividad. La reconexión automática ya funciona,
-# esto reduce las caídas y el ruido en los logs.
 CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
 CELERY_BROKER_HEARTBEAT = 30
 CELERY_BROKER_TRANSPORT_OPTIONS = {
     "socket_keepalive": True,
-    # Parámetros TCP keepalive (Linux): empieza a sondear a los 60s de inactividad,
-    # reenvía cada 30s, hasta 3 intentos. Mantiene viva la conexión TCP para que
-    # Aiven no la cierre por inactividad.
     "socket_keepalive_options": {
-        # socket.TCP_KEEPIDLE=4, TCP_KEEPINTVL=5, TCP_KEEPCNT=6 (valores numéricos
-        # para no depender del import de socket aquí)
         4: 60,
         5: 30,
         6: 3,
     },
-    # Verifica proactivamente la salud de la conexión cada 30s
     "health_check_interval": 30,
-    "visibility_timeout": 3600,  # 1h: si una tarea no se confirma, se reencola
+    "visibility_timeout": 3600,  
 }
-# Cancela tareas de larga duración si se pierde la conexión (recomendado por Celery)
+
 CELERY_WORKER_CANCEL_LONG_RUNNING_TASKS_ON_CONNECTION_LOSS = True
 
-# Retención de telemetría (días) — usado por la tarea core.purge_old_telemetry
 SENTINEL_TELEMETRY_RETENTION_DAYS = int(os.environ.get("SENTINEL_TELEMETRY_RETENTION_DAYS", "30"))
-
-# Permite desactivar el diagnóstico IA en background (alert_engine). Los tests lo
-# activan para no llamar a la API de IA; en producción se deja en False.
 SENTINEL_DISABLE_AI_DIAGNOSIS = os.environ.get("SENTINEL_DISABLE_AI_DIAGNOSIS", "False") == "True"
 
 # --- Email ---
-# Email — usa Brevo API HTTP (sin SMTP, compatible con Railway plan Hobby)
-EMAIL_BACKEND   = "django.core.mail.backends.dummy.EmailBackend"  # django.core.mail no se usa
+EMAIL_BACKEND   = "django.core.mail.backends.dummy.EmailBackend"  
 DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "soporte@perseustechnology.dev")
 RESEND_API_KEY  = os.environ.get("RESEND_API_KEY", "")
 
 # --- Brevo ---
-BREVO_WEBHOOK_SECRET = os.environ.get("BREVO_WEBHOOK_SECRET", "")  # Clave para verificar webhooks
+BREVO_WEBHOOK_SECRET = os.environ.get("BREVO_WEBHOOK_SECRET", "")  
 
 # --- Sentinel XO config ---
 SENTINEL_COMPANY_NAME  = os.environ.get("SENTINEL_COMPANY_NAME", "Sentinel XO")
-SENTINEL_SUPPORT_EMAIL = os.environ.get("SENTINEL_SUPPORT_EMAIL", "soporte@sentinelxo.dev")
-SENTINEL_HMAC_SECRET   = os.environ.get("SENTINEL_HMAC_SECRET", "")  # si vacío, la validación HMAC se omite
-SENTINEL_BACKUP_EMAIL  = os.environ.get("SENTINEL_BACKUP_EMAIL", "")  # destino del backup semanal de la BD
-SENTINEL_TELEGRAM_BOT_TOKEN = os.environ.get("SENTINEL_TELEGRAM_BOT_TOKEN", "")  # bot único, un chat_id por cliente
+SENTINEL_SUPPORT_EMAIL = os.environ.get("SENTINEL_SUPPORT_EMAIL", "soporte@perseustechnology.dev")
+SENTINEL_HMAC_SECRET   = os.environ.get("SENTINEL_HMAC_SECRET", "")  
+SENTINEL_BACKUP_EMAIL  = os.environ.get("SENTINEL_BACKUP_EMAIL", "")  
+SENTINEL_TELEGRAM_BOT_TOKEN = os.environ.get("SENTINEL_TELEGRAM_BOT_TOKEN", "")  
 
 # ── Seguridad HTTP ──────────────────────────────────────────────────────────
-SECURE_CONTENT_TYPE_NOSNIFF      = True        # X-Content-Type-Options: nosniff
-SECURE_BROWSER_XSS_FILTER        = True        # X-XSS-Protection (legacy browsers)
-X_FRAME_OPTIONS                  = "DENY"      # X-Frame-Options: DENY (anti-clickjacking)
+SECURE_CONTENT_TYPE_NOSNIFF      = True        
+SECURE_BROWSER_XSS_FILTER        = True        
+X_FRAME_OPTIONS                  = "DENY"      
 SECURE_REFERRER_POLICY           = "strict-origin-when-cross-origin"
 
-# HTTPS — activar en producción (Railway usa HTTPS por defecto)
-# Railway usa proxy inverso — siempre confiar en X-Forwarded-Proto
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
 if not DEBUG:
     SECURE_SSL_REDIRECT          = True
-    SECURE_REDIRECT_EXEMPT       = [r"^health/$"]  # Railway healthcheck va por HTTP interno
+    SECURE_REDIRECT_EXEMPT       = [r"^health/$"]  
     SESSION_COOKIE_SECURE        = True
     CSRF_COOKIE_SECURE           = True
-    SECURE_HSTS_SECONDS          = 31536000    # 1 año
+    SECURE_HSTS_SECONDS          = 31536000    
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD          = True
 
-# Sesión — expirar en 8 horas de inactividad
-SESSION_COOKIE_AGE               = 28800       # 8 horas en segundos
+SESSION_COOKIE_AGE               = 28800       
 SESSION_EXPIRE_AT_BROWSER_CLOSE  = False
 SESSION_COOKIE_HTTPONLY          = True
 SESSION_COOKIE_SAMESITE          = "Lax"
@@ -250,31 +224,17 @@ LOGGING = {
     },
 }
 
-# --- Observabilidad (Sentry) ---
-# Se activa solo si SENTRY_DSN está presente. En local/desarrollo, sin la
-# variable, no envía nada. Captura automáticamente errores de Django (web) y
-# de las tareas Celery (worker/beat), con stack trace y contexto.
 SENTRY_DSN = os.environ.get("SENTRY_DSN", "")
 if SENTRY_DSN:
-    import sentry_sdk
-    from sentry_sdk.integrations.django import DjangoIntegration
-    from sentry_sdk.integrations.celery import CeleryIntegration
-    from sentry_sdk.integrations.logging import LoggingIntegration
-    import logging as _logging
-
     sentry_sdk.init(
         dsn=SENTRY_DSN,
         integrations=[
             DjangoIntegration(),
             CeleryIntegration(),
-            # Envía como eventos los logs de nivel ERROR o superior
             LoggingIntegration(level=_logging.INFO, event_level=_logging.ERROR),
         ],
         environment=os.environ.get("SENTRY_ENVIRONMENT", "production"),
         release=os.environ.get("RAILWAY_GIT_COMMIT_SHA", "") or None,
-        # Muestreo de performance: 0 = sin trazas de performance (solo errores).
-        # Subir a 0.1 si más adelante quieres muestrear el 10% de las peticiones.
         traces_sample_rate=float(os.environ.get("SENTRY_TRACES_SAMPLE_RATE", "0")),
-        # No enviar datos personales (IPs, cookies) salvo que se active explícitamente
         send_default_pii=False,
     )

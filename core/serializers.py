@@ -25,16 +25,13 @@ class TelemetryIngestSerializer(serializers.Serializer):
     cpu_freq_mhz     = serializers.FloatField(required=False, allow_null=True, default=None)
     cpu_cores        = serializers.IntegerField(required=False, allow_null=True, default=None)
     cpu_threads      = serializers.IntegerField(required=False, allow_null=True, default=None)
-    # GPU — opcionales, el agente los omite si no hay GPU detectable
     gpu_name                = serializers.CharField(max_length=200, required=False, allow_blank=True, default="")
     gpu_usage_percent       = serializers.FloatField(required=False, allow_null=True, default=None)
     gpu_memory_used_percent = serializers.FloatField(required=False, allow_null=True, default=None)
     gpu_memory_total_gb     = serializers.FloatField(required=False, allow_null=True, default=None)
     gpu_temp_celsius        = serializers.FloatField(required=False, allow_null=True, default=None)
-    # Huella de seguridad — opcional, enviada cada N minutos por el agente (Windows)
     security_snapshot       = serializers.DictField(required=False, allow_null=True, default=None)
     network_security = serializers.DictField(required=False, allow_null=True, default=None)
-    # Inventario de software — opcional, enviado cada N horas por el agente (Windows)
     software_inventory      = serializers.ListField(required=False, allow_null=True, default=None)
 
 

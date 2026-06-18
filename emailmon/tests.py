@@ -8,7 +8,6 @@ real vía Resend (eso requiere red y API key), solo el modelado del registro.
 Se ejecutan con: python manage.py test emailmon
 """
 from django.test import TestCase
-
 from core.models import Client
 from emailmon.models import EmailLog, SmtpCheck
 
@@ -43,7 +42,6 @@ class EmailLogTests(TestCase):
         self.assertIn("timeout", log.error_msg)
 
     def test_cliente_eliminado_conserva_log(self):
-        # client usa on_delete=SET_NULL: borrar el cliente no borra el historial
         client = _client()
         log = EmailLog.objects.create(
             recipient="x@example.com", subject="Test", client=client,

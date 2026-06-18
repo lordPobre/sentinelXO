@@ -7,12 +7,15 @@ import os
 import logging
 import urllib.request
 import urllib.error
+from dateutil.relativedelta import relativedelta
 from datetime import timedelta, datetime
 from django.utils import timezone
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.views.decorators.http import require_GET
 from django.shortcuts import get_object_or_404
+from core.models import HardwareDevice, TelemetrySnapshot, AlertEvent, MaintenanceIncident
+from django.conf import settings
 
 logger = logging.getLogger("sentinel.ai")
 
@@ -61,7 +64,6 @@ def _build_telemetry_summary(device, snapshots) -> dict:
             "critical_count": sum(1 for v in vals if v > 95),
         }
 
-    # Tendencia: comparar primera mitad vs segunda mitad
     def trend(vals):
         if len(vals) < 10:
             return "insuficientes datos"
@@ -73,7 +75,6 @@ def _build_telemetry_summary(device, snapshots) -> dict:
         if diff < -5:  return f"bajando ({diff:.1f})"
         return "estable"
 
-    # Picos: momentos donde CPU o temperatura estuvieron muy altos
     peaks = []
     for s in snapshots:
         cpu_t = _extract_cpu_temp(s.temperatures or [])
@@ -83,9 +84,8 @@ def _build_telemetry_summary(device, snapshots) -> dict:
                 "cpu":  s.cpu_percent,
                 "temp": cpu_t,
             })
-    peaks = peaks[-5:]  # últimos 5 picos
+    peaks = peaks[-5:]  
 
-    # Discos críticos
     disk_alerts = []
     last_snap = snapshots[-1]
     for disk in (last_snap.disk_usage or []):
@@ -123,13 +123,12 @@ def _build_telemetry_summary(device, snapshots) -> dict:
         } if gpu_vals else None,
         "disk_alerts": disk_alerts,
         "peaks":        peaks,
-        "recent_alerts": [],  # se llena abajo
+        "recent_alerts": [],  
     }
 
 
 def _get_recent_alerts(device):
     """Obtiene las alertas recientes del dispositivo."""
-    from core.models import AlertEvent
     since = timezone.now() - timedelta(days=7)
     events = AlertEvent.objects.filter(
         device=device, fired_at__gte=since
@@ -190,16 +189,12 @@ def device_ai_analysis(request, device_id):
     GET /api/v1/devices/<device_id>/ai-analysis/
     Genera análisis predictivo IA para un dispositivo.
     """
-    from core.models import HardwareDevice, TelemetrySnapshot
-    from django.conf import settings
-
     device = get_object_or_404(HardwareDevice, pk=device_id, is_active=True)
 
     if not request.user.is_staff:
         if not request.user.client_portals.filter(pk=device.client_id).exists():
             return JsonResponse({"error": "Sin acceso"}, status=403)
 
-    # Obtener últimas 2 horas de snapshots (máx 500)
     since     = timezone.now() - timedelta(hours=2)
     snapshots = list(
         TelemetrySnapshot.objects.filter(
@@ -213,12 +208,10 @@ def device_ai_analysis(request, device_id):
             "message": "Se necesitan al menos 5 minutos de datos para generar un análisis.",
         }, status=200)
 
-    # Construir resumen y prompt
     summary = _build_telemetry_summary(device, snapshots)
     alerts  = _get_recent_alerts(device)
     prompt  = _build_prompt(summary, alerts)
 
-    # Llamar a Claude API
     api_key = (getattr(settings, "ANTHROPIC_API_KEY", "") or os.environ.get("ANTHROPIC_API_KEY", "")).strip()
     logger.info(f"ANTHROPIC_API_KEY presente: {bool(api_key)}, longitud: {len(api_key)}, prefijo: {api_key[:12]}...")
 
@@ -242,7 +235,6 @@ def device_ai_analysis(request, device_id):
             result  = json.loads(resp.read().decode())
             raw_txt = result["content"][0]["text"].strip()
 
-            # Limpiar posibles backticks
             if raw_txt.startswith("```"):
                 raw_txt = raw_txt.split("```")[1]
                 if raw_txt.startswith("json"):
@@ -286,10 +278,6 @@ def diagnose_incident(incident) -> dict | None:
     Analiza los snapshots de los últimos 30 minutos antes del incidente.
     Se llama en background al crear un incidente.
     """
-    from core.models import TelemetrySnapshot
-    from django.conf import settings
-
-    # Obtener snapshots del dispositivo afectado (si tiene)
     device   = incident.device
     context  = {}
 
@@ -384,14 +372,12 @@ def incident_ai_diagnosis(request, incident_id):
     GET /api/v1/incidents/<id>/diagnosis/
     Genera o regenera el diagnóstico IA de un incidente existente.
     """
-    from core.models import MaintenanceIncident
     incident = get_object_or_404(MaintenanceIncident, pk=incident_id)
 
     if not request.user.is_staff:
         if not request.user.client_portals.filter(pk=incident.client_id).exists():
             return JsonResponse({"error": "Sin acceso"}, status=403)
 
-    # Si ya tiene diagnóstico y no se pide regenerar, devolver el existente
     force = request.GET.get("force", "false") == "true"
     if incident.ai_diagnosis and not force:
         return JsonResponse({"status": "ok", "diagnosis": incident.ai_diagnosis, "cached": True})
@@ -411,10 +397,6 @@ def generate_narrative_summary(client, year: int, month: int, summary: dict) -> 
     Cuenta la historia del mes: cómo operó la infraestructura, qué pasó y qué sigue.
     Retorna texto plano (2-3 párrafos) o None si falla.
     """
-    from core.models import AlertEvent, TelemetrySnapshot
-    from django.conf import settings
-    from dateutil.relativedelta import relativedelta
-
     period_start = timezone.make_aware(datetime(year, month, 1))
     period_end   = period_start + relativedelta(months=1)
     month_name   = {
@@ -674,11 +656,8 @@ def generate_software_cve_analysis(device, software_list: list) -> dict | None:
     de detección — para vulnerabilidades críticas, se recomienda verificar con
     fuentes oficiales (nvd.nist.gov).
     """
-    from django.conf import settings
     company = getattr(settings, "SENTINEL_COMPANY_NAME", "Sentinel XO")
 
-    # Filtrar ruido: actualizaciones, runtimes redundantes, drivers — limitar a
-    # ~120 programas para no exceder el contexto
     software_compact = [
         {"name": s.get("name", ""), "version": s.get("version", ""), "publisher": s.get("publisher", "")}
         for s in software_list[:150]

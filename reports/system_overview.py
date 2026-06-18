@@ -4,6 +4,7 @@ Funcionamiento, arquitectura, módulos y beneficios de la plataforma.
 ReportLab puro, mismo estilo visual que security_report.py / generator.py.
 """
 import io
+from django.conf import settings
 from django.utils import timezone
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
@@ -139,8 +140,7 @@ def benefit_column(title, accent, items):
 # ── Función principal ─────────────────────────────────────────────────────
 
 def build_system_overview_pdf() -> bytes:
-    from django.conf import settings
-
+    
     company = getattr(settings, "SENTINEL_COMPANY_NAME", "Sentinel XO")
     now = timezone.localtime(timezone.now())
 
@@ -188,7 +188,6 @@ def build_system_overview_pdf() -> bytes:
         ps("intro", fontSize=9.5, textColor=C_SLATE8, leading=15)))
     story.append(Spacer(1, 14))
 
-    # Stats destacados
     stats = Table([[
         stat_box("16", "Módulos integrados"),
         stat_box("60s", "Intervalo de telemetría"),

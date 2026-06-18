@@ -1,23 +1,27 @@
 import logging
+import hmac as hmac_lib, hashlib
+from core.models import Client
 from django.conf import settings
 from django.utils import timezone
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-from rest_framework.authentication import SessionAuthentication
-from rest_framework.authentication import BasicAuthentication
+from rest_framework.authentication import SessionAuthentication, BasicAuthentication 
+from .serializers import TelemetryIngestSerializer
+from core.alert_engine import evaluate_snapshot
+from rest_framework.permissions import IsAuthenticated
+from .models import HardwareDevice, TelemetrySnapshot
+from core.throttles import TelemetryRateThrottle
+from core.security import process_software_snapshot
+from core.security import process_security_snapshot, notify_security_anomalies, update_network_stability, process_network_security
 
 
 class CsrfExemptSessionAuthentication(SessionAuthentication):
     """SessionAuthentication sin verificación CSRF — seguro para endpoints GET de solo lectura."""
     def enforce_csrf(self, request):
-        pass  # no verificar CSRF
-from rest_framework.permissions import IsAuthenticated
-
-from .models import HardwareDevice, TelemetrySnapshot
+        pass  
 
 logger = logging.getLogger("perseus")
-
 
 class TelemetryIngestView(APIView):
     """
@@ -29,7 +33,7 @@ class TelemetryIngestView(APIView):
     throttle_classes = ["core.throttles.TelemetryRateThrottle"]
 
     def get_throttles(self):
-        from core.throttles import TelemetryRateThrottle
+        
         return [TelemetryRateThrottle()]
 
     def post(self, request):
@@ -40,7 +44,7 @@ class TelemetryIngestView(APIView):
             if not sig_header.startswith("sha256="):
                 logger.warning("Telemetría rechazada: falta header X-Sentinel-Signature")
                 return Response({"error": "Firma requerida"}, status=status.HTTP_401_UNAUTHORIZED)
-            import hmac as hmac_lib, hashlib
+            
             expected = "sha256=" + hmac_lib.new(hmac_secret, request.body, hashlib.sha256).hexdigest()
             if not hmac_lib.compare_digest(expected, sig_header):
                 logger.warning("Telemetría rechazada: firma HMAC inválida")
@@ -60,7 +64,6 @@ class TelemetryIngestView(APIView):
             logger.warning(f"Telemetría con token inválido: {agent_token[:8]}...")
             return Response({"error": "Token inválido"}, status=status.HTTP_401_UNAUTHORIZED)
 
-        from .serializers import TelemetryIngestSerializer
         serializer = TelemetryIngestSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -103,20 +106,16 @@ class TelemetryIngestView(APIView):
             update_fields.append("hostname")
         device.save(update_fields=update_fields)
 
-        # Actualizar estabilidad de red si la telemetría trae calidad muestreada
         try:
             net = data.get("network") or {}
             if any(k in net for k in ("latency_ms", "packet_loss_percent", "wifi")):
-                from core.security import update_network_stability
                 update_network_stability(device, net)
         except Exception as e:
             logger.warning(f"Error actualizando estabilidad de red: {e}")
 
         logger.info(f"Telemetría recibida: {device.display_name} ({device.client})")
 
-        # Evaluar reglas de alerta en background (no bloquea la respuesta)
-        try:
-            from core.alert_engine import evaluate_snapshot
+        try:  
             snap = TelemetrySnapshot.objects.filter(device=device).order_by("-captured_at").first()
             if snap:
                 fired = evaluate_snapshot(snap)
@@ -125,7 +124,6 @@ class TelemetryIngestView(APIView):
         except Exception as e:
             logger.error(f"Error en motor de alertas: {e}")
 
-        # Procesar huella de seguridad (si el agente la envió esta vez)
         try:
             security_snapshot = data.get("security_snapshot")
             if security_snapshot:
@@ -135,7 +133,6 @@ class TelemetryIngestView(APIView):
                     f"{len(security_snapshot.get('startup_programs', []))} programas de inicio, "
                     f"{len(security_snapshot.get('scheduled_tasks', []))} tareas"
                 )
-                from core.security import process_security_snapshot, notify_security_anomalies
                 anomalies = process_security_snapshot(device, security_snapshot)
                 if anomalies:
                     notify_security_anomalies(device, anomalies)
@@ -144,11 +141,9 @@ class TelemetryIngestView(APIView):
         except Exception as e:
             logger.error(f"Error procesando huella de seguridad: {e}")
 
-        # Procesar seguridad de red (si el agente la envió con el snapshot de seguridad)
         try:
             net_sec = data.get("network_security")
             if net_sec:
-                from core.security import process_network_security, notify_security_anomalies
                 net_anomalies = process_network_security(device, net_sec)
                 if net_anomalies:
                     notify_security_anomalies(device, net_anomalies)
@@ -159,11 +154,9 @@ class TelemetryIngestView(APIView):
         except Exception as e:
             logger.error(f"Error procesando seguridad de red: {e}")
 
-        # Procesar inventario de software (si el agente lo envió esta vez)
         try:
             software_inventory = data.get("software_inventory")
             if software_inventory:
-                from core.security import process_software_snapshot
                 sw_anomalies = process_software_snapshot(device, software_inventory)
                 if sw_anomalies:
                     logger.info(
@@ -188,7 +181,6 @@ class DeviceStatusView(APIView):
             return Response({"status": "ok", "device": device.display_name})
         except HardwareDevice.DoesNotExist:
             return Response({"error": "No encontrado"}, status=status.HTTP_404_NOT_FOUND)
-
 
 class DeviceLiveView(APIView):
     """
@@ -249,7 +241,6 @@ class ClientLiveSummaryView(APIView):
     throttle_classes = []
 
     def get(self, request, client_id):
-        from core.models import Client
         try:
             if request.user.is_staff:
                 client = Client.objects.get(pk=client_id)
@@ -308,7 +299,7 @@ class DeviceHistoryView(APIView):
         snapshots = list(
             device.snapshots.order_by("-captured_at")[:limit]
         )
-        snapshots.reverse()  # cronológico
+        snapshots.reverse() 
 
         snap = snapshots[-1] if snapshots else None
 

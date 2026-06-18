@@ -4,17 +4,17 @@ Sentinel XO — Panel de Postura de Seguridad M365
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render, get_object_or_404
 from django.utils import timezone
+from django.db import connection
 from django.http import HttpResponseForbidden
-
+from core.models import Client, SecurityCheck, SecurityAnomalyEvent, SignInAnomalyEvent, HardwareDevice, SoftwareSnapshot
+from core.security import check_m365_security_posture
+from core.views_ai import generate_security_analysis, generate_software_cve_analysis
+from core.notifications_telegram import send_telegram_test
 
 @login_required
 def security_dashboard(request):
     """Vista principal del panel de seguridad — lista todos los clientes."""
-    from core.models import Client, SecurityCheck, SecurityAnomalyEvent
-
-    # Verificar que la tabla existe (puede no existir si la migración no se aplicó)
     try:
-        from django.db import connection
         tables = connection.introspection.table_names()
         if "core_securitycheck" not in tables:
             return render(request, "core/security_dashboard.html", {
@@ -63,8 +63,7 @@ def security_dashboard(request):
 @login_required
 def security_client_detail(request, client_id):
     """Vista de detalle de seguridad para un cliente específico."""
-    from core.models import Client, SecurityCheck, SecurityAnomalyEvent
-
+    
     client = get_object_or_404(Client, pk=client_id)
 
     if not request.user.is_staff:
@@ -74,9 +73,6 @@ def security_client_detail(request, client_id):
 
     latest = SecurityCheck.objects.filter(client=client).order_by("-checked_at").first()
 
-    # Todas las anomalías de agente abiertas (sin límite) + las últimas 20 revisadas.
-    # Antes se recortaba a [:20] ANTES de contar, lo que descuadraba el conteo del
-    # dashboard (que cuenta todas las abiertas) con lo mostrado en el detalle.
     open_anomalies = list(SecurityAnomalyEvent.objects.filter(
         device__client=client, status="open"
     ).select_related("device").order_by("-detected_at"))
@@ -85,7 +81,7 @@ def security_client_detail(request, client_id):
     ).exclude(status="open").select_related("device").order_by("-detected_at")[:20])
     anomalies = open_anomalies + reviewed_anomalies
 
-    from core.models import SignInAnomalyEvent
+    
     open_signin = list(SignInAnomalyEvent.objects.filter(
         client=client, status="open"
     ).order_by("-detected_at"))
@@ -109,9 +105,6 @@ def security_client_detail(request, client_id):
 @login_required
 def security_check_now(request, client_id):
     """POST — ejecuta el chequeo de seguridad M365 para un cliente."""
-    from core.models import Client
-    from core.security import check_m365_security_posture
-
     if not request.user.is_staff:
         portal = request.user.client_portals.filter(pk=client_id).first()
         if not portal:
@@ -133,8 +126,6 @@ def security_check_now(request, client_id):
 @login_required
 def security_anomaly_acknowledge(request, anomaly_id):
     """POST — marca una anomalía de seguridad (agente) como revisada."""
-    from core.models import SecurityAnomalyEvent
-
     anomaly = get_object_or_404(SecurityAnomalyEvent, pk=anomaly_id)
 
     if not request.user.is_staff:
@@ -152,8 +143,6 @@ def security_anomaly_acknowledge(request, anomaly_id):
 @login_required
 def signin_anomaly_acknowledge(request, anomaly_id):
     """POST — marca una anomalía de inicio de sesión (M365) como revisada."""
-    from core.models import SignInAnomalyEvent
-
     anomaly = get_object_or_404(SignInAnomalyEvent, pk=anomaly_id)
 
     if not request.user.is_staff:
@@ -171,9 +160,6 @@ def signin_anomaly_acknowledge(request, anomaly_id):
 @login_required
 def security_ai_analysis(request, client_id):
     """POST — genera o regenera el análisis de seguridad con IA para un cliente."""
-    from core.models import Client
-    from core.views_ai import generate_security_analysis
-
     if not request.user.is_staff:
         portal = request.user.client_portals.filter(pk=client_id).first()
         if not portal:
@@ -210,8 +196,6 @@ def security_ai_analysis(request, client_id):
 @login_required
 def software_inventory_view(request, device_id):
     """Vista de inventario de software de un dispositivo."""
-    from core.models import HardwareDevice, SoftwareSnapshot
-
     device = get_object_or_404(HardwareDevice, pk=device_id)
 
     if not request.user.is_staff:
@@ -232,9 +216,6 @@ def software_inventory_view(request, device_id):
 @login_required
 def software_cve_analysis(request, device_id):
     """POST — genera o regenera el análisis CVE del inventario de software."""
-    from core.models import HardwareDevice, SoftwareSnapshot
-    from core.views_ai import generate_software_cve_analysis
-
     device = get_object_or_404(HardwareDevice, pk=device_id)
 
     if not request.user.is_staff:
@@ -273,9 +254,6 @@ def software_cve_analysis(request, device_id):
 @login_required
 def telegram_test(request, client_id):
     """POST — envía un mensaje de prueba por Telegram al cliente."""
-    from core.models import Client
-    from core.notifications_telegram import send_telegram_test
-
     if not request.user.is_staff:
         portal = request.user.client_portals.filter(pk=client_id).first()
         if not portal:

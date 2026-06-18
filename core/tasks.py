@@ -2,7 +2,16 @@
 Sentinel XO — Tareas Celery de core (monitoreo de conectividad de agentes).
 """
 import logging
+import threading
+import gzip
+import io
+from core.security import check_signin_anomalies, notify_signin_anomalies
+from django.core.management import call_command
+from emailmon.services import send_tracked_email
+from core.notifications_telegram import notify_telegram
 from celery import shared_task
+from core.models import HardwareDevice, MaintenanceIncident, Client, TelemetrySnapshot
+from emailmon.services import send_tracked_email
 from django.utils import timezone
 from django.conf import settings
 
@@ -22,9 +31,6 @@ def check_offline_devices():
     Pensada para ejecutarse cada 5 minutos vía Celery Beat (Periodic Task
     configurada en Django Admin).
     """
-    from core.models import HardwareDevice, MaintenanceIncident
-    from emailmon.services import send_tracked_email
-
     company = getattr(settings, "SENTINEL_COMPANY_NAME", "Sentinel XO")
     now = timezone.now()
 
@@ -71,9 +77,7 @@ def check_offline_devices():
                         f"o el servicio del agente Sentinel XO se detuvo."
                     ),
                 )
-                # Diagnóstico IA en background, igual que otros incidentes automáticos
                 try:
-                    import threading
                     from core.views_ai import diagnose_incident
                     def run_diagnosis():
                         diag = diagnose_incident(incident)
@@ -108,7 +112,6 @@ def check_offline_devices():
                 except Exception as e:
                     logger.error(f"Error enviando alerta offline para {device.display_name}: {e}")
 
-            from core.notifications_telegram import notify_telegram
             notify_telegram(
                 device.client,
                 f"🔴 <b>{company}</b>\n\n"
@@ -155,7 +158,6 @@ def check_offline_devices():
                     logger.error(f"Error enviando alerta de reconexión para {device.display_name}: {e}")
 
             if offline_since:
-                from core.notifications_telegram import notify_telegram
                 notify_telegram(
                     device.client,
                     f"🟢 <b>{company}</b>\n\n"
@@ -186,16 +188,10 @@ def backup_database():
     Pensada para ejecutarse semanalmente vía Celery Beat (Periodic Task
     configurada en Django Admin).
     """
-    import gzip
-    import io
-    from django.core.management import call_command
-    from emailmon.services import send_tracked_email
-
     company = getattr(settings, "SENTINEL_COMPANY_NAME", "Sentinel XO")
     backup_email = getattr(settings, "SENTINEL_BACKUP_EMAIL", "")
     now = timezone.now()
 
-    # Tablas de alto volumen / no críticas excluidas del backup
     EXCLUDED = [
         "core.telemetrysnapshot",
         "core.auditlog",
@@ -311,9 +307,6 @@ def check_signin_anomalies_all():
 
     Pensada para ejecutarse cada 30-60 minutos vía Celery Beat.
     """
-    from core.models import Client
-    from core.security import check_signin_anomalies, notify_signin_anomalies
-
     clients = Client.objects.filter(is_active=True, m365_tenant__is_active=True)
 
     total_anomalies = 0
@@ -348,7 +341,6 @@ def purge_old_telemetry():
 
     Pensada para ejecutarse diariamente vía Celery Beat (Periodic Task en la DB).
     """
-    from core.models import TelemetrySnapshot
 
     retention_days = int(getattr(settings, "SENTINEL_TELEMETRY_RETENTION_DAYS", 30))
     cutoff = timezone.now() - timezone.timedelta(days=retention_days)

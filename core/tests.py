@@ -11,11 +11,14 @@ Se ejecutan con: python manage.py test core
 """
 import json
 from datetime import timedelta
-
+from core.tasks import purge_old_telemetry
+from core.models import NetworkSnapshot
+from core.security import process_network_security, update_network_stability
+from core.alert_engine import evaluate_snapshot
+from core.serializers import TelemetryIngestSerializer
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
-
 from core.models import (
     Client, HardwareDevice, TelemetrySnapshot, AlertRule, AlertEvent,
 )
@@ -55,7 +58,6 @@ def _payload(**overrides):
 @override_settings(SECURE_SSL_REDIRECT=False, SENTINEL_DISABLE_AI_DIAGNOSIS=True)
 class TelemetryIngestTests(TestCase):
     """Endpoint POST /api/v1/telemetry/."""
-
     def setUp(self):
         self.client_obj = _client()
         self.device = _device(self.client_obj)
@@ -101,14 +103,11 @@ class TelemetryIngestTests(TestCase):
         self.assertEqual(resp.status_code, 401)
 
     def test_payload_invalido_devuelve_400(self):
-        # cpu_percent fuera de rango (>100)
         resp = self._post(_payload(cpu_percent=250.0), token=self.device.agent_token)
         self.assertEqual(resp.status_code, 400)
         self.assertEqual(TelemetrySnapshot.objects.count(), 0)
 
     def test_ingestion_no_purga_en_caliente(self):
-        # La purga ya no ocurre en el endpoint: un snapshot viejo debe sobrevivir
-        # a un POST nuevo (la limpieza es responsabilidad de la tarea Celery).
         old = TelemetrySnapshot.objects.create(
             device=self.device,
             captured_at=timezone.now() - timedelta(days=60),
@@ -134,7 +133,6 @@ class TelemetryIngestTests(TestCase):
     def test_serializer_conserva_network_security(self):
         """Regresión Bug 5: el serializer NO debe descartar network_security.
         Con el campo sin declarar, DRF lo quitaba de validated_data."""
-        from core.serializers import TelemetryIngestSerializer
         serializer = TelemetryIngestSerializer(data=_payload(network_security=self._net_sec()))
         self.assertTrue(serializer.is_valid(), serializer.errors)
         self.assertIn("network_security", serializer.validated_data)
@@ -147,7 +145,6 @@ class TelemetryIngestTests(TestCase):
         """Regresión Bug 5 extremo a extremo: un POST con network_security debe
         crear la NetworkSnapshot del dispositivo con esos campos. Antes del fix,
         el serializer descartaba el campo y la postura de red nunca se procesaba."""
-        from core.models import NetworkSnapshot
         resp = self._post(_payload(network_security=self._net_sec()),
                           token=self.device.agent_token)
         self.assertIn(resp.status_code, (200, 201))
@@ -163,7 +160,6 @@ class TelemetryIngestTests(TestCase):
     def test_ingesta_sin_network_security_no_crea_postura(self):
         """Control: sin network_security, no se crea NetworkSnapshot — así el test
         anterior prueba el procesamiento real y no un efecto colateral."""
-        from core.models import NetworkSnapshot
         self._post(_payload(), token=self.device.agent_token)
         self.assertFalse(NetworkSnapshot.objects.filter(device=self.device).exists())
 
@@ -171,9 +167,7 @@ class TelemetryIngestTests(TestCase):
 @override_settings(SENTINEL_DISABLE_AI_DIAGNOSIS=True)
 class AlertEngineTests(TestCase):
     """Motor de alertas: evaluate_snapshot."""
-
     def setUp(self):
-        from core.alert_engine import evaluate_snapshot
         self.evaluate = evaluate_snapshot
         self.client_obj = _client()
         self.device = _device(self.client_obj)
@@ -211,9 +205,7 @@ class AlertEngineTests(TestCase):
             client=self.client_obj, metric="cpu", threshold=90.0,
             severity="critical", cooldown_minutes=30,
         )
-        # Primer disparo
         self.evaluate(self._snapshot(cpu_percent=95.0))
-        # Segundo snapshot dentro del cooldown: no debe crear otro evento
         fired = self.evaluate(self._snapshot(cpu_percent=96.0))
         self.assertEqual(len(fired), 0)
         self.assertEqual(AlertEvent.objects.filter(rule=rule).count(), 1)
@@ -227,7 +219,6 @@ class AlertEngineTests(TestCase):
         self.assertEqual(len(fired), 0)
 
     def test_metrica_no_disponible_se_ignora(self):
-        # Regla sobre GPU pero el snapshot no tiene datos de GPU
         AlertRule.objects.create(
             client=self.client_obj, metric="gpu_usage", threshold=90.0,
             severity="warning", cooldown_minutes=30,
@@ -260,7 +251,7 @@ class PurgeTelemetryTaskTests(TestCase):
         )
 
     def test_borra_antiguos_conserva_recientes(self):
-        from core.tasks import purge_old_telemetry
+        
         for d in (40, 35, 31):
             self._snap_age(d)
         for d in (20, 5, 1):
@@ -280,7 +271,7 @@ class PurgeTelemetryTaskTests(TestCase):
         self.assertEqual(TelemetrySnapshot.objects.count(), 1)
 
     def test_sin_datos_no_falla(self):
-        from core.tasks import purge_old_telemetry
+        
         result = purge_old_telemetry()
         self.assertEqual(result["deleted"], 0)
 
@@ -309,14 +300,13 @@ class NetworkSnapshotTests(TestCase):
     def test_primera_vez_sin_alertas(self):
         from core.security import process_network_security
         anomalies = process_network_security(self.device, self._net_sec())
-        self.assertEqual(len(anomalies), 0)  # línea base, sin alertas
+        self.assertEqual(len(anomalies), 0)  
         self.assertTrue(hasattr(self.device, "network_snapshot"))
 
     def test_wifi_abierta_es_critico(self):
         from core.security import process_network_security
         from core.models import NetworkSnapshot
-        process_network_security(self.device, self._net_sec())  # base segura
-        # Ahora se conecta a WiFi abierta
+        process_network_security(self.device, self._net_sec())  
         anomalies = process_network_security(
             self.device, self._net_sec(wifi_encryption="", wifi_ssid="CafeWiFi"))
         snap = NetworkSnapshot.objects.get(device=self.device)
@@ -325,7 +315,7 @@ class NetworkSnapshotTests(TestCase):
 
     def test_firewall_apagado_genera_alerta_critica(self):
         from core.security import process_network_security
-        process_network_security(self.device, self._net_sec())  # base con firewall on
+        process_network_security(self.device, self._net_sec())  
         anomalies = process_network_security(
             self.device,
             self._net_sec(firewall=[{"name": "Public", "enabled": False},
@@ -335,21 +325,17 @@ class NetworkSnapshotTests(TestCase):
                             for a in anomalies))
 
     def test_cambio_de_red_wifi(self):
-        from core.security import process_network_security
         process_network_security(self.device, self._net_sec(wifi_ssid="RedA"))
         anomalies = process_network_security(self.device, self._net_sec(wifi_ssid="RedB"))
         self.assertTrue(any(a.anomaly_type == "network_change" for a in anomalies))
 
     def test_cambio_de_dns_genera_alerta(self):
-        from core.security import process_network_security
         process_network_security(self.device, self._net_sec(dns_servers=["8.8.8.8"]))
         anomalies = process_network_security(
             self.device, self._net_sec(dns_servers=["1.2.3.4"]))
         self.assertTrue(any(a.anomaly_type == "dns_change" for a in anomalies))
 
     def test_red_segura_sin_alertas(self):
-        from core.security import process_network_security
-        from core.models import NetworkSnapshot
         process_network_security(self.device, self._net_sec())
         anomalies = process_network_security(self.device, self._net_sec())  # sin cambios
         snap = NetworkSnapshot.objects.get(device=self.device)
@@ -357,8 +343,6 @@ class NetworkSnapshotTests(TestCase):
         self.assertEqual(len(anomalies), 0)
 
     def test_estabilidad_actualiza_sin_alertas(self):
-        from core.security import update_network_stability
-        from core.models import NetworkSnapshot
         update_network_stability(self.device, {
             "latency_ms": 25.0, "packet_loss_percent": 0.0,
             "wifi": {"ssid": "OficinaWiFi", "signal_percent": 85},
@@ -368,11 +352,8 @@ class NetworkSnapshotTests(TestCase):
         self.assertEqual(snap.wifi_signal_percent, 85)
 
     def test_perdida_paquetes_alta_es_warning(self):
-        from core.security import process_network_security, update_network_stability
-        from core.models import NetworkSnapshot
         process_network_security(self.device, self._net_sec())
         update_network_stability(self.device, {"latency_ms": 30.0, "packet_loss_percent": 25.0})
-        # Re-evaluar riesgo procesando seguridad de nuevo
         process_network_security(self.device, self._net_sec())
         snap = NetworkSnapshot.objects.get(device=self.device)
         self.assertIn(snap.risk_level, ("warning", "critical"))

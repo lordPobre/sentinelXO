@@ -3,15 +3,18 @@ Sentinel XO — Autenticación de dos factores (TOTP)
 Flujo: login → si 2FA activo → verificar código → acceso.
 """
 import io
+import pyotp
 import base64
 import logging
-
+import qrcode
+from core.models import AuditLog
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render, redirect
 from django.contrib import messages
 from django.utils import timezone
 from django.http import HttpResponse
 from django.views.decorators.http import require_POST
+from core.models import UserTOTP
 
 logger = logging.getLogger("sentinel.2fa")
 
@@ -24,11 +27,9 @@ def totp_verify(request):
     if not request.user.is_authenticated:
         return redirect("login")
 
-    # Si ya verificó en esta sesión, redirigir al dashboard
     if request.session.get("2fa_verified"):
         return redirect("dashboard:home")
 
-    # Si el usuario no tiene 2FA activo, no necesita este paso
     try:
         totp_cfg = request.user.totp
         if not totp_cfg.is_enabled:
@@ -45,7 +46,6 @@ def totp_verify(request):
             totp_cfg.last_used = timezone.now()
             totp_cfg.save(update_fields=["last_used"])
             logger.info(f"2FA verificado para {request.user.username}")
-            from core.models import AuditLog
             AuditLog.log(request=request, action="2fa_verified", resource="TOTP")
             return redirect(request.POST.get("next", "dashboard:home"))
         else:
@@ -60,9 +60,6 @@ def totp_verify(request):
 @login_required
 def totp_setup(request):
     """Muestra el QR para configurar el 2FA por primera vez o regenerar el secreto."""
-    import pyotp
-    from core.models import UserTOTP
-
     totp_cfg, created = UserTOTP.objects.get_or_create(
         user=request.user,
         defaults={"secret": pyotp.random_base32()},
@@ -84,7 +81,6 @@ def totp_setup(request):
                 totp_cfg.is_enabled = True
                 totp_cfg.save(update_fields=["is_enabled"])
                 request.session["2fa_verified"] = True
-                from core.models import AuditLog
                 AuditLog.log(request=request, action="2fa_enabled", resource="TOTP")
                 messages.success(request, "✅ Autenticación de dos factores activada correctamente.")
                 logger.info(f"2FA activado para {request.user.username}")
@@ -97,7 +93,6 @@ def totp_setup(request):
             if totp_cfg.verify(code):
                 totp_cfg.is_enabled = False
                 totp_cfg.save(update_fields=["is_enabled"])
-                from core.models import AuditLog
                 AuditLog.log(request=request, action="2fa_disabled", resource="TOTP")
                 messages.success(request, "2FA desactivado.")
                 logger.info(f"2FA desactivado para {request.user.username}")
@@ -105,7 +100,6 @@ def totp_setup(request):
             else:
                 messages.error(request, "Código incorrecto.")
 
-    # Generar QR
     totp = pyotp.TOTP(totp_cfg.secret)
     company = "Sentinel XO"
     provision_url = totp.provisioning_uri(
@@ -114,7 +108,6 @@ def totp_setup(request):
     )
 
     try:
-        import qrcode
         qr = qrcode.make(provision_url)
         buf = io.BytesIO()
         qr.save(buf, format="PNG")

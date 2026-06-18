@@ -6,6 +6,7 @@ huella de seguridad (administradores locales, inicio, tareas programadas)
 e inventario de software instalado
 """
 import os, sys, platform, socket, time, json, logging, random, hmac, hashlib
+import urllib.request, wmi, psutil, pynvml, GPUtil, winreg
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -30,10 +31,10 @@ SENTINEL_TOKEN   = os.environ.get("SENTINEL_TOKEN", "")
 SENTINEL_API_URL = os.environ.get("SENTINEL_API_URL", "http://127.0.0.1:8000/api/v1/telemetry/")
 INTERVAL         = int(os.environ.get("SENTINEL_INTERVAL", "5"))
 TIMEOUT          = int(os.environ.get("SENTINEL_TIMEOUT", "10"))
-SECURITY_INTERVAL = int(os.environ.get("SENTINEL_SECURITY_INTERVAL", "300"))  # cada 5 min
-SOFTWARE_INTERVAL = int(os.environ.get("SENTINEL_SOFTWARE_INTERVAL", "21600"))  # cada 6 horas
-NET_QUALITY_INTERVAL = int(os.environ.get("SENTINEL_NETQUALITY_INTERVAL", "60"))  # cada 60 s
-HMAC_SECRET      = os.environ.get("SENTINEL_HMAC_SECRET", "").encode()        # firma HMAC-SHA256
+SECURITY_INTERVAL = int(os.environ.get("SENTINEL_SECURITY_INTERVAL", "300"))  
+SOFTWARE_INTERVAL = int(os.environ.get("SENTINEL_SOFTWARE_INTERVAL", "21600"))  
+NET_QUALITY_INTERVAL = int(os.environ.get("SENTINEL_NETQUALITY_INTERVAL", "60"))  
+HMAC_SECRET      = os.environ.get("SENTINEL_HMAC_SECRET", "").encode()        
 IS_WINDOWS       = platform.system() == "Windows"
 
 
@@ -56,9 +57,7 @@ def get_temperatures():
     temps = []
 
     if IS_WINDOWS:
-        # Método principal: OpenHardwareMonitor expuesto por WMI
         try:
-            import wmi
             w = wmi.WMI(namespace="root\\OpenHardwareMonitor")
             for s in w.Sensor():
                 if s.SensorType == "Temperature":
@@ -71,10 +70,8 @@ def get_temperatures():
         except Exception:
             pass
 
-        # Fallback: zona ACPI si OHM no está corriendo
         if not temps:
             try:
-                import wmi
                 w = wmi.WMI()
                 for item in w.MSAcpi_ThermalZoneTemperature():
                     celsius = (item.CurrentTemperature / 10.0) - 273.15
@@ -88,7 +85,6 @@ def get_temperatures():
                 pass
     else:
         try:
-            import psutil
             sensors = psutil.sensors_temperatures()
             for name, entries in sensors.items():
                 for entry in entries:
@@ -116,7 +112,6 @@ def get_gpu_stats():
 
     # ── NVIDIA con pynvml (Windows y Linux) ──────────────────────────────────
     try:
-        import pynvml
         pynvml.nvmlInit()
         handle = pynvml.nvmlDeviceGetHandleByIndex(0)  # primera GPU
 
@@ -149,7 +144,6 @@ def get_gpu_stats():
     # ── OpenHardwareMonitor en Windows (AMD, Intel, NVIDIA alternativo) ───────
     if IS_WINDOWS:
         try:
-            import wmi
             w = wmi.WMI(namespace="root\\OpenHardwareMonitor")
             sensors = w.Sensor()
 
@@ -162,7 +156,6 @@ def get_gpu_stats():
 
             for s in sensors:
                 hw = s.Parent if hasattr(s, "Parent") else ""
-                # Detectar nombre de GPU desde hardware
                 try:
                     for hw_item in w.Hardware():
                         if hw_item.HardwareType in ("GpuNvidia", "GpuAti"):
@@ -179,7 +172,6 @@ def get_gpu_stats():
                 elif stype == "Temperature" and "gpu core" in name_lower:
                     gpu_temp = round(float(s.Value), 1)
                 elif stype == "SmallData" and "gpu memory used" in name_lower:
-                    # OHM reporta VRAM en MB
                     gpu_mem_used_gb = round(float(s.Value) / 1024, 2)
                 elif stype == "SmallData" and "gpu memory total" in name_lower:
                     gpu_mem_gb = round(float(s.Value) / 1024, 2)
@@ -201,7 +193,6 @@ def get_gpu_stats():
     # ── Linux: intentar GPUtil como alternativa ───────────────────────────────
     if not IS_WINDOWS:
         try:
-            import GPUtil
             gpus = GPUtil.getGPUs()
             if gpus:
                 g = gpus[0]
@@ -215,7 +206,7 @@ def get_gpu_stats():
         except Exception:
             pass
 
-    return None  # sin GPU detectable
+    return None 
 
 
 def _ping_gateway():
@@ -225,7 +216,6 @@ def _ping_gateway():
     """
     try:
         import subprocess, re
-        # Obtener gateway por defecto
         if IS_WINDOWS:
             out = subprocess.run(["ipconfig"], capture_output=True, text=True,
                                  timeout=8, encoding="cp850", errors="ignore").stdout
@@ -240,12 +230,10 @@ def _ping_gateway():
         if not gateway:
             return None, None
 
-        # 4 pings al gateway
         if IS_WINDOWS:
             r = subprocess.run(["ping", "-n", "4", "-w", "1000", gateway],
                                capture_output=True, text=True, timeout=12,
                                encoding="cp850", errors="ignore").stdout
-            # Latencia media
             lat = re.search(r"(?:Average|Media)[ =]*([\d]+)ms", r)
             loss = re.search(r"\((\d+)%\s*(?:loss|perdidos)\)", r)
         else:
@@ -295,7 +283,7 @@ def _wifi_info():
         return {
             "ssid": ssid,
             "signal_percent": signal_pct,
-            "encryption": auth,  # ej: WPA2-Personal, WPA3-Personal, "Open"/"Abierta"
+            "encryption": auth,  
         }
     except Exception:
         return {}
@@ -309,7 +297,6 @@ def get_network_stats():
     """
     stats = {}
     try:
-        import psutil
         net = psutil.net_io_counters()
         stats = {
             "bytes_sent":   net.bytes_sent,
@@ -354,7 +341,6 @@ def get_network_security():
         import subprocess, re, json as _json
         result = {}
 
-        # Perfil de red + cifrado WiFi vía PowerShell
         ps_cmd = (
             "$p = Get-NetConnectionProfile | Select-Object -First 1; "
             "$fw = Get-NetFirewallProfile | Select-Object Name,Enabled; "
@@ -378,14 +364,11 @@ def get_network_security():
             except Exception:
                 pass
 
-        # DNS configurados
         dns_out = subprocess.run(["ipconfig", "/all"], capture_output=True, text=True,
                                  timeout=10, encoding="cp850", errors="ignore").stdout
         dns_servers = re.findall(r"(?:DNS Servers|Servidores DNS)[ .]*:\s*([\d.]+)", dns_out)
-        # Capturar también líneas de continuación de DNS (IPs sueltas indentadas)
         result["dns_servers"] = dns_servers
 
-        # Cifrado WiFi (reutiliza _wifi_info)
         wifi = _wifi_info()
         if wifi:
             result["wifi_encryption"] = wifi.get("encryption")
@@ -414,7 +397,6 @@ def get_local_admins():
             )
             text = result.stdout
 
-        # El listado de miembros está entre dos líneas de '----' y 'The command...'
         lines = text.splitlines()
         members = []
         in_members = False
@@ -432,8 +414,6 @@ def get_local_admins():
                               and "----" not in stripped):
                 if stripped and stripped not in members:
                     members.append(stripped)
-
-        # Filtrar líneas que no son nombres de usuario (headers residuales)
         members = [m for m in members if m and not m.lower().startswith(
             ("alias", "comentario", "comment", "nombre", "name", "miembros", "members"))]
         return sorted(set(members))
@@ -450,11 +430,6 @@ def get_startup_programs():
     seen = set()
     try:
         import winreg
-
-        # (hive, path, source_label, access_flags_extra)
-        # Para HKLM probamos la vista de 64 bits (KEY_WOW64_64KEY) y la de 32 bits
-        # (KEY_WOW64_32KEY / WOW6432Node) para detectar entradas sin importar si el
-        # agente corre como proceso de 32 o 64 bits.
         run_keys = [
             (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Run",
                 "HKLM\\Run (64bit)", winreg.KEY_WOW64_64KEY),
@@ -476,7 +451,7 @@ def get_startup_programs():
                     while True:
                         try:
                             name, value, _ = winreg.EnumValue(key, i)
-                            dedup_key = (source_label.split(" ")[0], name)  # ignora (64bit)/(32bit) para deduplicar
+                            dedup_key = (source_label.split(" ")[0], name)  
                             if dedup_key not in seen:
                                 seen.add(dedup_key)
                                 items.append({
@@ -490,7 +465,6 @@ def get_startup_programs():
             except FileNotFoundError:
                 continue
             except OSError:
-                # KEY_WOW64_64KEY/32KEY puede no estar soportado en sistemas no-Windows-64
                 continue
     except Exception as e:
         logger.warning(f"No se pudo leer programas de inicio: {e}")
@@ -519,7 +493,6 @@ def get_scheduled_tasks():
                 continue
             name = parts[0].strip('"').lstrip("\\")
             status = parts[2].strip('"') if len(parts) > 2 else ""
-            # Excluir tareas nativas del sistema (Microsoft\...)
             if name.startswith("Microsoft\\") or not name:
                 continue
             tasks.append({"name": name, "status": status})
@@ -540,7 +513,6 @@ def get_installed_software():
     items = []
     seen = set()
     try:
-        import winreg
 
         uninstall_keys = [
             (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
@@ -570,7 +542,6 @@ def get_installed_software():
                                 display_name = _get("DisplayName")
                                 if not display_name:
                                     continue
-                                # Excluir actualizaciones/parches sin valor de inventario
                                 if _get("SystemComponent") == 1:
                                     continue
                                 if _get("ParentKeyName"):
@@ -654,7 +625,6 @@ def collect(include_security=False, include_software=False, include_net_quality=
     network      = get_network_stats()
     gpu          = get_gpu_stats()
 
-    # Muestrear calidad de red (latencia, pérdida, WiFi) solo periódicamente
     if include_net_quality:
         try:
             quality = get_network_quality()
@@ -681,11 +651,9 @@ def collect(include_security=False, include_software=False, include_net_quality=
         "ip_address":       get_local_ip(),
     }
 
-    # Agregar GPU solo si se detectó
     if gpu:
         payload.update(gpu)
 
-    # Agregar huella de seguridad cada SECURITY_INTERVAL segundos (Windows)
     if include_security:
         try:
             sec = collect_security_snapshot()
@@ -693,7 +661,6 @@ def collect(include_security=False, include_software=False, include_net_quality=
                 payload["security_snapshot"] = sec
         except Exception as e:
             logger.warning(f"Error recolectando huella de seguridad: {e}")
-        # Seguridad de red (perfil, firewall, DNS, cifrado WiFi)
         try:
             net_sec = get_network_security()
             if net_sec is not None:
@@ -701,7 +668,6 @@ def collect(include_security=False, include_software=False, include_net_quality=
         except Exception as e:
             logger.warning(f"Error recolectando seguridad de red: {e}")
 
-    # Agregar inventario de software cada SOFTWARE_INTERVAL segundos (Windows)
     if include_software:
         try:
             software = get_installed_software()
@@ -715,14 +681,12 @@ def collect(include_security=False, include_software=False, include_net_quality=
 
 def send(payload):
     try:
-        import urllib.request
         data = json.dumps(payload, sort_keys=True).encode()
         headers = {
             "Authorization": f"Token {SENTINEL_TOKEN}",
             "Content-Type":  "application/json",
             "User-Agent":    f"Sentinel XO-Agent/4.1 ({platform.system()})",
         }
-        # Firma HMAC-SHA256 del payload para validación en el servidor
         if HMAC_SECRET:
             sig = hmac.new(HMAC_SECRET, data, hashlib.sha256).hexdigest()
             headers["X-Sentinel-Signature"] = f"sha256={sig}"
@@ -734,7 +698,6 @@ def send(payload):
         with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
             body = json.loads(r.read().decode())
 
-            # Log detallado
             parts = [
                 f"OK → {body.get('device','?')}",
                 f"cpu={payload['cpu_percent']}%",
@@ -762,7 +725,6 @@ def main():
     logger.info(f"Sentinel XO Agent v4.2 | host={platform.node()} | intervalo={INTERVAL}s")
     logger.info(f"Enviando a: {SENTINEL_API_URL}")
 
-    # Diagnóstico inicial
     temps = get_temperatures()
     if temps:
         logger.info(f"Temperatura: {len(temps)} sensor(es) disponibles")

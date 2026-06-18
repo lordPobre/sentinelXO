@@ -1,4 +1,5 @@
 import logging
+from core.models import AuditLog
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse
@@ -6,6 +7,9 @@ from django.db.models import Count, Q
 from django.utils import timezone
 from core.models import (Client, HardwareDevice, TelemetrySnapshot,
                           Domain, M365License, MaintenanceIncident)
+from django.db.models import F
+from core.notifications import notify_incident_resolved
+from django.http import HttpResponseForbidden
 
 logger = logging.getLogger("perseus")
 
@@ -19,7 +23,6 @@ def home(request):
     """Redirige al dashboard correcto según el rol del usuario."""
     if _is_admin(request.user):
         return redirect("dashboard:admin-overview")
-    # Usuario de cliente
     clients = request.user.client_portals.filter(is_active=True)
     if clients.count() == 1:
         return redirect("dashboard:client-portal", client_id=clients.first().id)
@@ -108,7 +111,6 @@ def client_portal(request, client_id):
         is_resolved=True
     ).count()
 
-    # Uptime del mes actual
     month_start = timezone.now().replace(day=1, hour=0, minute=0, second=0)
     total_snaps = TelemetrySnapshot.objects.filter(
         device__client=client, captured_at__gte=month_start
@@ -118,7 +120,6 @@ def client_portal(request, client_id):
     ).count()
     uptime_percent = round((online_snaps / total_snaps * 100), 1) if total_snaps > 0 else None
 
-    # Estado de alertas
     domains_critical = domains.filter(status__in=["critical", "expired"]).count()
     domains_warning = domains.filter(status="warning").count()
     licenses_full = licenses.filter(consumed_licenses__gte=models_gte_total()).count() if licenses.exists() else 0
@@ -139,7 +140,7 @@ def client_portal(request, client_id):
 
 
 def models_gte_total():
-    from django.db.models import F
+    
     return F("total_licenses")
 
 
@@ -149,7 +150,7 @@ def models_gte_total():
 def htmx_device_detail(request, device_id):
     """Fragmento HTMX: detalle de un dispositivo con sus últimos snapshots."""
     device = get_object_or_404(HardwareDevice, pk=device_id)
-    snapshots = device.snapshots.all()[:24]  # últimas 24 capturas (~6h a 15 min)
+    snapshots = device.snapshots.all()[:24]  
     return render(request, "dashboard/partials/device_detail.html",
                   {"device": device, "snapshots": snapshots})
 
@@ -158,11 +159,9 @@ def htmx_device_detail(request, device_id):
 def htmx_incident_resolve(request, incident_id):
     """Fragmento HTMX: marca incidente como resuelto, notifica y devuelve la fila."""
     if request.method == "POST":
-        from core.notifications import notify_incident_resolved
         incident = get_object_or_404(MaintenanceIncident, pk=incident_id)
         incident.resolve()
 
-        # Notificar resolución
         try:
             notify_incident_resolved(incident)
         except Exception as e:
@@ -194,13 +193,11 @@ def device_detail_live(request, device_id):
     """Vista de detalle en tiempo real de un dispositivo específico."""
     device = get_object_or_404(HardwareDevice, pk=device_id, is_active=True)
 
-    # Verificar acceso
     if not _is_admin(request.user):
         if not request.user.client_portals.filter(pk=device.client_id).exists():
-            from django.http import HttpResponseForbidden
+            
             return HttpResponseForbidden()
 
-    # Últimos 60 snapshots para el historial (~5 minutos a 5s de intervalo)
     snapshots = list(device.snapshots.order_by("captured_at")[::-1][:60][::-1])
 
     return render(request, "dashboard/device_live.html", {
@@ -216,9 +213,8 @@ def device_detail_live(request, device_id):
 def audit_log_view(request):
     """Vista del log de auditoría — solo staff."""
     if not request.user.is_staff:
-        from django.http import HttpResponseForbidden
         return HttpResponseForbidden()
-    from core.models import AuditLog
+    
     logs = AuditLog.objects.select_related("user").order_by("-timestamp")[:200]
     return render(request, "dashboard/audit_log.html", {
         "section": "audit",

@@ -4,8 +4,13 @@ Evalúa reglas en cada snapshot de telemetría recibido.
 También se usa para alertas SMTP desde emailmon.
 """
 import logging
+import threading
 from django.utils import timezone
 from django.conf import settings
+from core.models import AlertEvent, MaintenanceIncident, AlertRule
+from emailmon.services import send_tracked_email
+from django.core.mail import send_mail
+from core.views_ai import diagnose_incident
 
 logger = logging.getLogger("sentinel.alerts")
 
@@ -20,9 +25,6 @@ def _trigger_ai_diagnosis(incident):
     if getattr(settings, "SENTINEL_DISABLE_AI_DIAGNOSIS", False):
         return
     try:
-        import threading
-        from core.views_ai import diagnose_incident
-
         def run_diagnosis():
             diag = diagnose_incident(incident)
             if diag:
@@ -63,7 +65,6 @@ def _extract_cpu_temp(temperatures: list) -> float | None:
             val = t.get("current")
             if val is not None:
                 return float(val)
-    # Primera temperatura disponible como fallback
     first = temperatures[0].get("current") if temperatures else None
     return float(first) if first is not None else None
 
@@ -87,7 +88,6 @@ def _get_snapshot_value(snapshot, metric: str) -> float | None:
 
 def _is_in_cooldown(rule, device) -> bool:
     """Verifica si la regla está en período de cooldown para este dispositivo."""
-    from core.models import AlertEvent
     cutoff = timezone.now() - timezone.timedelta(minutes=rule.cooldown_minutes)
     return AlertEvent.objects.filter(
         rule=rule,
@@ -117,7 +117,6 @@ def _send_alert_email(event) -> bool:
     emoji     = SEVERITY_EMOJIS.get(event.severity, "⚠️")
     sev_label = "Advertencia" if event.severity == "warning" else "Crítica"
 
-    # Si el cliente tiene activado "solo incidentes", no enviar alertas automáticas
     if getattr(client, "notify_incidents_only", False):
         logger.info(f"Alerta automática omitida para {client} (notify_incidents_only=True)")
         return False
@@ -159,7 +158,6 @@ Saludos,
 """
 
     try:
-        from emailmon.services import send_tracked_email
         return send_tracked_email(
             subject=subject,
             body=body,
@@ -169,7 +167,6 @@ Saludos,
         )
     except Exception:
         try:
-            from django.core.mail import send_mail
             send_mail(subject, body, settings.DEFAULT_FROM_EMAIL,
                       recipients, fail_silently=True)
             return True
@@ -180,7 +177,6 @@ Saludos,
 
 def _create_incident_from_alert(event):
     """Crea un incidente automático en el sistema cuando se dispara una alerta."""
-    from core.models import MaintenanceIncident
     label = METRIC_LABELS.get(event.metric, event.metric)
     unit  = METRIC_UNITS.get(event.metric, "")
     sev   = "critical" if event.severity == "critical" else "high"
@@ -191,7 +187,7 @@ def _create_incident_from_alert(event):
         title=f"Alerta automática: {label} al {event.value:.1f}{unit} en {event.device.display_name}",
         severity=sev,
         category="hardware",
-        notify_email=False,  # ya se notificó desde el motor de alertas
+        notify_email=False,  
         description=(
             f"Alerta disparada automáticamente por el motor de alertas Sentinel XO.\n"
             f"Métrica: {label}\n"
@@ -201,7 +197,6 @@ def _create_incident_from_alert(event):
         ),
     )
 
-    # Generar diagnóstico IA en background (no bloquea el motor de alertas)
     _trigger_ai_diagnosis(incident)
 
 
@@ -210,14 +205,10 @@ def evaluate_snapshot(snapshot) -> list:
     Evalúa todas las reglas activas contra un snapshot recién recibido.
     Retorna lista de AlertEvent creados.
     """
-    from core.models import AlertRule, AlertEvent
-
     device  = snapshot.device
     client  = device.client
     fired   = []
 
-    # Reglas aplicables: las del cliente sin dispositivo específico
-    # O las del cliente para este dispositivo específico
     rules = AlertRule.objects.filter(
         client=client,
         is_active=True,
@@ -228,10 +219,10 @@ def evaluate_snapshot(snapshot) -> list:
     for rule in rules:
         value = _get_snapshot_value(snapshot, rule.metric)
         if value is None:
-            continue  # métrica no disponible en este snapshot
+            continue  
 
         if value <= rule.threshold:
-            continue  # no supera el umbral
+            continue  
 
         if _is_in_cooldown(rule, device):
             logger.debug(f"Alerta en cooldown: {rule} para {device}")
@@ -251,13 +242,11 @@ def evaluate_snapshot(snapshot) -> list:
             status="firing",
         )
 
-        # Crear incidente automático
         try:
             _create_incident_from_alert(event)
         except Exception as e:
             logger.error(f"Error creando incidente desde alerta: {e}")
 
-        # Enviar email si está configurado
         if rule.notify_email:
             try:
                 notified = _send_alert_email(event)
@@ -276,12 +265,9 @@ def evaluate_smtp_failure(client, smtp_host: str, error_msg: str) -> None:
     Dispara alerta cuando el check SMTP falla.
     Se llama desde emailmon cuando un check retorna error/timeout.
     """
-    from core.models import AlertEvent, AlertRule
-
     company = getattr(settings, "SENTINEL_COMPANY_NAME", "Sentinel XO")
     support = getattr(settings, "SENTINEL_SUPPORT_EMAIL", "soporte@perseustechnology.dev")
 
-    # Cooldown: no repetir alerta SMTP si ya hubo una en los últimos 60 min
     cutoff = timezone.now() - timezone.timedelta(minutes=60)
     recent = AlertEvent.objects.filter(
         device__client=client,
@@ -292,8 +278,6 @@ def evaluate_smtp_failure(client, smtp_host: str, error_msg: str) -> None:
     if recent:
         return
 
-    # Notificar por email directamente (sin regla de dispositivo)
-    # Si el cliente tiene activado "solo incidentes", no enviar alertas SMTP automáticas
     if getattr(client, "notify_incidents_only", False):
         return
 
@@ -338,9 +322,7 @@ Saludos,
         except Exception as e:
             logger.error(f"Error enviando alerta SMTP: {e}")
 
-    # Crear incidente automático
     try:
-        from core.models import MaintenanceIncident
         incident = MaintenanceIncident.objects.create(
             client=client,
             title=f"Problema SMTP detectado: {smtp_host}",
@@ -350,7 +332,6 @@ Saludos,
             description=f"Error detectado: {error_msg[:300]}\nServidor: {smtp_host}",
         )
 
-        # Generar diagnóstico IA en background
         _trigger_ai_diagnosis(incident)
     except Exception as e:
         logger.error(f"Error creando incidente SMTP: {e}")
