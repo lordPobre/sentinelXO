@@ -116,6 +116,56 @@ class TelemetryIngestTests(TestCase):
         )
         self._post(_payload(), token=self.device.agent_token)
         self.assertTrue(TelemetrySnapshot.objects.filter(pk=old.pk).exists())
+    
+    def _net_sec(self, **kw):
+        """Dict de seguridad de red como el que envía el agente v4.2."""
+        base = dict(
+            wifi_encryption="WPA2-Personal",
+            wifi_ssid="OficinaWiFi",
+            network_category="Private",
+            firewall=[{"name": "Domain", "enabled": True},
+                      {"name": "Private", "enabled": True},
+                      {"name": "Public", "enabled": True}],
+            dns_servers=["8.8.8.8"],
+        )
+        base.update(kw)
+        return base
+
+    def test_serializer_conserva_network_security(self):
+        """Regresión Bug 5: el serializer NO debe descartar network_security.
+        Con el campo sin declarar, DRF lo quitaba de validated_data."""
+        from core.serializers import TelemetryIngestSerializer
+        serializer = TelemetryIngestSerializer(data=_payload(network_security=self._net_sec()))
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        self.assertIn("network_security", serializer.validated_data)
+        self.assertEqual(
+            serializer.validated_data["network_security"]["wifi_encryption"],
+            "WPA2-Personal",
+        )
+
+    def test_ingesta_con_network_security_crea_postura_de_red(self):
+        """Regresión Bug 5 extremo a extremo: un POST con network_security debe
+        crear la NetworkSnapshot del dispositivo con esos campos. Antes del fix,
+        el serializer descartaba el campo y la postura de red nunca se procesaba."""
+        from core.models import NetworkSnapshot
+        resp = self._post(_payload(network_security=self._net_sec()),
+                          token=self.device.agent_token)
+        self.assertIn(resp.status_code, (200, 201))
+        self.assertTrue(NetworkSnapshot.objects.filter(device=self.device).exists())
+        snap = NetworkSnapshot.objects.get(device=self.device)
+        self.assertEqual(snap.wifi_encryption, "WPA2-Personal")
+        self.assertEqual(snap.wifi_ssid, "OficinaWiFi")
+        self.assertEqual(snap.network_category, "Private")
+        self.assertEqual(snap.dns_servers, ["8.8.8.8"])
+        self.assertIs(snap.firewall_all_on, True)
+        self.assertFalse(snap.is_open_wifi)
+
+    def test_ingesta_sin_network_security_no_crea_postura(self):
+        """Control: sin network_security, no se crea NetworkSnapshot — así el test
+        anterior prueba el procesamiento real y no un efecto colateral."""
+        from core.models import NetworkSnapshot
+        self._post(_payload(), token=self.device.agent_token)
+        self.assertFalse(NetworkSnapshot.objects.filter(device=self.device).exists())
 
 
 @override_settings(SENTINEL_DISABLE_AI_DIAGNOSIS=True)

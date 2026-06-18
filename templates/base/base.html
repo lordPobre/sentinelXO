@@ -19,11 +19,8 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600&display=swap" rel="stylesheet">
 
-  <!--
-    NOTA: Tailwind sigue cargándose vía CDN para no romper utilidades que puedan
-    usar otras plantillas. Es un paso aparte (auditar uso real y compilar/quitar).
-  -->
-  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Tailwind retirado: el único uso en todas las plantillas era class="h-full",
+       ya cubierto por `html, body { height: 100% }`. Sin utilidades Tailwind. -->
   <script src="https://unpkg.com/htmx.org@1.9.10"></script>
   <script>
     // Incluir CSRF token en todos los requests HTMX automáticamente
