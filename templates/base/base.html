@@ -17,7 +17,7 @@
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 
   <!-- Tailwind retirado: el único uso en todas las plantillas era class="h-full",
        ya cubierto por `html, body { height: 100% }`. Sin utilidades Tailwind. -->
@@ -109,8 +109,8 @@
       --teal-tint:    rgba(34,230,255,0.10); --teal-line:   rgba(34,230,255,0.24);
 
       /* ── Tipografía ──────────────────────────────────────────── */
-      --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
-      --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', monospace;
+      --font-sans: 'IBM Plex Sans', system-ui, -apple-system, sans-serif;
+      --font-mono: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', monospace;
 
       --fs-3xs:  0.5625rem;  --fs-2xs:  0.625rem;  --fs-xs:  0.6875rem;
       --fs-sm:   0.75rem;    --fs-base: 0.8125rem; --fs-md:  0.875rem;
@@ -334,7 +334,7 @@
     .kpi-card.kpi-accent::before { background: var(--cyan); box-shadow: 0 0 16px var(--cyan-glow); }
     .kpi-card:hover { border-color: var(--border-hover); }
     .kpi-label { font-size: var(--fs-2xs); font-weight: var(--fw-medium); letter-spacing: var(--tracking-wide); text-transform: uppercase; color: var(--text-3); margin-bottom: var(--space-3); }
-    .kpi-value { font-size: var(--fs-3xl); font-weight: var(--fw-bold); line-height: 1; color: var(--text); letter-spacing: -0.03em; margin-bottom: 6px; }
+    .kpi-value { font-size: var(--fs-3xl); font-weight: var(--fw-bold); line-height: 1; color: var(--text); letter-spacing: -0.03em; margin-bottom: 6px; font-variant-numeric: tabular-nums; }
 
     /* ── Nav (activo iluminado) ────────────────────────────────── */
     .nav-link {
