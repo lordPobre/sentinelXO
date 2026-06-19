@@ -306,6 +306,19 @@
     }
     .btn-pdf:hover { background: rgba(47,123,255,0.22); box-shadow: 0 0 14px rgba(47,123,255,0.18); }
 
+    /* Hace que los popups nativos (select, scrollbars, date pickers) se rendericen oscuros */
+    html { color-scheme: dark; }
+
+    /* Garantiza opciones legibles en el desplegable */
+    .px-input option {
+      background: var(--raise);
+      color: var(--text);
+    }
+    .px-input option:checked,
+    .px-input option:hover {
+      background: var(--accent-dim);
+    }
+
     /* ── Tables ────────────────────────────────────────────────── */
     .px-table { width: 100%; border-collapse: collapse; }
     .px-table th {
