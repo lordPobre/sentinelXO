@@ -1,7 +1,7 @@
 {% extends "base/layout.html" %}
 {% block title %}Microsoft 365 — Sentinel XO{% endblock %}
 {% block page_title %}Monitor Microsoft 365{% endblock %}
-{% block page_subtitle %}<div class="mono" style="font-size:10px;color:var(--text-3);margin-top:1px;">Graph API · Exchange Online · conectividad por cliente</div>{% endblock %}
+{% block page_subtitle %}<div class="mono" style="font-size:10px;color:var(--text-3);margin-top:1px;">Graph API · Exchange Online · Conectividad por cliente</div>{% endblock %}
 
 {% block header_actions %}
 <button id="btn-verify-now" class="btn-primary"
@@ -99,7 +99,7 @@
   <div class="kpi-card fu-2">
     <div class="kpi-label">Clientes M365</div>
     <div class="kpi-value" style="color:#60a5fa;">{{ m365_clients|length }}</div>
-    <div style="font-size:11px;color:var(--text-4);">con tenant configurado</div>
+    <div style="font-size:11px;color:var(--text-4);">Con tenant configurado</div>
   </div>
 
   <div class="kpi-card fu-3" id="m365-global-result">
@@ -251,8 +251,6 @@ if (ctx && chartData.labels.length) {
 .htmx-request .htmx-indicator { display: inline-flex; align-items: center; }
 </style>
 <script>
-// Recargar la página completa 1.5s después de que el check termine
-// para actualizar KPIs de envío/recepción e historial
 document.body.addEventListener("htmx:afterSwap", function(evt) {
   if (evt.detail.target && evt.detail.target.id === "m365-global-result") {
     setTimeout(function() {

@@ -1,7 +1,7 @@
 {% extends "base/layout.html" %}
 {% block title %}Dominios — Sentinel XO{% endblock %}
 {% block page_title %}Dominios{% endblock %}
-{% block page_subtitle %}<div class="mono" style="font-size:10px;color:var(--text-3);margin-top:1px;">estado WHOIS · renovaciones</div>{% endblock %}
+{% block page_subtitle %}<div class="mono" style="font-size:10px;color:var(--text-3);margin-top:1px;">Estado WHOIS · Renovaciones</div>{% endblock %}
 
 {% block content %}
 {% for client in clients %}{% if client.domains.exists %}

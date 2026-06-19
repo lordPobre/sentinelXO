@@ -10,7 +10,9 @@
 
 {% elif not latest.ai_summary %}
 <div style="padding:24px;text-align:center;">
-  <div style="font-size:28px;margin-bottom:8px;opacity:0.3;">🧠</div>
+  <div style="display:flex;justify-content:center;margin-bottom:10px;color:#c4a8ff;opacity:0.7;">
+    <svg width="30" height="30" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.6 5.6 1.9-5.6 1.9L12 18l-1.9-5.6L4.5 10.5l5.6-1.9z"/><path d="M19 4v3M20.5 5.5h-3"/></svg>
+  </div>
   <div style="font-size:12px;color:var(--text-4);margin-bottom:12px;">
     Análisis de seguridad con IA disponible
   </div>
@@ -23,7 +25,9 @@
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
       </svg>
     </span>
-    <span class="htmx-idle">🧠</span>
+    <span class="htmx-idle">
+      <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.6 5.6 1.9-5.6 1.9L12 18l-1.9-5.6L4.5 10.5l5.6-1.9z"/></svg>
+    </span>
     Generar reporte de seguridad
   </button>
 </div>
@@ -33,20 +37,18 @@
 <div>
   <!-- Header riesgo -->
   <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;
-              background:rgba(255,255,255,0.02);border-radius:8px;margin-bottom:10px;">
+              background:rgba(120,160,220,0.03);border-radius:8px;margin-bottom:10px;">
     <div style="width:10px;height:10px;border-radius:50%;flex-shrink:0;
-                {% if a.nivel_riesgo == 'bajo' %}background:#10b981;box-shadow:0 0 8px #10b981;
-                {% elif a.nivel_riesgo == 'medio' %}background:#f59e0b;box-shadow:0 0 8px #f59e0b;
-                {% elif a.nivel_riesgo == 'alto' %}background:#ef4444;box-shadow:0 0 8px #ef4444;
-                {% else %}background:#dc2626;box-shadow:0 0 8px #dc2626;{% endif %}"></div>
+                {% if a.nivel_riesgo == 'bajo' %}background:var(--green);box-shadow:0 0 8px var(--green);
+                {% elif a.nivel_riesgo == 'medio' %}background:var(--amber);box-shadow:0 0 8px var(--amber);
+                {% else %}background:var(--red);box-shadow:0 0 8px var(--red);{% endif %}"></div>
     <div style="flex:1;">
-      <div style="font-size:12px;font-weight:600;color:#f1f5f9;">{{ a.resumen }}</div>
+      <div style="font-size:12px;font-weight:600;color:var(--text);">{{ a.resumen }}</div>
     </div>
     <span style="font-size:10px;font-weight:700;padding:3px 10px;border-radius:6px;
-                 {% if a.nivel_riesgo == 'bajo' %}color:#10b981;background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.25);
-                 {% elif a.nivel_riesgo == 'medio' %}color:#f59e0b;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.25);
-                 {% elif a.nivel_riesgo == 'alto' %}color:#ef4444;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.25);
-                 {% else %}color:#dc2626;background:rgba(220,38,38,0.15);border:1px solid rgba(220,38,38,0.3);{% endif %}">
+                 {% if a.nivel_riesgo == 'bajo' %}color:var(--green);background:var(--success-tint);border:1px solid var(--success-line);
+                 {% elif a.nivel_riesgo == 'medio' %}color:var(--amber);background:var(--warn-tint);border:1px solid var(--warn-line);
+                 {% else %}color:var(--red);background:var(--danger-tint);border:1px solid var(--danger-line);{% endif %}">
       RIESGO {{ a.nivel_riesgo|upper }}
     </span>
   </div>
@@ -61,7 +63,10 @@
     <div class="sec-card-header">
       <div class="sec-card-main">
         <span class="sec-card-icon">
-          {% if h.categoria == 'identidad' %}🔐{% elif h.categoria == 'certificados' %}🔒{% elif h.categoria == 'fortaleza' %}✅{% else %}⚙️{% endif %}
+          {% if h.categoria == 'identidad' %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.2"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0"/></svg>
+          {% elif h.categoria == 'certificados' %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="9" r="5.5"/><path d="M8.5 13.2L7 21l5-2.6L17 21l-1.5-7.8"/></svg>
+          {% elif h.categoria == 'fortaleza' %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5.5c0 4.3-3 7.5-7 8.5-4-1-7-4.2-7-8.5V6z"/><path d="M9 12l2 2 4-4"/></svg>
+          {% else %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h9M17 7h3M4 12h3M11 12h9M4 17h6M14 17h6"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="12" cy="17" r="2"/></svg>{% endif %}
         </span>
         <div class="sec-card-body">
           <div class="sec-card-title">{{ h.titulo }}</div>
@@ -88,7 +93,9 @@
   <div class="sec-card">
     <div class="sec-card-header">
       <div class="sec-card-main">
-        <span class="sec-card-icon">→</span>
+        <span class="sec-card-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M13 6l6 6-6 6"/></svg>
+        </span>
         <div class="sec-card-body">
           <div class="sec-card-title">{{ r.accion }}</div>
           {% if r.impacto %}<div class="sec-card-desc">{{ r.impacto }}</div>{% endif %}

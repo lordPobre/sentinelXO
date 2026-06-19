@@ -4,10 +4,10 @@
   <div class="sec-card-header">
     <div class="sec-card-main">
       <span class="sec-card-icon">
-        {% if anomaly.anomaly_type == 'new_admin' %}🚨
-        {% elif anomaly.anomaly_type == 'removed_admin' %}👤
-        {% elif anomaly.anomaly_type == 'new_startup' or anomaly.anomaly_type == 'new_task' %}⚙️
-        {% else %}ℹ️{% endif %}
+        {% if anomaly.anomaly_type == 'new_admin' %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5.5c0 4.3-3 7.5-7 8.5-4-1-7-4.2-7-8.5V6z"/><path d="M12 9v4M12 16h.01"/></svg>
+        {% elif anomaly.anomaly_type == 'removed_admin' %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 20a5.5 5.5 0 0 1 11 0"/><path d="M16 12h6"/></svg>
+        {% elif anomaly.anomaly_type == 'new_startup' or anomaly.anomaly_type == 'new_task' %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9l3 3-3 3M13 15h4"/></svg>
+        {% else %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5h.01"/></svg>{% endif %}
       </span>
       <div class="sec-card-body">
         <div class="sec-card-title {% if anomaly.status == 'acknowledged' %}is-ack{% endif %}">

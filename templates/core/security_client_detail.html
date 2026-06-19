@@ -12,96 +12,97 @@
   </a>
 </div>
 
-<div class="chart-card" style="margin-bottom:14px;">
-
-  <!-- Header cliente -->
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px;">
-    <div style="display:flex;align-items:center;gap:10px;">
-      <div style="width:34px;height:34px;border-radius:8px;background:rgba(37,99,235,0.12);
-                  display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;
-                  color:#60a5fa;flex-shrink:0;">
-        {{ client.company_name|slice:":2"|upper }}
-      </div>
-      <div>
-        <div style="font-size:13px;font-weight:600;color:#f1f5f9;">{{ client.company_name }}</div>
+<!-- ═══ Postura general (Secure Score + MFA) ═══ -->
+<div class="card fu" style="overflow:hidden;margin-bottom:14px;">
+  <div class="sec-head">
+    <div class="sec-head-left">
+      <div class="sec-avatar">{{ client.company_name|slice:":2"|upper }}</div>
+      <div style="min-width:0;">
+        <div style="font-size:13px;font-weight:600;color:var(--text);">{{ client.company_name }}</div>
         {% if latest %}
-        <div class="mono" style="font-size:10px;color:var(--text-4);">
-          Última verificación: {{ latest.checked_at|date:"d/m H:i" }}
-        </div>
+        <div class="mono" style="font-size:10px;color:var(--text-4);">Última verificación: {{ latest.checked_at|date:"d/m H:i" }}</div>
         {% else %}
         <div class="mono" style="font-size:10px;color:var(--text-4);">Sin verificaciones aún</div>
         {% endif %}
       </div>
     </div>
-    <div style="display:flex;gap:8px;">
-    <a href="{% url 'reports:security-report' client.id %}" target="_blank"
-       class="btn-ghost" style="font-size:11px;padding:6px 14px;display:inline-flex;align-items:center;gap:6px;text-decoration:none;">
-      <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 10v6m0 0l-3-3m3 3l3-3M4 7V4a1 1 0 011-1h10l5 5v13a1 1 0 01-1 1H5a1 1 0 01-1-1V7z"/></svg>
-      PDF
-    </a>
-    <button class="btn-primary" style="font-size:11px;padding:6px 14px;"
-            hx-post="{% url 'dashboard:security-check' client.id %}"
-            hx-target="#sec-status-{{ client.id }}"
-            hx-swap="innerHTML"
-            hx-indicator="#sec-spinner-{{ client.id }}">
-      <span id="sec-spinner-{{ client.id }}" class="htmx-indicator">
-        <svg width="11" height="11" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="animation:spin 1s linear infinite;">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-        </svg>
-      </span>
-      <span class="htmx-idle">↻</span>
-      Verificar
-    </button>
+    <div style="display:flex;gap:8px;flex-shrink:0;">
+      <a href="{% url 'reports:security-report' client.id %}" target="_blank"
+         class="btn-ghost" style="font-size:11px;padding:6px 14px;display:inline-flex;align-items:center;gap:6px;text-decoration:none;">
+        <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 10v6m0 0l-3-3m3 3l3-3M4 7V4a1 1 0 011-1h10l5 5v13a1 1 0 01-1 1H5a1 1 0 01-1-1V7z"/></svg>
+        PDF
+      </a>
+      <button class="btn-primary" style="font-size:11px;padding:6px 14px;"
+              hx-post="{% url 'dashboard:security-check' client.id %}"
+              hx-target="#sec-status-{{ client.id }}"
+              hx-swap="innerHTML"
+              hx-indicator="#sec-spinner-{{ client.id }}">
+        <span id="sec-spinner-{{ client.id }}" class="htmx-indicator">
+          <svg width="11" height="11" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="animation:spin 1s linear infinite;">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+          </svg>
+        </span>
+        <span class="htmx-idle">↻</span>
+        Verificar
+      </button>
     </div>
   </div>
-
-  {% if not m365_configured and not latest %}
-  <div style="padding:14px;margin-bottom:14px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.05);border-radius:10px;font-size:11px;color:var(--text-4);">
-    Este cliente no tiene un Tenant M365 configurado. El Secure Score y la cobertura MFA no estarán disponibles,
-    pero igual puedes ver anomalías de seguridad detectadas por el agente y certificados SSL en el reporte PDF.
-  </div>
-  {% endif %}
-
-  <div id="sec-status-{{ client.id }}">
-    {% include "core/partials/security_status.html" %}
-  </div>
-
-  <!-- Anomalías de inicio de sesión M365 -->
-  {% if m365_configured %}
-  <div style="margin-top:14px;padding-top:14px;border-top:1px solid rgba(255,255,255,0.05);">
-    <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">
-      <span style="font-size:13px;">🌍</span>
-      <span style="font-size:10px;font-weight:600;color:var(--text-4);letter-spacing:0.05em;text-transform:uppercase;">
-        Inicios de Sesión Sospechosos (M365)
-      </span>
-      {% if signin_anomalies_open %}
-      <span class="badge badge-crit" style="font-size:8px;padding:1px 6px;">{{ signin_anomalies_open }} sin revisar</span>
-      {% endif %}
+  <div class="sec-body">
+    {% if not m365_configured and not latest %}
+    <div class="sec-note">
+      Este cliente no tiene un Tenant M365 configurado. El Secure Score y la cobertura MFA no estarán disponibles,
+      pero igual puedes ver anomalías de seguridad detectadas por el agente y certificados SSL en el reporte PDF.
     </div>
+    {% endif %}
+    <div id="sec-status-{{ client.id }}">
+      {% include "core/partials/security_status.html" %}
+    </div>
+  </div>
+</div>
+
+<!-- ═══ Inicios de sesión sospechosos (M365) ═══ -->
+{% if m365_configured %}
+<div class="card fu-1" style="overflow:hidden;margin-bottom:14px;">
+  <div class="sec-head">
+    <div class="sec-head-left">
+      <span class="sec-ico sec-ico-cyan">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c2.6 2.7 2.6 15.3 0 18M12 3c-2.6 2.7-2.6 15.3 0 18"/></svg>
+      </span>
+      <span class="sec-head-title">Inicios de sesión sospechosos (M365)</span>
+    </div>
+    {% if signin_anomalies_open %}
+    <span class="badge badge-crit" style="font-size:8px;padding:1px 6px;flex-shrink:0;">{{ signin_anomalies_open }} sin revisar</span>
+    {% endif %}
+  </div>
+  <div class="sec-body">
     {% if signin_anomalies %}
       {% for anomaly in signin_anomalies %}
         {% include "core/partials/signin_anomaly_row.html" %}
       {% endfor %}
     {% else %}
-    <div style="padding:14px;text-align:center;font-size:11px;color:var(--text-4);">
+    <div class="sec-empty">
       Sin inicios de sesión sospechosos. Sentinel XO revisa países nuevos, viajes
       imposibles y sign-ins riesgosos cada hora.
     </div>
     {% endif %}
   </div>
-  {% endif %}
+</div>
+{% endif %}
 
-  <!-- Anomalías de seguridad (vía agente) -->
-  <div style="margin-top:14px;padding-top:14px;border-top:1px solid rgba(255,255,255,0.05);">
-    <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">
-      <span style="font-size:13px;">🕵️</span>
-      <span style="font-size:10px;font-weight:600;color:var(--text-4);letter-spacing:0.05em;text-transform:uppercase;">
-        Anomalías de Seguridad (Agente)
+<!-- ═══ Anomalías de seguridad (agente) ═══ -->
+<div class="card fu-2" style="overflow:hidden;margin-bottom:14px;">
+  <div class="sec-head">
+    <div class="sec-head-left">
+      <span class="sec-ico sec-ico-blue">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5" opacity="0.55"/><path d="M12 12l6.4-6.4"/></svg>
       </span>
-      {% if anomalies_open %}
-      <span class="badge badge-crit" style="font-size:8px;padding:1px 6px;">{{ anomalies_open }} sin revisar</span>
-      {% endif %}
+      <span class="sec-head-title">Anomalías de seguridad (agente)</span>
     </div>
+    {% if anomalies_open %}
+    <span class="badge badge-crit" style="font-size:8px;padding:1px 6px;flex-shrink:0;">{{ anomalies_open }} sin revisar</span>
+    {% endif %}
+  </div>
+  <div class="sec-body">
     {% if anomalies %}
       {% for anomaly in anomalies %}
         {% if anomaly.status == 'open' %}
@@ -121,10 +122,10 @@
             {% if anomaly.status != 'open' %}
               <div class="sec-card-mini">
                 <span class="sec-card-mini-icon">
-                  {% if anomaly.anomaly_type == 'new_admin' %}🚨
-                  {% elif anomaly.anomaly_type == 'removed_admin' %}👤
-                  {% elif anomaly.anomaly_type == 'new_startup' or anomaly.anomaly_type == 'new_task' %}⚙️
-                  {% else %}ℹ️{% endif %}
+                  {% if anomaly.anomaly_type == 'new_admin' %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5.5c0 4.3-3 7.5-7 8.5-4-1-7-4.2-7-8.5V6z"/><path d="M12 9v4M12 16h.01"/></svg>
+                  {% elif anomaly.anomaly_type == 'removed_admin' %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 20a5.5 5.5 0 0 1 11 0"/><path d="M16 12h6"/></svg>
+                  {% elif anomaly.anomaly_type == 'new_startup' or anomaly.anomaly_type == 'new_task' %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9l3 3-3 3M13 15h4"/></svg>
+                  {% else %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5h.01"/></svg>{% endif %}
                 </span>
                 <span class="sec-card-mini-title">{{ anomaly.device.display_name }} — {{ anomaly.get_anomaly_type_display }}</span>
                 <span class="sec-card-mini-desc">{{ anomaly.detail_summary }}</span>
@@ -135,21 +136,26 @@
         </div>
       </details>
     {% else %}
-    <div style="padding:14px;text-align:center;font-size:11px;color:var(--text-4);">
+    <div class="sec-empty">
       Sin anomalías detectadas. El agente revisa administradores locales, programas de inicio
       y tareas programadas cada 5 minutos.
     </div>
     {% endif %}
   </div>
+</div>
 
-  {% if latest %}
-  <div style="margin-top:14px;padding-top:14px;border-top:1px solid rgba(255,255,255,0.05);">
-    <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">
-      <span style="font-size:13px;">🧠</span>
-      <span style="font-size:10px;font-weight:600;color:#60a5fa;letter-spacing:0.05em;text-transform:uppercase;">
-        Análisis de Seguridad IA
+<!-- ═══ Análisis de seguridad IA ═══ -->
+{% if latest %}
+<div class="card fu-3" style="overflow:hidden;margin-bottom:14px;">
+  <div class="sec-head">
+    <div class="sec-head-left">
+      <span class="sec-ico sec-ico-violet">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.6 5.6 1.9-5.6 1.9L12 18l-1.9-5.6L4.5 10.5l5.6-1.9z"/><path d="M19 4v3M20.5 5.5h-3"/></svg>
       </span>
+      <span class="sec-head-title" style="color:var(--accent-soft);">Análisis de seguridad IA</span>
     </div>
+  </div>
+  <div class="sec-body">
     <div id="sec-ai-{{ client.id }}">
       {% if latest.ai_summary %}
         {% include "core/partials/security_ai_panel.html" with latest=latest %}
@@ -164,49 +170,58 @@
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
             </svg>
           </span>
-          <span class="htmx-idle">🧠</span>
+          <span class="htmx-idle">
+            <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.6 5.6 1.9-5.6 1.9L12 18l-1.9-5.6L4.5 10.5l5.6-1.9z"/></svg>
+          </span>
           Generar reporte de seguridad
         </button>
       </div>
       {% endif %}
     </div>
   </div>
-  {% endif %}
 </div>
+{% endif %}
 
-<!-- Integraciones -->
-<div class="chart-card" style="margin-bottom:14px;">
-  <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;">
-    <span style="font-size:13px;">📲</span>
-    <span style="font-size:10px;font-weight:600;color:var(--text-4);letter-spacing:0.05em;text-transform:uppercase;">
-      Notificaciones por Telegram
-    </span>
-  </div>
-  {% if client.telegram_chat_id %}
-  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:10px;">
-    <div style="font-size:11px;color:var(--text-3);">
-      Chat configurado: <span class="mono" style="color:#60a5fa;">{{ client.telegram_chat_id }}</span><br>
-      <span style="color:var(--text-4);">Recibirá alertas críticas: anomalías de seguridad graves, viaje imposible,
-      equipos sin conexión y certificados/dominios por vencer (≤7 días).</span>
+<!-- ═══ Notificaciones por Telegram ═══ -->
+<div class="card fu-4" style="overflow:hidden;margin-bottom:14px;">
+  <div class="sec-head">
+    <div class="sec-head-left">
+      <span class="sec-ico sec-ico-cyan">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 4L3 11l6 2.5L12 20l3-5 6-11z"/><path d="M9 13.5L21 4"/></svg>
+      </span>
+      <span class="sec-head-title">Notificaciones por Telegram</span>
     </div>
-    <button class="btn-ghost" style="font-size:11px;padding:6px 14px;flex-shrink:0;"
-            hx-post="{% url 'dashboard:telegram-test' client.id %}"
-            hx-target="#tg-status-{{ client.id }}" hx-swap="innerHTML">
-      Enviar prueba
-    </button>
+    {% if client.telegram_chat_id %}
+    <span class="badge badge-ok" style="font-size:8px;padding:1px 6px;flex-shrink:0;">Activo</span>
+    {% endif %}
   </div>
-  <div id="tg-status-{{ client.id }}"></div>
-  {% else %}
-  <div style="font-size:11px;color:var(--text-4);line-height:1.6;">
-    Este cliente no tiene Telegram configurado. Para activarlo:
-    <ol style="margin:8px 0 0 18px;padding:0;color:var(--text-3);">
-      <li>Habla con <span class="mono">@{{ "SentinelXOBot" }}</span> (o el bot configurado) en Telegram.</li>
-      <li>Envía cualquier mensaje al bot, o agrégalo a un grupo.</li>
-      <li>Obtén el Chat ID (ej. con <span class="mono">@getidsbot</span>).</li>
-      <li>Configura el Chat ID en Django Admin → Clientes → {{ client.company_name }}.</li>
-    </ol>
+  <div class="sec-body">
+    {% if client.telegram_chat_id %}
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+      <div style="font-size:11px;color:var(--text-3);">
+        Chat configurado: <span class="mono" style="color:var(--accent-soft);">{{ client.telegram_chat_id }}</span><br>
+        <span style="color:var(--text-4);">Recibirá alertas críticas: anomalías de seguridad graves, viaje imposible,
+        equipos sin conexión y certificados/dominios por vencer (≤7 días).</span>
+      </div>
+      <button class="btn-ghost" style="font-size:11px;padding:6px 14px;flex-shrink:0;"
+              hx-post="{% url 'dashboard:telegram-test' client.id %}"
+              hx-target="#tg-status-{{ client.id }}" hx-swap="innerHTML">
+        Enviar prueba
+      </button>
+    </div>
+    <div id="tg-status-{{ client.id }}"></div>
+    {% else %}
+    <div style="font-size:11px;color:var(--text-4);line-height:1.6;">
+      Este cliente no tiene Telegram configurado. Para activarlo:
+      <ol style="margin:8px 0 0 18px;padding:0;color:var(--text-3);">
+        <li>Habla con <span class="mono">@{{ "SentinelXOBot" }}</span> (o el bot configurado) en Telegram.</li>
+        <li>Envía cualquier mensaje al bot, o agrégalo a un grupo.</li>
+        <li>Obtén el Chat ID (ej. con <span class="mono">@getidsbot</span>).</li>
+        <li>Configura el Chat ID en Django Admin → Clientes → {{ client.company_name }}.</li>
+      </ol>
+    </div>
+    {% endif %}
   </div>
-  {% endif %}
 </div>
 
 <style>
@@ -216,163 +231,121 @@
 .htmx-indicator { display: none; }
 .htmx-request .htmx-indicator { display: inline-flex; align-items: center; }
 
-/* ── Tarjetas de Anomalías / Hallazgos — diseño responsive ──────────────── */
+/* ── Encabezado de sección (tile de ícono + título) ─────────────────────── */
+.sec-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 13px 18px; border-bottom: 1px solid var(--border);
+}
+.sec-head-left { display: flex; align-items: center; gap: 11px; min-width: 0; }
+.sec-head-title {
+  font-size: 11px; font-weight: 600; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--text-2);
+}
+.sec-ico {
+  width: 30px; height: 30px; border-radius: 9px;
+  display: grid; place-items: center; flex-shrink: 0;
+  border: 1px solid transparent;
+}
+.sec-ico svg { width: 15px; height: 15px; }
+.sec-ico-cyan   { color: var(--cyan);        background: rgba(34,230,255,0.08);  border-color: rgba(34,230,255,0.24);  box-shadow: 0 0 14px rgba(34,230,255,0.10); }
+.sec-ico-blue   { color: var(--accent-soft); background: rgba(47,123,255,0.10);  border-color: rgba(47,123,255,0.26);  box-shadow: 0 0 14px rgba(47,123,255,0.10); }
+.sec-ico-violet { color: #c4a8ff;            background: rgba(155,107,255,0.10); border-color: rgba(155,107,255,0.26); box-shadow: 0 0 14px rgba(155,107,255,0.10); }
+
+.sec-body { padding: 16px 18px; }
+.sec-avatar {
+  width: 34px; height: 34px; border-radius: 9px;
+  background: var(--accent-dim); border: 1px solid var(--accent-border);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 700; color: var(--accent-soft); flex-shrink: 0;
+}
+.sec-note {
+  padding: 14px; margin-bottom: 14px;
+  background: var(--raise); border: 1px solid var(--border); border-radius: 10px;
+  font-size: 11px; color: var(--text-4); line-height: 1.6;
+}
+.sec-empty {
+  padding: 18px 14px; text-align: center;
+  font-size: 11px; color: var(--text-4); line-height: 1.6;
+}
+
+/* ── Tarjetas de Anomalías / Hallazgos ──────────────────────────────────── */
 .sec-card {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 14px 16px;
-  margin-bottom: 8px;
-  border-radius: 10px;
-  border: 1px solid rgba(255,255,255,0.05);
-  background: rgba(255,255,255,0.02);
+  display: flex; flex-direction: column; gap: 10px;
+  padding: 14px 16px; margin-bottom: 8px; border-radius: 10px;
+  border: 1px solid var(--border); background: var(--raise);
 }
-.sec-card--critical { background: rgba(239,68,68,0.06); border-color: rgba(239,68,68,0.15); }
-.sec-card--warning  { background: rgba(245,158,11,0.06); border-color: rgba(245,158,11,0.15); }
-.sec-card--info     { background: rgba(37,99,235,0.05); border-color: rgba(37,99,235,0.12); }
-.sec-card--ack      { background: rgba(255,255,255,0.015); border-color: rgba(255,255,255,0.03); opacity: 0.6; }
+.sec-card:last-child { margin-bottom: 0; }
+.sec-card--critical { background: var(--danger-tint); border-color: var(--danger-line); box-shadow: 0 0 16px rgba(255,59,107,0.08); }
+.sec-card--warning  { background: var(--warn-tint);   border-color: var(--warn-line); }
+.sec-card--info     { background: var(--info-tint);   border-color: var(--info-line); }
+.sec-card--ack      { background: rgba(120,160,220,0.015); border-color: var(--border-soft); opacity: 0.6; }
 
-.sec-card-header {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
+.sec-card-header { display: flex; flex-direction: column; gap: 10px; }
 @media (min-width: 640px) {
-  .sec-card-header {
-    flex-direction: row;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 16px;
-  }
+  .sec-card-header { flex-direction: row; align-items: flex-start; justify-content: space-between; gap: 16px; }
 }
 
-.sec-card-main {
-  display: flex;
-  gap: 10px;
-  align-items: flex-start;
-  min-width: 0;
-  flex: 1;
+.sec-card-main { display: flex; gap: 11px; align-items: flex-start; min-width: 0; flex: 1; }
+
+/* Íconos SVG — color por severidad de la tarjeta */
+.sec-card-icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  flex-shrink: 0; margin-top: 1px; color: var(--text-3);
 }
-.sec-card-icon { font-size: 15px; flex-shrink: 0; margin-top: 1px; line-height: 1.4; }
+.sec-card-icon svg { width: 16px; height: 16px; }
+.sec-card--critical .sec-card-icon { color: var(--danger); }
+.sec-card--warning  .sec-card-icon { color: var(--warn); }
+.sec-card--info     .sec-card-icon { color: var(--accent-soft); }
+
 .sec-card-body { min-width: 0; flex: 1; }
-.sec-card-title {
-  font-size: 12px; font-weight: 600; color: #f1f5f9;
-  line-height: 1.4; word-break: break-word;
-}
+.sec-card-title { font-size: 12px; font-weight: 600; color: var(--text); line-height: 1.4; word-break: break-word; }
 .sec-card-title.is-ack { text-decoration: line-through; opacity: 0.7; }
-.sec-card-desc {
-  font-size: 11px; color: var(--text-3); line-height: 1.5;
-  margin-top: 4px; word-break: break-word;
-}
+.sec-card-desc { font-size: 11px; color: var(--text-3); line-height: 1.5; margin-top: 4px; word-break: break-word; }
 
-.sec-card-meta {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
-}
+.sec-card-meta { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 @media (min-width: 640px) {
-  .sec-card-meta {
-    flex-direction: column;
-    align-items: flex-end;
-    gap: 6px;
-  }
+  .sec-card-meta { flex-direction: column; align-items: flex-end; gap: 6px; }
 }
 
 .sec-card-code {
-  font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
-  font-size: 10.5px;
-  line-height: 1.6;
-  color: #94a3b8;
-  background: rgba(0,0,0,0.25);
-  border: 1px solid rgba(255,255,255,0.04);
-  border-radius: 6px;
-  padding: 8px 10px;
-  overflow-x: auto;
-  white-space: nowrap;
-  -webkit-overflow-scrolling: touch;
+  font-family: var(--font-mono, 'JetBrains Mono', monospace);
+  font-size: 10.5px; line-height: 1.6; color: var(--text-3);
+  background: rgba(0,0,0,0.25); border: 1px solid var(--border-soft); border-radius: 6px;
+  padding: 8px 10px; overflow-x: auto; white-space: nowrap; -webkit-overflow-scrolling: touch;
 }
 .sec-card-code::-webkit-scrollbar { height: 4px; }
-.sec-card-code::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+.sec-card-code::-webkit-scrollbar-thumb { background: rgba(120,160,220,0.18); border-radius: 2px; }
 
 .sec-card-footer {
-  display: flex;
-  justify-content: flex-end;
-  padding-top: 8px;
-  margin-top: 2px;
-  border-top: 1px solid rgba(255,255,255,0.04);
+  display: flex; justify-content: flex-end; padding-top: 8px; margin-top: 2px;
+  border-top: 1px solid var(--border-soft);
 }
 
+/* ── Encabezados internos en parciales (Secure Score / MFA / Hallazgos) ─── */
+.sec-inline-ico { display: inline-flex; align-items: center; vertical-align: -2px; margin-right: 6px; }
+.sec-inline-ico svg { width: 13px; height: 13px; }
+
 /* Sección colapsable de anomalías revisadas */
-.sec-reviewed {
-  margin-top: 10px;
-  border: 1px solid rgba(255,255,255,0.04);
-  border-radius: 8px;
-  background: rgba(255,255,255,0.012);
-}
+.sec-reviewed { margin-top: 10px; border: 1px solid var(--border-soft); border-radius: 8px; background: rgba(120,160,220,0.012); }
 .sec-reviewed-summary {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 9px 12px;
-  cursor: pointer;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-3);
-  list-style: none;
-  user-select: none;
+  display: flex; align-items: center; gap: 8px; padding: 9px 12px; cursor: pointer;
+  font-size: 11px; font-weight: 600; color: var(--text-3); list-style: none; user-select: none;
 }
 .sec-reviewed-summary::-webkit-details-marker { display: none; }
-.sec-reviewed-chevron {
-  font-size: 9px;
-  color: var(--text-4);
-  transition: transform 0.15s ease;
-}
+.sec-reviewed-chevron { font-size: 9px; color: var(--text-4); transition: transform 0.15s ease; }
 .sec-reviewed[open] .sec-reviewed-chevron { transform: rotate(90deg); }
 .sec-reviewed-count {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 9px;
-  color: var(--text-4);
-  background: rgba(255,255,255,0.04);
-  padding: 1px 7px;
-  border-radius: 10px;
+  font-family: var(--font-mono, monospace); font-size: 9px; color: var(--text-4);
+  background: var(--raise); padding: 1px 7px; border-radius: 10px;
 }
-.sec-reviewed-list {
-  padding: 0 8px 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.sec-card-mini {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 8px;
-  border-radius: 6px;
-  font-size: 11px;
-  opacity: 0.55;
-}
-.sec-card-mini:hover { opacity: 0.85; background: rgba(255,255,255,0.02); }
-.sec-card-mini-icon { font-size: 11px; flex-shrink: 0; }
-.sec-card-mini-title {
-  color: var(--text-3);
-  text-decoration: line-through;
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-.sec-card-mini-desc {
-  color: var(--text-4);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  flex: 1;
-  min-width: 0;
-}
-.sec-card-mini-date {
-  font-size: 9px;
-  color: var(--text-4);
-  flex-shrink: 0;
-}
+.sec-reviewed-list { padding: 0 8px 8px; display: flex; flex-direction: column; gap: 2px; }
+.sec-card-mini { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px; font-size: 11px; opacity: 0.6; }
+.sec-card-mini:hover { opacity: 0.9; background: rgba(120,160,220,0.03); }
+.sec-card-mini-icon { display: inline-flex; align-items: center; flex-shrink: 0; color: var(--text-4); }
+.sec-card-mini-icon svg { width: 12px; height: 12px; }
+.sec-card-mini-title { color: var(--text-3); text-decoration: line-through; white-space: nowrap; flex-shrink: 0; }
+.sec-card-mini-desc { color: var(--text-4); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0; }
+.sec-card-mini-date { font-size: 9px; color: var(--text-4); flex-shrink: 0; }
 @media (max-width: 640px) {
   .sec-card-mini { flex-wrap: wrap; }
   .sec-card-mini-desc { white-space: normal; flex-basis: 100%; }

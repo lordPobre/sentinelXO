@@ -4,9 +4,9 @@
   <div class="sec-card-header">
     <div class="sec-card-main">
       <span class="sec-card-icon">
-        {% if anomaly.anomaly_type == 'impossible_travel' %}🚨
-        {% elif anomaly.anomaly_type == 'risky_signin' %}⚠️
-        {% else %}🌍{% endif %}
+        {% if anomaly.anomaly_type == 'impossible_travel' %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-5.6-7-11a7 7 0 0 1 14 0c0 5.4-7 11-7 11z"/><path d="M12 7v4M12 14h.01"/></svg>
+        {% elif anomaly.anomaly_type == 'risky_signin' %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17h.01"/></svg>
+        {% else %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c2.6 2.7 2.6 15.3 0 18M12 3c-2.6 2.7-2.6 15.3 0 18"/></svg>{% endif %}
       </span>
       <div class="sec-card-body">
         <div class="sec-card-title {% if anomaly.status == 'acknowledged' %}is-ack{% endif %}">
