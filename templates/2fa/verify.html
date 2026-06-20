@@ -4,9 +4,12 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Verificación 2FA — Sentinel XO</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
     * { margin:0; padding:0; box-sizing:border-box; }
-    body { background:#080b10; color:#f1f5f9; font-family:'Inter',-apple-system,sans-serif;
+    body { background:#080b10; color:#f1f5f9; font-family:'IBM Plex Sans',-apple-system,sans-serif;
            min-height:100vh; display:flex; align-items:center; justify-content:center; }
     .box { width:100%; max-width:380px; padding:0 20px; }
     .logo { text-align:center; margin-bottom:32px; }
@@ -19,17 +22,19 @@
             border-radius:14px; padding:28px; }
     .card h2 { font-size:15px; font-weight:600; color:#cbd5e1; margin-bottom:6px; }
     .card p { font-size:12px; color:#64748b; line-height:1.5; margin-bottom:22px; }
-    .icon-2fa { font-size:32px; text-align:center; margin-bottom:16px; }
+    .icon-2fa { display:flex; justify-content:center; margin-bottom:16px; color:#60a5fa; }
     .form-group { margin-bottom:16px; }
     .form-group label { display:block; font-size:11px; font-weight:600; color:#94a3b8;
                         letter-spacing:0.05em; text-transform:uppercase; margin-bottom:6px; }
     .code-input { width:100%; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08);
                   border-radius:8px; padding:12px 14px; color:#f1f5f9; font-size:22px;
-                  font-family:monospace; letter-spacing:0.3em; text-align:center;
+                  font-family:'IBM Plex Mono',monospace; letter-spacing:0.3em; text-align:center;
                   outline:none; transition:border-color 0.2s; }
     .code-input:focus { border-color:rgba(37,99,235,0.5); background:rgba(37,99,235,0.04); }
     .btn { width:100%; background:#2563eb; color:white; border:none; border-radius:8px;
            padding:12px; font-size:14px; font-weight:600; cursor:pointer; margin-top:4px;
+           font-family:inherit;
+           display:inline-flex; align-items:center; justify-content:center; gap:8px;
            transition:background 0.15s; }
     .btn:hover { background:#1d4ed8; }
     .error { background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.2);
@@ -53,7 +58,11 @@
     <p>Plataforma de Monitoreo Avanzado</p>
   </div>
   <div class="card">
-    <div class="icon-2fa">🔐</div>
+    <div class="icon-2fa">
+      <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>
+      </svg>
+    </div>
     <h2>Verificación de dos factores</h2>
     <p>Ingresa el código de 6 dígitos de tu aplicación de autenticación (Google Authenticator, Authy, etc.)</p>
     {% if messages %}
@@ -70,7 +79,10 @@
                placeholder="000000" autocomplete="one-time-code"
                autofocus inputmode="numeric" pattern="[0-9]{6}">
       </div>
-      <button type="submit" class="btn">Verificar →</button>
+      <button type="submit" class="btn">
+        Verificar
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+      </button>
     </form>
     <div class="hint">
       ¿Problemas? <a href="/auth/logout/">Cerrar sesión</a>
