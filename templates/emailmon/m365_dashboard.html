@@ -108,18 +108,26 @@
   </div>
 </div>
 
-<!-- Gráfico SMTP M365 -->
-{% if chart_data_json %}
+<!-- Gráfico latencia Graph API M365 -->
 <div class="chart-card fu-1" style="margin-bottom:14px;">
   <div class="chart-title">
     Tiempo de respuesta — Graph API M365
     <span class="mono" style="font-size:10px;color:var(--text-4);">Últimas verificaciones</span>
   </div>
+  {% if m365_checks %}
   <div style="position:relative;height:90px;">
     <canvas id="chart-m365-smtp"></canvas>
   </div>
+  {% else %}
+  <div style="height:90px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;text-align:center;color:var(--text-4);">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.45;">
+      <path d="M3 3v18h18"/><path d="M7 14l3-3 3 3 4-5"/>
+    </svg>
+    <div style="font-size:12px;">Aún no hay verificaciones registradas</div>
+    <div class="mono" style="font-size:10px;color:var(--text-4);">Usa "Verificar ahora" para generar el primer punto</div>
+  </div>
+  {% endif %}
 </div>
-{% endif %}
 
 <!-- Estado por cliente -->
 <div class="card fu-2" style="overflow:hidden;margin-bottom:14px;">
@@ -160,12 +168,13 @@
 
       <!-- Botón verificar este cliente -->
       <div id="m365-client-{{ client.id }}" style="min-width:140px;text-align:right;">
-        <button class="btn-ghost" style="padding:5px 10px;font-size:11px;"
+        <button class="btn-ghost" style="padding:5px 10px;font-size:11px;display:inline-flex;align-items:center;gap:5px;"
                 hx-post="{% url 'emailmon:m365-check' %}"
                 hx-vals='{"client_id": "{{ client.id }}"}'
                 hx-target="#m365-client-{{ client.id }}"
                 hx-swap="innerHTML">
-          ↻ Verificar
+          <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" style="flex-shrink:0;"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+          Verificar
         </button>
       </div>
     </div>
@@ -178,7 +187,7 @@
   {% endfor %}
 </div>
 
-<!-- Historial de checks SMTP M365 -->
+<!-- Historial de checks Graph API M365 -->
 <div class="card fu-3" style="overflow:hidden;">
   <div class="card-header">
     <span class="card-title">Historial checks — Graph API M365</span>
@@ -204,7 +213,7 @@
   {% endfor %}
 </div>
 
-{% if chart_data_json %}
+{% if m365_checks %}
 <script>
 const chartData = {{ chart_data_json|safe }};
 const colors = chartData.status.map(s =>

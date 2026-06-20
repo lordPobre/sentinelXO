@@ -5,7 +5,7 @@ from core.models import MaintenanceIncident, Client
 from django.conf import settings
 from django.utils import timezone
 from .models import EmailLog, SmtpCheck
-from .services import check_m365_smtp
+from .services import check_m365_smtp, check_m365_graph_health
 
 logger = logging.getLogger("perseus")
 
@@ -84,3 +84,9 @@ def check_m365_all_clients():
 
     logger.info(f"M365 check completo: {results}")
     return results
+
+@shared_task(name="emailmon.run_m365_checks")
+def run_m365_checks():
+    
+    for c in Client.objects.filter(is_active=True, m365_tenant__is_active=True):
+        check_m365_graph_health(c)
