@@ -673,7 +673,7 @@ function initCharts() {
 <div class="chart-card" style="margin-top:14px;" id="ai-panel">
   <div class="chart-title" style="justify-content:space-between;">
     <div style="display:flex;align-items:center;gap:8px;">
-      <span style="font-size:16px;">🧠</span>
+      <span style="display:inline-flex;color:var(--accent-soft);"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.6 5.6 1.9-5.6 1.9L12 18l-1.9-5.6L4.5 10.5l5.6-1.9z"/></svg></span>
       <span>Análisis Predictivo IA</span>
     </div>
     <button id="ai-btn" onclick="runAiAnalysis()"
@@ -689,7 +689,7 @@ function initCharts() {
   <div id="ai-content" style="padding:0 4px;">
     <!-- Estado inicial -->
     <div id="ai-idle" style="padding:24px;text-align:center;">
-      <div style="font-size:32px;margin-bottom:10px;opacity:0.3;">🔍</div>
+      <div style="display:flex;justify-content:center;margin-bottom:10px;color:var(--text-4);opacity:0.5;"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg></div>
       <div style="font-size:13px;font-weight:600;color:#cbd5e1;margin-bottom:6px;">
         Análisis predictivo disponible
       </div>
@@ -842,7 +842,7 @@ function renderAiResult(data) {
       <div style="margin-top:10px;padding:10px 14px;background:rgba(37,99,235,0.06);
                   border:1px solid rgba(37,99,235,0.15);border-radius:8px;">
         <div style="font-size:10px;font-weight:600;color:#60a5fa;letter-spacing:0.05em;
-                    text-transform:uppercase;margin-bottom:4px;">🔮 Predicción 24-48h</div>
+                    text-transform:uppercase;margin-bottom:4px;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:4px;"><path d="M3 17l6-6 4 4 7-7"/><path d="M17 8h4v4"/></svg>Predicción 24-48h</div>
         <div style="font-size:11px;color:var(--text-2);line-height:1.5;">${a.prediccion}</div>
       </div>
 
@@ -851,7 +851,7 @@ function renderAiResult(data) {
       <div style="margin-top:8px;padding:10px 14px;background:rgba(245,158,11,0.07);
                   border:1px solid rgba(245,158,11,0.2);border-radius:8px;">
         <div style="font-size:10px;font-weight:600;color:#f59e0b;letter-spacing:0.05em;
-                    text-transform:uppercase;margin-bottom:4px;">⚡ Acción prioritaria</div>
+                    text-transform:uppercase;margin-bottom:4px;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:4px;"><path d="M13 2L3 14h7v8l10-12h-7z"/></svg>Acción prioritaria</div>
         <div style="font-size:11px;color:var(--text-2);line-height:1.5;">${a.accion_prioritaria}</div>
       </div>` : `
       <div style="margin-top:8px;padding:8px 14px;background:rgba(16,185,129,0.06);

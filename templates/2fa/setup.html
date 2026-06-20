@@ -7,8 +7,8 @@
 {% if messages %}
 {% for message in messages %}
 <div style="padding:12px 16px;margin-bottom:14px;border-radius:8px;font-size:12px;
-  {% if message.tags == 'error' %}background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.2);color:#f87171;
-  {% else %}background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.2);color:#34d399;{% endif %}">
+  {% if message.tags == 'error' %}background:var(--danger-tint);border:1px solid var(--danger-line);color:var(--danger);
+  {% else %}background:var(--success-tint);border:1px solid var(--success-line);color:var(--success);{% endif %}">
   {{ message }}
 </div>
 {% endfor %}
@@ -19,10 +19,16 @@
   <!-- Estado actual -->
   <div class="chart-card">
     <div style="font-size:10px;font-weight:600;color:var(--text-4);letter-spacing:0.05em;text-transform:uppercase;margin-bottom:12px;">Estado actual</div>
-    <div style="display:flex;align-items:center;gap:10px;padding:14px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.05);border-radius:10px;margin-bottom:16px;">
-      <span style="font-size:24px;">{% if totp_cfg.is_enabled %}🔐{% else %}🔓{% endif %}</span>
+    <div style="display:flex;align-items:center;gap:12px;padding:14px;background:var(--raise);border:1px solid var(--border);border-radius:10px;margin-bottom:16px;">
+      <span style="display:inline-flex;flex-shrink:0;color:{% if totp_cfg.is_enabled %}var(--green){% else %}var(--text-4){% endif %};">
+        {% if totp_cfg.is_enabled %}
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+        {% else %}
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 7.6-2.1"/></svg>
+        {% endif %}
+      </span>
       <div>
-        <div style="font-size:13px;font-weight:600;color:#f1f5f9;">
+        <div style="font-size:13px;font-weight:600;color:var(--text);">
           {% if totp_cfg.is_enabled %}2FA Activo{% else %}2FA Inactivo{% endif %}
         </div>
         <div style="font-size:11px;color:var(--text-4);">
@@ -41,11 +47,9 @@
       {% csrf_token %}
       <input type="hidden" name="action" value="disable">
       <input type="text" name="code" maxlength="6" placeholder="000000"
-             style="width:100%;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);
-                    border-radius:8px;padding:10px 12px;color:#f1f5f9;font-size:18px;
-                    font-family:monospace;letter-spacing:0.3em;text-align:center;
-                    outline:none;margin-bottom:10px;" inputmode="numeric">
-      <button type="submit" class="btn-ghost" style="width:100%;font-size:12px;padding:8px;color:var(--red);">
+             class="px-input" style="font-size:18px;font-family:var(--font-mono);
+                    letter-spacing:0.3em;text-align:center;margin-bottom:10px;" inputmode="numeric">
+      <button type="submit" class="btn-ghost" style="width:100%;justify-content:center;font-size:12px;padding:8px;color:var(--red);">
         Desactivar 2FA
       </button>
     </form>
@@ -53,7 +57,7 @@
     <form method="POST" style="margin-top:4px;">
       {% csrf_token %}
       <input type="hidden" name="action" value="regenerate">
-      <button type="submit" class="btn-ghost" style="width:100%;font-size:12px;padding:8px;">
+      <button type="submit" class="btn-ghost" style="width:100%;justify-content:center;font-size:12px;padding:8px;">
         ↺ Regenerar secreto
       </button>
     </form>
@@ -75,8 +79,8 @@
 
     <div style="margin-bottom:12px;">
       <div style="font-size:9px;color:var(--text-4);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px;">Clave manual</div>
-      <div class="mono" style="font-size:11px;color:#60a5fa;background:rgba(37,99,235,0.08);
-                                border:1px solid rgba(37,99,235,0.12);border-radius:6px;
+      <div class="mono" style="font-size:11px;color:var(--accent-soft);background:var(--accent-dim);
+                                border:1px solid var(--accent-border);border-radius:6px;
                                 padding:8px 10px;word-break:break-all;">{{ secret_key }}</div>
     </div>
 
@@ -88,11 +92,9 @@
       {% csrf_token %}
       <input type="hidden" name="action" value="enable">
       <input type="text" name="code" maxlength="6" placeholder="000000"
-             style="width:100%;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);
-                    border-radius:8px;padding:10px 12px;color:#f1f5f9;font-size:18px;
-                    font-family:monospace;letter-spacing:0.3em;text-align:center;
-                    outline:none;margin-bottom:10px;" inputmode="numeric" autofocus>
-      <button type="submit" class="btn-primary" style="width:100%;font-size:13px;padding:10px;">
+             class="px-input" style="font-size:18px;font-family:var(--font-mono);
+                    letter-spacing:0.3em;text-align:center;margin-bottom:10px;" inputmode="numeric" autofocus>
+      <button type="submit" class="btn-primary" style="width:100%;justify-content:center;font-size:13px;padding:10px;">
         Activar 2FA
       </button>
     </form>
@@ -104,11 +106,15 @@
   </div>
 </div>
 
-<div style="max-width:800px;margin-top:14px;padding:14px;background:rgba(37,99,235,0.05);
-            border:1px solid rgba(37,99,235,0.12);border-radius:10px;font-size:11px;color:var(--text-4);">
-  💡 <strong style="color:#60a5fa;">Recomendado:</strong>
-  Descarga <strong>Google Authenticator</strong> o <strong>Authy</strong> en tu teléfono.
-  Escanea el QR de arriba. Ingresa el código de 6 dígitos que genera la app para activar 2FA.
-  <br>Una vez activado, necesitarás ese código cada vez que inicies sesión en Sentinel XO.
+<div style="max-width:800px;margin-top:14px;padding:14px;background:var(--accent-dim);
+            border:1px solid var(--accent-border);border-radius:10px;font-size:11px;color:var(--text-4);
+            display:flex;gap:10px;align-items:flex-start;line-height:1.6;">
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent-soft)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-top:2px;"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5h.01"/></svg>
+  <div>
+    <strong style="color:var(--accent-soft);">Recomendado:</strong>
+    Descarga <strong>Google Authenticator</strong> o <strong>Authy</strong> en tu teléfono.
+    Escanea el QR de arriba. Ingresa el código de 6 dígitos que genera la app para activar 2FA.
+    <br>Una vez activado, necesitarás ese código cada vez que inicies sesión en Sentinel XO.
+  </div>
 </div>
 {% endblock %}

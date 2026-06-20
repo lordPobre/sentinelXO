@@ -209,25 +209,67 @@ def get_gpu_stats():
     return None 
 
 
-def _ping_gateway():
+def _default_gateway():
     """
-    Mide latencia (ms) y pérdida de paquetes (%) haciendo ping al gateway por
-    defecto. Devuelve (latency_ms, packet_loss_pct) o (None, None) si falla.
+    Detecta la puerta de enlace IPv4 por defecto de forma robusta, sin depender
+    del tipo de conexión (cable o WiFi) ni del orden de los adaptadores, y sin
+    confundirse con una gateway IPv6 listada primero.
     """
-    try:
-        import subprocess, re
-        if IS_WINDOWS:
+    import subprocess, re
+    if IS_WINDOWS:
+        # 1) Vía confiable: la ruta por defecto IPv4 (0.0.0.0/0) con menor métrica.
+        try:
+            ps = ("(Get-NetRoute -DestinationPrefix '0.0.0.0/0' "
+                  "-ErrorAction SilentlyContinue | Sort-Object RouteMetric | "
+                  "Select-Object -First 1).NextHop")
+            out = subprocess.run(["powershell", "-NoProfile", "-Command", ps],
+                                 capture_output=True, text=True, timeout=10,
+                                 encoding="utf-8", errors="ignore").stdout.strip()
+            if re.fullmatch(r"\d{1,3}(?:\.\d{1,3}){3}", out) and out != "0.0.0.0":
+                return out
+        except Exception:
+            pass
+        # 2) Fallback: ipconfig, tomando SOLO la IPv4. La gateway puede listar una
+        #    IPv6 link-local primero y la IPv4 en una línea de continuación.
+        try:
             out = subprocess.run(["ipconfig"], capture_output=True, text=True,
                                  timeout=8, encoding="cp850", errors="ignore").stdout
-            m = re.search(r"(?:Default Gateway|Puerta de enlace predeterminada)[ .]*:\s*([\d.]+)", out)
-            gateway = m.group(1) if m else None
-        else:
+            lines = out.splitlines()
+            for i, line in enumerate(lines):
+                if "Default Gateway" in line or "Puerta de enlace predeterminada" in line:
+                    # Revisa la línea de la etiqueta y sus continuaciones
+                    # (las líneas de continuación no traen otro ':' de etiqueta).
+                    j = i
+                    while j < len(lines) and (j == i or ":" not in lines[j]):
+                        ip = re.search(r"\b(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\b", lines[j])
+                        if ip and ip.group(1) != "0.0.0.0":
+                            return ip.group(1)
+                        j += 1
+        except Exception:
+            pass
+        return None
+    else:
+        try:
             out = subprocess.run(["ip", "route"], capture_output=True, text=True,
                                  timeout=8, errors="ignore").stdout
             m = re.search(r"default via ([\d.]+)", out)
-            gateway = m.group(1) if m else None
+            return m.group(1) if m else None
+        except Exception:
+            return None
 
+
+def _ping_gateway():
+    """
+    Mide latencia (ms) y pérdida de paquetes (%) haciendo ping a la puerta de
+    enlace por defecto. Devuelve (latency_ms, packet_loss_pct) o (None, None).
+    Funciona igual por cable o WiFi: la detección del gateway ya no depende del
+    tipo de conexión ni se rompe con IPv6.
+    """
+    try:
+        import subprocess, re
+        gateway = _default_gateway()
         if not gateway:
+            logger.debug("No se pudo determinar la puerta de enlace por defecto")
             return None, None
 
         if IS_WINDOWS:
@@ -240,8 +282,8 @@ def _ping_gateway():
             r = subprocess.run(["ping", "-c", "4", "-W", "1", gateway],
                                capture_output=True, text=True, timeout=12,
                                errors="ignore").stdout
-            lat = re.search(r"= [\d.]+/([\d.]+)/", r)
-            loss = re.search(r"(\d+)% packet loss", r)
+            lat = re.search(r"=\s*[\d.]+/([\d.]+)/", r)
+            loss = re.search(r"(\d+)%\s*packet loss", r)
 
         latency = float(lat.group(1)) if lat else None
         packet_loss = float(loss.group(1)) if loss else None
@@ -329,23 +371,31 @@ def get_network_quality():
 def get_network_security():
     """
     Postura de seguridad de la red a la que está conectado el equipo (Windows):
-    - Perfil de red (Public/Private/DomainAuthenticated)
+    - Perfil de red (Public/Private/DomainAuthenticated) — como texto
     - Estado del firewall por perfil
-    - Servidores DNS configurados
+    - Servidores DNS IPv4 de la interfaz activa
     - Tipo de cifrado WiFi (si aplica)
     Devuelve dict, o None si no es Windows.
     """
     if not IS_WINDOWS:
         return None
     try:
-        import subprocess, re, json as _json
+        import subprocess, json as _json
         result = {}
 
+        # Toma el perfil de la conexión con salida a Internet (cable o WiFi),
+        # fuerza la categoría a texto, y obtiene los DNS IPv4 de esa interfaz.
         ps_cmd = (
-            "$p = Get-NetConnectionProfile | Select-Object -First 1; "
+            "$p = Get-NetConnectionProfile | "
+            "Sort-Object -Property @{Expression={$_.IPv4Connectivity -eq 'Internet'}} -Descending | "
+            "Select-Object -First 1; "
+            "$dns = @(); "
+            "if ($p) { $dns = (Get-DnsClientServerAddress -InterfaceIndex $p.InterfaceIndex "
+            "-AddressFamily IPv4 -ErrorAction SilentlyContinue).ServerAddresses }; "
             "$fw = Get-NetFirewallProfile | Select-Object Name,Enabled; "
-            "$o = @{ network_category = $p.NetworkCategory; "
+            "$o = @{ network_category = [string]$p.NetworkCategory; "
             "interface_alias = $p.InterfaceAlias; "
+            "dns_servers = @($dns); "
             "firewall = ($fw | ForEach-Object { @{ name=$_.Name; enabled=[bool]$_.Enabled } }) }; "
             "$o | ConvertTo-Json -Compress -Depth 4"
         )
@@ -355,19 +405,20 @@ def get_network_security():
         if out:
             try:
                 data = _json.loads(out)
-                result["network_category"] = data.get("network_category")
+                result["network_category"] = data.get("network_category") or None
                 result["interface_alias"] = data.get("interface_alias")
+                # ConvertTo-Json serializa un array de 1 elemento como escalar:
+                # normalizamos a lista.
+                dns = data.get("dns_servers")
+                if isinstance(dns, str):
+                    dns = [dns]
+                result["dns_servers"] = dns or []
                 fw = data.get("firewall")
                 if isinstance(fw, dict):
                     fw = [fw]
                 result["firewall"] = fw or []
             except Exception:
                 pass
-
-        dns_out = subprocess.run(["ipconfig", "/all"], capture_output=True, text=True,
-                                 timeout=10, encoding="cp850", errors="ignore").stdout
-        dns_servers = re.findall(r"(?:DNS Servers|Servidores DNS)[ .]*:\s*([\d.]+)", dns_out)
-        result["dns_servers"] = dns_servers
 
         wifi = _wifi_info()
         if wifi:

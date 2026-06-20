@@ -7,7 +7,9 @@
 
 {% if migration_pending %}
 <div style="padding:40px;text-align:center;">
-  <div style="font-size:28px;margin-bottom:12px;opacity:0.3;">⚙️</div>
+  <div style="display:flex;justify-content:center;margin-bottom:12px;color:var(--text-4);opacity:0.5;">
+    <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1"/></svg>
+  </div>
   <div style="font-size:14px;font-weight:600;color:#cbd5e1;margin-bottom:8px;">Migración pendiente</div>
   <div style="font-size:12px;color:var(--text-4);">La tabla de chequeos de seguridad se está creando. Railway aplicará la migración en el próximo deploy.</div>
   <div class="mono" style="font-size:11px;color:var(--text-4);margin-top:8px;">core_securitycheck</div>
