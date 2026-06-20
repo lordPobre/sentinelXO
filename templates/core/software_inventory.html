@@ -29,8 +29,8 @@
 {% else %}
 
 <!-- Análisis CVE -->
-<div class="chart-card" style="margin-bottom:14px;">
-  <div style="display:flex;align-items:center;gap:7px;margin-bottom:12px;">
+<div class="chart-card" style="margin-bottom:14px;padding:18px;">
+  <div style="display:flex;align-items:center;gap:7px;margin-bottom:14px;">
     <svg width="14" height="14" fill="none" stroke="#60a5fa" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" style="flex-shrink:0;">
       <path d="m8 2 1.88 1.88"/><path d="M14.12 3.88 16 2"/><path d="M9 7.13v-1a3.003 3.003 0 1 1 6 0v1"/>
       <path d="M12 20c-3.3 0-6-2.7-6-6v-3a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v3c0 3.3-2.7 6-6 6"/>
@@ -48,8 +48,8 @@
 </div>
 
 <!-- Listado (colapsable, minimizado por defecto) -->
-<details class="chart-card collapsible">
-  <summary class="sw-summary">
+<details class="chart-card collapsible" style="padding:0;overflow:hidden;">
+  <summary class="sw-summary" style="padding:15px 18px;">
     <span style="display:flex;align-items:center;gap:8px;min-width:0;flex-wrap:wrap;">
       <svg width="14" height="14" fill="none" stroke="var(--text-4)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" style="flex-shrink:0;">
         <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>
@@ -63,7 +63,7 @@
     <svg class="chevron" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
   </summary>
 
-  <div style="margin-top:14px;">
+  <div style="padding:14px 18px 18px;">
     <input type="text" id="sw-search" class="px-input" style="max-width:280px;margin-bottom:12px;"
            placeholder="Buscar programa o publicador…"
            oninput="filterSoftware(this.value)">
@@ -122,6 +122,9 @@ details.collapsible > summary::marker { content:""; }
 }
 .chevron { transition:transform .2s ease; color:var(--text-4); flex-shrink:0; }
 details[open] > summary .chevron { transform:rotate(180deg); }
+.sw-summary:hover { background: rgba(255,255,255,0.015); }
+.sw-summary:hover .chevron { color: var(--text-3); }
+details[open] > .sw-summary { border-bottom:1px solid rgba(255,255,255,0.05); }
 
 /* Contenedor con scroll para que la lista larga no estire la página */
 .sw-scroll {
