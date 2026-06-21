@@ -562,10 +562,9 @@ def check_m365_graph_health(client) -> dict:
         logger.error(f"M365 recepción error para {client}: {e}")
 
     overall_ok = result["overall"] == "ok"
-    best_ms = min(
-        (v.get("ms", 0) for v in result["checks"].values() if v.get("ms")),
-        default=0
-    )
+    ping_chk = result["checks"].get("graph_ping", {})
+    best_ms = ping_chk.get("ms") or result["checks"].get("auth", {}).get("ms", 0)
+    
     err_summary  = "; ".join(result["errors"])[:500] if result["errors"] else ""
     overall_str  = result["overall"]
     smtpcheck_status = "ok" if overall_str in ("ok", "warning") else "error"

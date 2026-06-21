@@ -110,21 +110,32 @@
 
 <!-- Gráfico latencia Graph API M365 -->
 <div class="chart-card fu-1" style="margin-bottom:14px;">
-  <div class="chart-title">
-    Tiempo de respuesta — Graph API M365
-    <span class="mono" style="font-size:10px;color:var(--text-4);">Últimas verificaciones</span>
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:14px;flex-wrap:wrap;">
+    <div>
+      <div class="chart-title" style="margin-bottom:2px;">Tiempo de respuesta — Graph API M365</div>
+      <div class="mono" style="font-size:10px;color:var(--text-4);">Latencia del ping a Graph · por verificación</div>
+    </div>
+    {% if latest and latest.response_ms %}
+    <div style="text-align:right;line-height:1.1;">
+      <div class="mono" style="font-size:9px;color:var(--text-4);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:3px;">Última</div>
+      <div class="mono" style="font-size:20px;font-weight:700;{% if latest.response_ms < 500 %}color:var(--green);{% elif latest.response_ms < 2000 %}color:var(--amber);{% else %}color:var(--red);{% endif %}">
+        {{ latest.response_ms }}<span style="font-size:11px;color:var(--text-4);font-weight:500;">ms</span>
+      </div>
+    </div>
+    {% endif %}
   </div>
   {% if m365_checks %}
-  <div style="position:relative;height:90px;">
+  <div style="position:relative;height:150px;">
     <canvas id="chart-m365-smtp"></canvas>
   </div>
   {% else %}
-  <div style="height:90px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;text-align:center;color:var(--text-4);">
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.45;">
-      <path d="M3 3v18h18"/><path d="M7 14l3-3 3 3 4-5"/>
+  <div style="height:150px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;text-align:center;
+              border:1px dashed rgba(255,255,255,0.07);border-radius:10px;background:rgba(255,255,255,0.01);color:var(--text-4);">
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.4;">
+      <path d="M3 3v18h18"/><path d="M7 13l3-3 3 3 4-5"/>
     </svg>
-    <div style="font-size:12px;">Aún no hay verificaciones registradas</div>
-    <div class="mono" style="font-size:10px;color:var(--text-4);">Usa "Verificar ahora" para generar el primer punto</div>
+    <div style="font-size:12px;color:var(--text-3);">Aún no hay verificaciones registradas</div>
+    <div class="mono" style="font-size:10px;color:var(--text-4);">Se grafica la latencia cada vez que corre un check M365</div>
   </div>
   {% endif %}
 </div>
@@ -215,41 +226,64 @@
 
 {% if m365_checks %}
 <script>
-const chartData = {{ chart_data_json|safe }};
-const colors = chartData.status.map(s =>
-  s === "ok" ? "rgba(16,185,129,0.75)" : s === "timeout" ? "rgba(245,158,11,0.75)" : "rgba(239,68,68,0.75)"
-);
-const ctx = document.getElementById("chart-m365-smtp");
-if (ctx && chartData.labels.length) {
-  new Chart(ctx.getContext("2d"), {
-    type: "bar",
+(function () {
+  const chartData = {{ chart_data_json|safe }};
+  const ctx = document.getElementById("chart-m365-smtp");
+  if (!window.Chart || !ctx || !chartData.labels.length) return;
+
+  const g = ctx.getContext("2d");
+  const grad = g.createLinearGradient(0, 0, 0, 150);
+  grad.addColorStop(0, "rgba(34,230,255,0.30)");
+  grad.addColorStop(1, "rgba(34,230,255,0.00)");
+
+  const n = chartData.ms.length;
+  const ptColor = chartData.status.map(s =>
+    s === "ok" ? "#22e6ff" : s === "timeout" ? "#f59e0b" : "#ef4444"
+  );
+
+  new Chart(g, {
+    type: "line",
     data: {
       labels: chartData.labels,
-      datasets: [{ label: "ms", data: chartData.ms, backgroundColor: colors, borderRadius: 3, borderSkipped: false }],
+      datasets: [{
+        label: "ms",
+        data: chartData.ms,
+        borderColor: "#22e6ff",
+        borderWidth: 2,
+        backgroundColor: grad,
+        fill: true,
+        tension: 0.35,
+        pointRadius: chartData.ms.map((_, i) => i === n - 1 ? 3.5 : 0),
+        pointHoverRadius: 4,
+        pointBackgroundColor: ptColor,
+        pointBorderColor: "#05070d",
+        pointBorderWidth: 1.5,
+      }],
     },
     options: {
-      responsive: true, maintainAspectRatio: false, animation: { duration: 300 },
+      responsive: true, maintainAspectRatio: false, animation: { duration: 400 },
+      interaction: { intersect: false, mode: "index" },
       scales: {
-        x: { display: true, grid: { display: false },
-             ticks: { color: "#475569", font: { size: 9, family: "'JetBrains Mono',monospace" }, maxTicksLimit: 12, maxRotation: 0 },
+        x: { grid: { display: false },
+             ticks: { color: "#475569", font: { size: 9, family: "'IBM Plex Mono',monospace" }, maxTicksLimit: 8, maxRotation: 0 },
              border: { display: false } },
-        y: { display: true, min: 0, grid: { color: "rgba(255,255,255,0.04)", drawTicks: false },
-             ticks: { color: "#475569", font: { size: 9, family: "'JetBrains Mono',monospace" }, callback: v => v + "ms", maxTicksLimit: 4, padding: 6 },
+        y: { min: 0, grid: { color: "rgba(255,255,255,0.05)", drawTicks: false },
+             ticks: { color: "#475569", font: { size: 9, family: "'IBM Plex Mono',monospace" }, callback: v => v + "ms", maxTicksLimit: 4, padding: 8 },
              border: { display: false } },
       },
       plugins: {
         legend: { display: false },
         tooltip: {
-          backgroundColor: "#0d1117", borderColor: "rgba(255,255,255,0.08)", borderWidth: 1,
-          titleFont: { size: 10, family: "'JetBrains Mono',monospace" },
-          bodyFont:  { size: 11, family: "'JetBrains Mono',monospace" },
-          titleColor: "#64748b", bodyColor: "#e2e8f0",
-          callbacks: { label: ctx => " " + ctx.raw + "ms" },
+          backgroundColor: "#0d1117", borderColor: "rgba(34,230,255,0.22)", borderWidth: 1, padding: 10,
+          titleFont: { size: 10, family: "'IBM Plex Mono',monospace" },
+          bodyFont:  { size: 12, family: "'IBM Plex Mono',monospace" },
+          titleColor: "#64748b", bodyColor: "#eaf2ff", displayColors: false,
+          callbacks: { label: c => " " + c.raw + " ms" },
         },
       },
     },
   });
-}
+})();
 </script>
 {% endif %}
 <style>
