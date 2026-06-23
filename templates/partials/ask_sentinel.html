@@ -1,8 +1,9 @@
 {% if request.user.is_authenticated %}
-{# ── Pregúntale a Sentinel — FAB global + modal ────────────────────────────
-   Incluir una vez antes de </body> en base/layout.html:
-       {% include "partials/ask_sentinel.html" %}
-#}
+{% comment %}
+  Pregúntale a Sentinel — FAB global + modal.
+  Incluir una sola vez, justo antes de </body> en base/layout.html, usando la
+  etiqueta include de Django apuntando a la ruta "partials/ask_sentinel.html".
+{% endcomment %}
 <style>
   #ask-fab {
     position: fixed; right: 22px; bottom: 22px; z-index: 900;
