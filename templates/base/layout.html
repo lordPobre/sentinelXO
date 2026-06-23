@@ -1,6 +1,6 @@
 {% extends "base/base.html" %}
 {% block body %}
-{% include "partials/ask_sentinel.html" %}
+
 
 <style>
 /* ── Responsive Layout ──────────────────────────────────────────── */
@@ -326,4 +326,5 @@ function handleResize(){
 }
 window.addEventListener('resize', handleResize);
 </script>
+{% include "partials/ask_sentinel.html" %}
 {% endblock %}
