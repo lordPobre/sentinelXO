@@ -30,7 +30,7 @@ class CreateModelIfNotExists(migrations.CreateModel):
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("core", "0025_alter_client_options.py"),
+        ("core", "0025_alter_client_options"),
     ]
 
     operations = [
