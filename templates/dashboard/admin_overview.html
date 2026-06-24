@@ -15,27 +15,157 @@
 {% endblock %}
 
 {% block content %}
-<div class="kpi-grid-4" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px;">
-  <div class="kpi-card kpi-accent fu">
-    <div class="kpi-label">Clientes activos</div>
-    <div class="kpi-value">{{ clients|length }}</div>
-    <div style="font-size:11px;color:var(--text-4);">en monitoreo</div>
+<style>
+/* ── KPIs con cometa neón orbitando (Resumen global) ───────────────────── */
+@property --nkpi-a { syntax:'<angle>'; initial-value:0deg; inherits:false; }
+
+.nkpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:20px;}
+@media(max-width:1100px){.nkpi-grid{grid-template-columns:repeat(2,1fr);}}
+@media(max-width:620px){.nkpi-grid{grid-template-columns:1fr;}}
+
+.nkpi{
+  position:relative;border-radius:14px;padding:18px 18px 16px;overflow:visible;
+  background:
+    radial-gradient(circle at 12px 12px, rgba(255,255,255,0.022) 1px, transparent 1px) 0 0/16px 16px,
+    linear-gradient(160deg,#0e1626,#0c1320);
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,0.06);
+  transition:transform .25s ease;
+}
+/* rastro tenue: anillo neón de bajo brillo en todo el borde */
+.nkpi::after{
+  content:"";position:absolute;inset:-3px;border-radius:17px;z-index:3;pointer-events:none;padding:2px;
+  background:var(--sig);
+  -webkit-mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+          mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite:xor; mask-composite:exclude;
+  opacity:.16;filter:drop-shadow(0 0 3px var(--sig));transition:opacity .25s ease;
+}
+.nkpi:hover::after{opacity:.32;}
+/* cometa: arco brillante que orbita por fuera, encima del recuadro */
+.nkpi .orbit{
+  position:absolute;inset:-3px;border-radius:17px;z-index:4;pointer-events:none;padding:2px;
+  background:conic-gradient(from var(--nkpi-a),
+      transparent 0deg 250deg, var(--sig) 320deg, #ffffff 340deg, var(--sig) 350deg, transparent 360deg);
+  -webkit-mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+          mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite:xor; mask-composite:exclude;
+  filter:drop-shadow(0 0 4px var(--sig)) drop-shadow(0 0 9px var(--sig));
+  animation:nkpi-orbit 4.5s linear infinite;
+}
+@keyframes nkpi-orbit{ to{ --nkpi-a:360deg; } }
+.nkpi:hover{transform:translateY(-3px);}
+.nkpi:hover .orbit{animation-duration:1.6s;filter:drop-shadow(0 0 6px var(--sig)) drop-shadow(0 0 14px var(--sig)) drop-shadow(0 0 2px #fff);}
+@media (prefers-reduced-motion: reduce){
+  .nkpi .orbit{animation:none;background:conic-gradient(from 330deg,transparent 0 86%,var(--sig) 94%,transparent 100%);}
+}
+
+.nkpi-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:13px;}
+.nkpi-label{font-family:var(--font-mono);font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--text-3);display:flex;align-items:center;gap:7px;}
+.nkpi-label svg{width:13px;height:13px;stroke:var(--sig);fill:none;opacity:.9;flex-shrink:0;}
+.nkpi-live{font-family:var(--font-mono);font-size:8.5px;letter-spacing:.1em;color:var(--text-4);display:flex;align-items:center;gap:4px;text-transform:uppercase;}
+.nkpi-live .d{width:5px;height:5px;border-radius:50%;background:var(--green,#10b981);box-shadow:0 0 6px var(--green,#10b981);animation:nkpi-pulse 2s ease-in-out infinite;}
+@keyframes nkpi-pulse{0%,100%{opacity:1}50%{opacity:.35}}
+.nkpi-num{font-family:var(--font-mono);font-size:40px;font-weight:700;line-height:1;letter-spacing:-0.02em;color:var(--text-1,#e6ecf5);font-variant-numeric:tabular-nums;}
+.nkpi-viz{margin:13px 0 9px;}
+.nkpi-seg{height:7px;border-radius:4px;background:rgba(255,255,255,0.05);display:flex;gap:2px;overflow:hidden;}
+.nkpi-seg i{display:block;height:100%;border-radius:3px;min-width:0;}
+.nkpi-dots{display:flex;gap:6px;align-items:center;}
+.nkpi-dots i{width:9px;height:9px;border-radius:50%;border:1.5px solid rgba(255,255,255,0.10);}
+.nkpi-horizon{height:7px;display:flex;align-items:center;gap:8px;}
+.nkpi-horizon .base{flex:1;height:1.5px;background:repeating-linear-gradient(90deg,rgba(255,255,255,0.10) 0 4px,transparent 4px 9px);}
+.nkpi-horizon .ok{font-family:var(--font-mono);font-size:9px;color:var(--green,#10b981);display:flex;align-items:center;gap:4px;white-space:nowrap;}
+.nkpi-ctx{font-size:11.5px;color:var(--text-2,#9fb0c8);}
+.nkpi-ctx b{color:var(--text-1,#e6ecf5);font-weight:600;}
+.nkpi-ctx .w{color:var(--amber);font-weight:600;}
+.nkpi-ctx .c{color:var(--red);font-weight:600;}
+.nkpi-ctx .muted{color:var(--text-4);}
+</style>
+
+<div class="nkpi-grid">
+
+  <!-- CLIENTES -->
+  <div class="nkpi fu" style="--sig:{% if health_counts.critical %}var(--red){% elif health_counts.warning %}var(--amber){% else %}var(--cyan,#22e6ff){% endif %};">
+    <span class="orbit"></span>
+    <div class="nkpi-top">
+      <span class="nkpi-label"><svg viewBox="0 0 24 24" stroke-width="1.8"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3 2.7-5 6-5s6 2 6 5"/><path d="M16 6.5a3 3 0 010 5.5M18 20c0-2.2-1-3.8-2.5-4.6"/></svg>Clientes activos</span>
+      <span class="nkpi-live"><span class="d"></span>Live</span>
+    </div>
+    <div class="nkpi-num">{{ clients|length }}</div>
+    <div class="nkpi-viz">
+      <div class="nkpi-seg">
+        <i style="flex:{{ health_counts.ok }};background:var(--green,#10b981);"></i>
+        <i style="flex:{{ health_counts.warning }};background:var(--amber);"></i>
+        <i style="flex:{{ health_counts.critical }};background:var(--red);"></i>
+        <i style="flex:{{ health_counts.unknown }};background:var(--text-4);"></i>
+      </div>
+    </div>
+    <div class="nkpi-ctx">
+      {% if health_counts.critical or health_counts.warning %}
+        {% if health_counts.critical %}<span class="c">{{ health_counts.critical }} crítico</span>{% endif %}
+        {% if health_counts.critical and health_counts.warning %} · {% endif %}
+        {% if health_counts.warning %}<span class="w">{{ health_counts.warning }} con alerta</span>{% endif %}
+      {% else %}
+        <span style="color:var(--green,#10b981);font-weight:600;">todos estables</span>
+      {% endif %}
+      {% if health_counts.unknown %} · {{ health_counts.unknown }} sin datos{% endif %}
+    </div>
   </div>
-  <div class="kpi-card fu-1">
-    <div class="kpi-label">Equipos totales</div>
-    <div class="kpi-value" style="{% if devices_offline %}color:var(--amber);{% endif %}">{{ devices_total }}</div>
-    <div style="font-size:11px;color:var(--text-4);">{% if devices_offline %}<span style="color:var(--red);">{{ devices_offline }} offline</span>{% else %}todos en línea{% endif %}</div>
+
+  <!-- EQUIPOS -->
+  <div class="nkpi fu-1" style="--sig:{% if devices_offline %}var(--red){% else %}var(--cyan,#22e6ff){% endif %};">
+    <span class="orbit"></span>
+    <div class="nkpi-top">
+      <span class="nkpi-label"><svg viewBox="0 0 24 24" stroke-width="1.8"><rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M8 20h8M12 16v4"/></svg>Equipos totales</span>
+      <span class="nkpi-live"><span class="d"></span>Live</span>
+    </div>
+    <div class="nkpi-num">{{ devices_total }}</div>
+    <div class="nkpi-viz">
+      <div class="nkpi-seg">
+        <i style="flex:{{ devices_online }};background:var(--cyan,#22e6ff);"></i>
+        <i style="flex:{{ devices_offline }};background:var(--red);"></i>
+      </div>
+    </div>
+    <div class="nkpi-ctx">
+      {% if devices_total %}<b>{{ devices_online }}</b> en línea{% if devices_offline %} · <span class="c">{{ devices_offline }} offline</span>{% endif %}
+      {% else %}<span class="muted">Sin equipos registrados</span>{% endif %}
+    </div>
   </div>
-  <div class="kpi-card fu-2">
-    <div class="kpi-label">Dominios críticos</div>
-    <div class="kpi-value" style="{% if domains_critical %}color:var(--red);{% endif %}">{{ domains_critical }}</div>
-    <div style="font-size:11px;color:var(--text-4);">vencen en &lt;30 días</div>
+
+  <!-- DOMINIOS -->
+  <div class="nkpi fu-2" style="--sig:{% if domains_critical %}var(--red){% else %}var(--cyan,#22e6ff){% endif %};">
+    <span class="orbit"></span>
+    <div class="nkpi-top">
+      <span class="nkpi-label"><svg viewBox="0 0 24 24" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.5 2.5 15 0 18M12 3c-2.5 2.5-2.5 15 0 18"/></svg>Dominios críticos</span>
+    </div>
+    <div class="nkpi-num">{{ domains_critical }}</div>
+    <div class="nkpi-viz">
+      {% if domains_critical %}
+        <div class="nkpi-seg"><i style="flex:1;background:var(--red);"></i></div>
+      {% else %}
+        <div class="nkpi-horizon"><span class="base"></span><span class="ok"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>vigentes</span></div>
+      {% endif %}
+    </div>
+    <div class="nkpi-ctx"><span class="muted">{% if domains_critical %}Vencidos o vencen en &lt;30 días{% else %}Ninguno vence en &lt;30 días{% endif %}</span></div>
   </div>
-  <div class="kpi-card fu-3">
-    <div class="kpi-label">Incidentes abiertos</div>
-    <div class="kpi-value" style="{% if incidents_open %}color:var(--amber);{% endif %}">{{ incidents_open }}</div>
-    <div style="font-size:11px;color:var(--text-4);">sin resolver</div>
+
+  <!-- INCIDENTES -->
+  <div class="nkpi fu-3" style="--sig:{% if incidents_open %}var(--amber){% else %}var(--green,#10b981){% endif %};">
+    <span class="orbit"></span>
+    <div class="nkpi-top">
+      <span class="nkpi-label"><svg viewBox="0 0 24 24" stroke-width="1.8"><path d="M12 3L2 20h20L12 3z"/><path d="M12 10v4M12 17h.01"/></svg>Incidentes abiertos</span>
+    </div>
+    <div class="nkpi-num">{{ incidents_open }}</div>
+    <div class="nkpi-viz">
+      <div class="nkpi-dots">
+        <i style="{% if incidents_open >= 1 %}border:none;background:var(--amber);{% endif %}"></i>
+        <i style="{% if incidents_open >= 2 %}border:none;background:var(--amber);{% endif %}"></i>
+        <i style="{% if incidents_open >= 3 %}border:none;background:var(--amber);{% endif %}"></i>
+        <span style="font-family:var(--font-mono);font-size:9px;color:var(--text-4);margin-left:4px;">{% if incidents_open %}{{ incidents_open }} activo(s){% else %}en calma{% endif %}</span>
+      </div>
+    </div>
+    <div class="nkpi-ctx"><span class="muted">{% if incidents_open %}Requieren resolución{% else %}Sin incidentes sin resolver{% endif %}</span></div>
   </div>
+
 </div>
 
 <div class="card fu-2">

@@ -34,19 +34,28 @@ def home(request):
 def admin_overview(request):
     if not _is_admin(request.user):
         return redirect("dashboard:home")
-
+ 
     clients = Client.objects.filter(is_active=True).prefetch_related("devices", "domains")
-    devices_total = HardwareDevice.objects.filter(is_active=True).count()
-    devices_offline = sum(1 for d in HardwareDevice.objects.filter(is_active=True) if not d.is_online)
+    active_devices = HardwareDevice.objects.filter(is_active=True)
+    devices_total = active_devices.count()
+    devices_offline = sum(1 for d in active_devices if not d.is_online)
+    devices_online = devices_total - devices_offline
     domains_critical = Domain.objects.filter(status__in=["critical", "expired"]).count()
     incidents_open = MaintenanceIncident.objects.filter(is_resolved=False).count()
-
+ 
+    health_counts = {"ok": 0, "warning": 0, "critical": 0, "unknown": 0}
+    for c in clients:
+        h = c.get_health_status() or "unknown"
+        health_counts[h] = health_counts.get(h, 0) + 1
+ 
     context = {
         "clients": clients,
         "devices_total": devices_total,
         "devices_offline": devices_offline,
+        "devices_online": devices_online,       
         "domains_critical": domains_critical,
         "incidents_open": incidents_open,
+        "health_counts": health_counts,         
         "section": "overview",
     }
     return render(request, "dashboard/admin_overview.html", context)
@@ -289,14 +298,14 @@ def device_detail_live(request, device_id):
     snapshots = list(device.snapshots.order_by("captured_at")[::-1][:60][::-1])
 
     network = getattr(device, "network_snapshot", None)
-    forecast = forecast_device(device)               # ← nueva línea
+    forecast = forecast_device(device)              
 
     return render(request, "dashboard/device_live.html", {
         "device": device,
         "client": device.client,
         "snapshots": snapshots,
         "network": network,
-        "forecast": forecast,                        # ← nueva clave
+        "forecast": forecast,                       
         "section": "realtime",
     })
 
