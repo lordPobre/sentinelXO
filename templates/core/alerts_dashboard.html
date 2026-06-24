@@ -50,23 +50,27 @@
 
 <!-- KPIs -->
 <div class="kpi-grid-4" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px;">
-  <div class="kpi-card fu" style="{% if firing_critical %}border-color:rgba(239,68,68,0.3);{% endif %}">
+  <div class="kpi-card fu neon-orbit" style="--sig:{% if firing_critical %}var(--red){% else %}#22e6ff{% endif %};{% if firing_critical %}border-color:rgba(239,68,68,0.3);{% endif %}">
+    <span class="orbit"></span>
     {% if firing_critical %}<div style="position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(239,68,68,0.6),transparent);"></div>{% endif %}
     <div class="kpi-label">Críticas activas</div>
     <div class="kpi-value" style="color:{% if firing_critical %}var(--red){% else %}#f1f5f9{% endif %};">{{ firing_critical }}</div>
     <div style="font-size:11px;color:var(--text-4);">requieren atención</div>
   </div>
-  <div class="kpi-card fu-1">
+  <div class="kpi-card fu-1 neon-orbit" style="--sig:{% if firing_warning %}var(--amber){% else %}#22e6ff{% endif %};">
+    <span class="orbit"></span>
     <div class="kpi-label">Advertencias activas</div>
     <div class="kpi-value" style="color:{% if firing_warning %}var(--amber){% else %}#f1f5f9{% endif %};">{{ firing_warning }}</div>
     <div style="font-size:11px;color:var(--text-4);">por revisar</div>
   </div>
-  <div class="kpi-card fu-2">
+  <div class="kpi-card fu-2 neon-orbit" style="--sig:var(--green);">
+    <span class="orbit"></span>
     <div class="kpi-label">Resueltas hoy</div>
     <div class="kpi-value" style="color:var(--green);">{{ resolved_today }}</div>
     <div style="font-size:11px;color:var(--text-4);">en las últimas 24h</div>
   </div>
-  <div class="kpi-card fu-3">
+  <div class="kpi-card fu-3 neon-orbit" style="--sig:#60a5fa;">
+    <span class="orbit"></span>
     <div class="kpi-label">Reglas activas</div>
     <div class="kpi-value" style="color:#60a5fa;">{{ total_rules }}</div>
     <div style="font-size:11px;color:var(--text-4);">configuradas</div>

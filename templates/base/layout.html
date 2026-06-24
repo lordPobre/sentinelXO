@@ -151,6 +151,42 @@
   z-index: 1;
   -webkit-overflow-scrolling: touch;
 }
+
+/* ── Cards neón: cometa orbitando + rastro tenue (modificador reutilizable) ── */
+.neon-orbit{ position:relative; overflow:visible; transition:transform .25s ease; }
+.neon-orbit > .orbit{
+  position:absolute; inset:-3px; border-radius:inherit; z-index:4;
+  pointer-events:none; padding:2px;
+  background:conic-gradient(from var(--nkpi-a,0deg),
+      transparent 0deg 250deg, var(--sig,#22e6ff) 320deg, #ffffff 340deg,
+      var(--sig,#22e6ff) 350deg, transparent 360deg);
+  -webkit-mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+          mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite:xor; mask-composite:exclude;
+  filter:drop-shadow(0 0 4px var(--sig,#22e6ff)) drop-shadow(0 0 9px var(--sig,#22e6ff));
+  animation:nkpi-orbit 4.5s linear infinite;
+}
+.neon-orbit > .orbit::before{
+  content:""; position:absolute; inset:0; border-radius:inherit; padding:inherit;
+  background:var(--sig,#22e6ff);
+  -webkit-mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+          mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite:xor; mask-composite:exclude;
+  opacity:.16; filter:drop-shadow(0 0 3px var(--sig,#22e6ff));
+}
+@keyframes nkpi-orbit{ to{ --nkpi-a:360deg; } }
+.neon-orbit:hover{ transform:translateY(-3px); }
+.neon-orbit:hover > .orbit{
+  animation-duration:1.6s;
+  filter:drop-shadow(0 0 6px var(--sig,#22e6ff)) drop-shadow(0 0 14px var(--sig,#22e6ff)) drop-shadow(0 0 2px #fff);
+}
+/* el cometa reemplaza la barra de acento superior en estas tarjetas */
+.neon-orbit.kpi-card::before, .neon-orbit.kpi-accent::before{ display:none !important; }
+@media (prefers-reduced-motion: reduce){
+  .neon-orbit > .orbit{ animation:none;
+    background:conic-gradient(from 330deg, transparent 0 86%, var(--sig,#22e6ff) 94%, transparent 100%); }
+}
+@property --nkpi-a { syntax:'<angle>'; initial-value:0deg; inherits:false; }
 </style>
 
 <!-- Overlay móvil -->

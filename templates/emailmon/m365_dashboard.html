@@ -40,7 +40,8 @@
 <!-- KPIs -->
 <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px;">
   <!-- KPI Envío SMTP -->
-  <div class="kpi-card fu" style="{% if send_pct is not None and send_pct >= 99 %}border-color:rgba(16,185,129,0.25);{% elif send_pct is not None and send_pct < 90 %}border-color:rgba(239,68,68,0.25);{% endif %}">
+  <div class="kpi-card fu neon-orbit" style="--sig:{% if send_pct is None %}#22e6ff{% elif send_pct >= 99 %}var(--green){% elif send_pct >= 90 %}var(--amber){% else %}var(--red){% endif %};{% if send_pct is not None and send_pct >= 99 %}border-color:rgba(16,185,129,0.25);{% elif send_pct is not None and send_pct < 90 %}border-color:rgba(239,68,68,0.25);{% endif %}">
+    <span class="orbit"></span>
     {% if send_pct is not None and send_pct >= 99 %}<div style="position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(16,185,129,0.5),transparent);"></div>{% endif %}
     <div class="kpi-label">Envío SMTP (24h)</div>
     {% if send_pct is not None %}
@@ -59,7 +60,8 @@
   </div>
 
   <!-- KPI Recepción SMTP -->
-  <div class="kpi-card fu" style="{% if recv_pct is not None and recv_pct >= 99 %}border-color:rgba(16,185,129,0.25);{% elif recv_pct is not None and recv_pct < 90 %}border-color:rgba(239,68,68,0.25);{% endif %}">
+  <div class="kpi-card fu neon-orbit" style="--sig:{% if recv_pct is None %}#22e6ff{% elif recv_pct >= 99 %}var(--green){% elif recv_pct >= 90 %}var(--amber){% else %}var(--red){% endif %};{% if recv_pct is not None and recv_pct >= 99 %}border-color:rgba(16,185,129,0.25);{% elif recv_pct is not None and recv_pct < 90 %}border-color:rgba(239,68,68,0.25);{% endif %}">
+    <span class="orbit"></span>
     {% if recv_pct is not None and recv_pct >= 99 %}<div style="position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(16,185,129,0.5),transparent);"></div>{% endif %}
     <div class="kpi-label">Recepción SMTP (24h)</div>
     {% if recv_pct is not None %}
@@ -76,7 +78,8 @@
     <div style="font-size:11px;color:var(--text-4);">Presiona "Verificar ahora"</div>
     {% endif %}
   </div>
-  <div class="kpi-card fu-1">
+  <div class="kpi-card fu-1 neon-orbit" style="--sig:{% if not latest %}#22e6ff{% elif latest.status == 'ok' %}var(--green){% elif latest.status == 'timeout' %}var(--amber){% else %}var(--red){% endif %};">
+    <span class="orbit"></span>
     <div class="kpi-label">Último check M365</div>
     {% if latest %}
     <div style="display:flex;align-items:center;gap:8px;margin-top:8px;margin-bottom:4px;">
@@ -96,13 +99,15 @@
     {% endif %}
   </div>
 
-  <div class="kpi-card fu-2">
+  <div class="kpi-card fu-2 neon-orbit" style="--sig:#60a5fa;">
+    <span class="orbit"></span>
     <div class="kpi-label">Clientes M365</div>
     <div class="kpi-value" style="color:#60a5fa;">{{ m365_clients|length }}</div>
     <div style="font-size:11px;color:var(--text-4);">Con tenant configurado</div>
   </div>
 
-  <div class="kpi-card fu-3" id="m365-global-result">
+  <div class="kpi-card fu-3 neon-orbit" id="m365-global-result" style="--sig:#22e6ff;">
+    <span class="orbit"></span>
     <div class="kpi-label">Verificación global</div>
     <div style="font-size:12px;color:var(--text-4);margin-top:12px;">Usa el botón "Verificar ahora"</div>
   </div>

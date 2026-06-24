@@ -5,22 +5,26 @@
 
 {% block content %}
 <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px;">
-  <div class="kpi-card kpi-accent fu">
+  <div class="kpi-card kpi-accent fu neon-orbit" style="--sig:#22e6ff;">
+    <span class="orbit"></span>
     <div class="kpi-label">Total enviados</div>
     <div class="kpi-value">{{ reports|length }}</div>
     <div style="font-size:11px;color:var(--text-4);">historial completo</div>
   </div>
-  <div class="kpi-card fu-1">
+  <div class="kpi-card fu-1 neon-orbit" style="--sig:var(--green);">
+    <span class="orbit"></span>
     <div class="kpi-label">Enviados este mes</div>
     <div class="kpi-value" style="color:var(--green);">{{ reports|length }}</div>
     <div style="font-size:11px;color:var(--text-4);">clientes notificados</div>
   </div>
-  <div class="kpi-card fu-2">
+  <div class="kpi-card fu-2 neon-orbit" style="--sig:#60a5fa;">
+    <span class="orbit"></span>
     <div class="kpi-label">Próxima generación</div>
     <div class="kpi-value" style="font-size:18px;padding-top:4px;color:#60a5fa;">01/07</div>
     <div class="mono" style="font-size:10px;color:var(--text-4);">a las 08:00</div>
   </div>
-  <div class="kpi-card fu-3">
+  <div class="kpi-card fu-3 neon-orbit" style="--sig:var(--green);">
+    <span class="orbit"></span>
     <div class="kpi-label">Generación automática</div>
     <div style="display:flex;align-items:center;gap:7px;margin-top:8px;">
       <span class="dot dot-on dot-pulse"></span>
