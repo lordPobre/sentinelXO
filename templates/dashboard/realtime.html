@@ -15,7 +15,10 @@
 {% endblock %}
 
 {% block header_actions %}
-<a href="{% url 'dashboard:client-portal' client.id %}" class="btn-ghost">← Volver</a>
+<a href="{% url 'dashboard:client-portal' client.id %}" class="btn-ghost" style="display:flex;align-items:center;gap:5px;">
+  <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/></svg>
+  <span class="btn-txt">Volver</span>
+</a>
 <div style="display:flex;align-items:center;gap:8px;padding:5px 12px;background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.15);border-radius:7px;">
   <span class="mono btn-txt" style="font-size:10px;color:var(--text-3);">Intervalo:</span>
   <select id="poll-interval" class="mono" style="background:transparent;border:none;color:#60a5fa;font-size:11px;cursor:pointer;outline:none;">

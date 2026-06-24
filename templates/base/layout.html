@@ -51,6 +51,10 @@
   overflow: visible;
 }
 
+/* Subtítulo del header: nunca parte en varias líneas (clip + ellipsis) */
+.page-subtitle-wrap{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.page-subtitle-wrap > *{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:100%; }
+
 /* Ocultar reloj y badge ACTIVO en móvil pequeño */
 @media (max-width: 600px) {
   #live-time { display: none !important; }
@@ -58,6 +62,10 @@
   .header-actions-wrap { gap: 4px !important; }
   /* Botones más compactos */
   .btn-ghost, .btn-primary { padding: 5px 8px !important; font-size: 11px !important; }
+  /* Botones con ícono → colapsan a solo ícono (oculta el texto envuelto en .btn-txt) */
+  .btn-txt { display: none !important; }
+  /* En botones icono-only, centra el ícono sin hueco del texto */
+  .btn-ghost, .btn-primary { gap: 0 !important; }
 }
 
 /* ── TABLET (768px y menos) ────────────────────────────────────── */
@@ -309,7 +317,7 @@
         </button>
         <div style="min-width:0;">
           <div id="page-title" style="font-size:14px;font-weight:600;color:#f1f5f9;letter-spacing:-0.01em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{% block page_title %}Dashboard{% endblock %}</div>
-          {% block page_subtitle %}<div class="mono" style="font-size:10px;color:var(--text-3);margin-top:1px;">{{ SENTINEL_COMPANY_NAME }}</div>{% endblock %}
+          <div class="page-subtitle-wrap">{% block page_subtitle %}<div class="mono" style="font-size:10px;color:var(--text-3);margin-top:1px;">{{ SENTINEL_COMPANY_NAME }}</div>{% endblock %}</div>
         </div>
       </div>
 

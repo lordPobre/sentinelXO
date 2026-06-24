@@ -13,15 +13,13 @@
   .dev-live-badge { display:flex;align-items:center;gap:6px;padding:4px 10px;background:rgba(16,185,129,0.05);border:1px solid rgba(16,185,129,0.13);border-radius:7px; }
   .dev-btn-label { display:inline; }
   @media (max-width: 600px) {
-    .dev-live-badge { padding:4px 7px; }
-    .dev-live-time  { display:none !important; }
+    .dev-live-badge { display:none !important; } /* el estado del equipo ya va en el subtítulo */
     .dev-btn-label  { display:none !important; }
   }
 </style>
 
-<div class="dev-live-badge">
+<div class="dev-live-badge" title="Actualización en vivo">
   <span class="dot dot-on dot-pulse"></span>
-  <span class="mono" style="font-size:10px;color:#10b981;font-weight:600;">LIVE</span>
   <span class="mono dev-live-time" style="font-size:10px;color:var(--text-4);" id="dev-last-update">—</span>
 </div>
 
