@@ -9,6 +9,11 @@ class Command(BaseCommand):
         username = os.environ.get('DJANGO_SUPERUSER_USERNAME', 'admin')
         password = os.environ.get('DJANGO_SUPERUSER_PASSWORD', '')
         email    = os.environ.get('DJANGO_SUPERUSER_EMAIL', '')
+        if not password:
+            self.stderr.write(self.style.WARNING(
+                "DJANGO_SUPERUSER_PASSWORD vacía — se omite la creación/actualización del admin."
+            ))
+            return
 
         user, created = User.objects.get_or_create(username=username)
         user.set_password(password)
