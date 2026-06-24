@@ -171,6 +171,8 @@
   </div>
 </div>
 
+{% include "partials/security_score_card.html" %}
+
 <!-- Histórico de incidentes resueltos -->
 <details class="incident-history fu-3" id="incident-history">
   <summary>
@@ -186,5 +188,5 @@
     {% endfor %}
   </div>
 </details>
-{% include "partials/security_score_card.html" %}
+
 {% endblock %}
