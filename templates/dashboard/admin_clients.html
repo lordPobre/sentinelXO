@@ -57,6 +57,7 @@
             {% if health == 'ok' %}OK{% elif health == 'warning' %}Atención{% elif health == 'critical' %}Crítico{% else %}—{% endif %}
           </span>
         </td>
+        <td>{% include "partials/security_score_badge.html" %}</td>
         <td style="text-align:right;">
           <div style="display:flex;align-items:center;justify-content:flex-end;gap:6px;">
             <a href="{% url 'dashboard:admin-client-detail' client.id %}" class="btn-ghost" style="padding:5px 10px;font-size:11px;">Ver</a>
@@ -97,5 +98,4 @@ function filterClients(q){
   if(c)c.textContent=v+' cliente'+(v!==1?'s':'');
 }
 </script>
-{% include "partials/security_score_card.html" %}
 {% endblock %}
