@@ -188,7 +188,7 @@ CELERY_WORKER_CANCEL_LONG_RUNNING_TASKS_ON_CONNECTION_LOSS = True
 CELERY_BEAT_SCHEDULE = {
     "m365-health-checks": {
         "task": "emailmon.run_m365_checks",
-        "schedule": 3600.0,   
+        "schedule": 43200.0,   
     },
     "weekly-fleet-digest": {
         "task": "reports.weekly_fleet_digest",
