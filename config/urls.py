@@ -1,14 +1,15 @@
 from django.contrib import admin
 from django.http import JsonResponse
 from django.utils import timezone
-
+from django.urls import path, include
+from django.views.generic import RedirectView
+from core.views_2fa import totp_verify, totp_setup
+from django.views.generic import TemplateView 
 
 def health_check(request):
     """Health check endpoint para Railway."""
     return JsonResponse({"status": "ok", "time": timezone.now().isoformat()})
-from django.urls import path, include
-from django.views.generic import RedirectView
-from core.views_2fa import totp_verify, totp_setup
+
 
 urlpatterns = [
     path("health/", health_check, name="health-check"),
@@ -22,4 +23,5 @@ urlpatterns = [
     path("reports/", include("reports.urls", namespace="reports")),
     path("api/v1/", include("core.api_urls", namespace="api")),
     path("email/", include("emailmon.urls", namespace="emailmon")),
+    path("sw.js", TemplateView.as_view(template_name="pwa/sw.js",content_type="application/javascript",),name="service-worker",),
 ]
