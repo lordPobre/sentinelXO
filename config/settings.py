@@ -1,6 +1,7 @@
 import os
 import sentry_sdk
 import logging as _logging
+from celery.schedules import crontab
 from sentry_sdk.integrations.django import DjangoIntegration
 from sentry_sdk.integrations.celery import CeleryIntegration
 from sentry_sdk.integrations.logging import LoggingIntegration
@@ -181,6 +182,10 @@ CELERY_BEAT_SCHEDULE = {
     "m365-health-checks": {
         "task": "emailmon.run_m365_checks",
         "schedule": 3600.0,   # cada hora (en segundos)
+    },
+    "weekly-fleet-digest": {
+        "task": "reports.weekly_fleet_digest",
+        "schedule": crontab(day_of_week=1, hour=8, minute=0),  # lunes 08:00 (America/Santiago)
     },
 }
 

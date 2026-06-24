@@ -1,0 +1,10 @@
+{% load security_score_tags %}
+{% client_score_badge client as b %}
+{% if b %}
+<span title="Score de seguridad"
+      style="display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:7px;
+             background:{{ b.color }}1a;border:1px solid {{ b.color }}40;">
+  <span style="font-family:var(--font-mono,monospace);font-size:13px;font-weight:700;color:{{ b.color }};line-height:1;">{{ b.score }}</span>
+  <span style="font-size:10px;font-weight:700;color:{{ b.color }};opacity:0.85;">{{ b.grade }}</span>
+</span>
+{% endif %}

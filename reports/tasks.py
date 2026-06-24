@@ -1,5 +1,6 @@
 import logging
 import io
+from reports.digest import weekly_fleet_digest  
 from core.models import Client, MonthlyReport
 from .generator import build_report_pdf
 from django.core.mail import EmailMessage

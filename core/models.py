@@ -844,3 +844,23 @@ class NetworkSnapshot(models.Model):
         if not self.firewall:
             return None
         return all(fw.get("enabled") for fw in self.firewall)
+    
+class SecurityScoreSnapshot(models.Model):
+    """Foto del score de seguridad de un cliente (para tendencia en el tiempo)."""
+ 
+    client      = models.ForeignKey(Client, on_delete=models.CASCADE,
+                                    related_name="security_scores", verbose_name="Cliente")
+    score       = models.IntegerField("Puntaje", default=0)
+    grade       = models.CharField("Letra", max_length=1, default="F")
+    breakdown   = models.JSONField("Desglose por dimensión", default=list, blank=True)
+    findings    = models.JSONField("Hallazgos", default=list, blank=True)
+    computed_at = models.DateTimeField("Calculado", auto_now_add=True)
+ 
+    class Meta:
+        verbose_name = "Score de seguridad"
+        verbose_name_plural = "Scores de seguridad"
+        ordering = ["-computed_at"]
+        indexes = [models.Index(fields=["client", "-computed_at"], name="core_secsco_cli_idx")]
+ 
+    def __str__(self):
+        return f"Score {self.score} ({self.grade}) — {self.client} @ {self.computed_at:%d/%m}"
