@@ -147,7 +147,7 @@ REST_FRAMEWORK = {
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 
 _REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
-
+ 
 if _REDIS_URL.startswith("rediss://") and "ssl_cert_reqs=" not in _REDIS_URL:
     _sep = "&" if "?" in _REDIS_URL else "?"
     _REDIS_URL = f"{_REDIS_URL}{_sep}ssl_cert_reqs=CERT_NONE"
@@ -160,17 +160,24 @@ CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
 CELERY_TASK_SERIALIZER = "json"
 CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
-CELERY_BROKER_HEARTBEAT = 30
+CELERY_BROKER_CONNECTION_MAX_RETRIES = None 
+CELERY_BROKER_HEARTBEAT = 0
+CELERY_TASK_ACKS_LATE = True
+CELERY_TASK_REJECT_ON_WORKER_LOST = True
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1  
 CELERY_BROKER_TRANSPORT_OPTIONS = {
     "socket_keepalive": True,
     "socket_keepalive_options": {
-        4: 60,
-        5: 30,
-        6: 3,
+        4: 60,   
+        5: 30,   
+        6: 3,    
     },
     "health_check_interval": 30,
-    "visibility_timeout": 3600,  
+    "visibility_timeout": 3600,
+    "retry_on_timeout": True,
+    "max_retries": None,
 }
+ 
 
 CELERY_WORKER_CANCEL_LONG_RUNNING_TASKS_ON_CONNECTION_LOSS = True
 
@@ -181,11 +188,11 @@ CELERY_WORKER_CANCEL_LONG_RUNNING_TASKS_ON_CONNECTION_LOSS = True
 CELERY_BEAT_SCHEDULE = {
     "m365-health-checks": {
         "task": "emailmon.run_m365_checks",
-        "schedule": 3600.0,   # cada hora (en segundos)
+        "schedule": 3600.0,   
     },
     "weekly-fleet-digest": {
         "task": "reports.weekly_fleet_digest",
-        "schedule": crontab(day_of_week=1, hour=8, minute=0),  # lunes 08:00 (America/Santiago)
+        "schedule": crontab(day_of_week=1, hour=8, minute=0),  
     },
 }
 
