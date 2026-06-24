@@ -1,5 +1,6 @@
 import logging
 import threading
+from core.capacity_forecast import forecast_device   
 from core.views_ai import diagnose_incident
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth.decorators import login_required
@@ -288,12 +289,14 @@ def device_detail_live(request, device_id):
     snapshots = list(device.snapshots.order_by("captured_at")[::-1][:60][::-1])
 
     network = getattr(device, "network_snapshot", None)
+    forecast = forecast_device(device)               # ← nueva línea
 
     return render(request, "dashboard/device_live.html", {
         "device": device,
         "client": device.client,
         "snapshots": snapshots,
         "network": network,
+        "forecast": forecast,                        # ← nueva clave
         "section": "realtime",
     })
 

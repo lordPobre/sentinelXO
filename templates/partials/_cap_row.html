@@ -1,0 +1,30 @@
+<div style="display:flex;align-items:center;gap:14px;padding:11px 0;border-bottom:1px solid rgba(255,255,255,0.04);flex-wrap:wrap;">
+  <!-- Nombre + uso actual -->
+  <div style="width:118px;flex-shrink:0;">
+    <div style="font-size:12px;color:var(--text-2);font-weight:600;">{{ r.name }}{% if r.total_gb %}<span style="color:var(--text-4);font-weight:400;font-size:10px;"> · {{ r.total_gb }} GB</span>{% endif %}</div>
+    <div style="font-size:19px;font-family:var(--font-mono,monospace);color:{{ col }};line-height:1.15;">{{ r.current }}%</div>
+  </div>
+
+  <!-- Sparkline -->
+  <div style="flex:1;min-width:90px;">
+    <svg viewBox="0 0 100 26" preserveAspectRatio="none" style="width:100%;height:30px;display:block;overflow:visible;">
+      <line x1="0" y1="2.6" x2="100" y2="2.6" stroke="rgba(255,255,255,0.06)" stroke-width="0.5" stroke-dasharray="2 2"/>
+      <polyline points="{{ r.spark }}" fill="none" stroke="{{ col }}" stroke-width="1.6"
+                stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
+    </svg>
+  </div>
+
+  <!-- Pronóstico -->
+  <div style="width:180px;flex-shrink:0;text-align:right;">
+    {% if r.trend == "estable" or r.trend == "bajando" %}
+      <div style="font-size:11px;color:#10b981;font-weight:600;">Estable — sin riesgo a la vista</div>
+    {% else %}
+      <div style="font-size:11px;color:{{ col }};font-weight:600;font-family:var(--font-mono,monospace);">
+        {% if r.days_to_warn == 0 %}ya ≥90%{% else %}90% en ~{{ r.days_to_warn }}d{% endif %}
+        <span style="color:var(--text-4);">·</span>
+        {% if r.days_to_full == 0 %}lleno{% else %}100% en ~{{ r.days_to_full }}d{% endif %}
+      </div>
+    {% endif %}
+    <div style="font-size:9px;color:var(--text-4);margin-top:2px;text-transform:capitalize;">Tendencia: {{ r.trend }}</div>
+  </div>
+</div>

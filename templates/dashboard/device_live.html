@@ -381,6 +381,8 @@
   <div style="position:relative;height:120px;"><canvas id="chart-combined"></canvas></div>
 </div>
 
+{% include "partials/capacity_forecast_card.html" %}
+
 <script>
 const DEVICE_ID = "{{ device.id }}";
 const API_URL   = "/api/v1/devices/" + DEVICE_ID + "/history/?limit=120";

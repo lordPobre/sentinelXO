@@ -1,0 +1,22 @@
+<div class="chart-card" style="padding:20px;margin-top:14px;">
+  <div style="font-size:10px;font-weight:600;color:var(--text-4);letter-spacing:0.05em;text-transform:uppercase;margin-bottom:4px;display:flex;align-items:center;gap:7px;">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;">
+      <path d="M23 6l-9.5 9.5-5-5L1 18"/><path d="M17 6h6v6"/>
+    </svg>
+    Pronóstico de Capacidad
+  </div>
+  <div style="font-size:10px;color:var(--text-4);margin-bottom:14px;">Proyección lineal sobre los últimos {{ forecast.window_days }} días</div>
+
+  {% if forecast.enough_data %}
+    {% for r in forecast.resources %}
+    {% if r.level == "critical" %}{% with col="#ef4444" %}{% include "partials/_cap_row.html" %}{% endwith %}
+    {% elif r.level == "warning" %}{% with col="#e0930b" %}{% include "partials/_cap_row.html" %}{% endwith %}
+    {% else %}{% with col="#10b981" %}{% include "partials/_cap_row.html" %}{% endwith %}{% endif %}
+    {% endfor %}
+  {% else %}
+    <div style="display:flex;align-items:center;gap:9px;padding:8px 0;font-size:12px;color:var(--text-3);">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;opacity:.6;"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+      Recopilando datos — se necesita más histórico para proyectar la tendencia.
+    </div>
+  {% endif %}
+</div>
