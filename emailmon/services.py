@@ -392,15 +392,16 @@ def check_m365_graph_health(client) -> dict:
         if test_recipient:
             company = getattr(settings, "SENTINEL_COMPANY_NAME", "Sentinel XO")
             from django.utils import timezone as tz
+            now_scl = tz.localtime() 
             mail_payload = {
                 "message": {
-                    "subject": f"[{company}] Check de conectividad SMTP — {tz.now().strftime('%H:%M')}",
+                    "subject": f"[{company}] Check de conectividad SMTP — {now_scl.strftime('%H:%M')}",
                     "body": {
                         "contentType": "Text",
                         "content": (
                             "Este es un email de verificacion automatica enviado por " + company + "\n\n"
                             "Si recibes este mensaje, el envio de correo desde M365 funciona correctamente.\n"
-                            "Hora del check: " + tz.now().strftime("%d/%m/%Y %H:%M:%S") + "\n\n"
+                            "Hora del check: " + now_scl.strftime("%d/%m/%Y %H:%M:%S") + "\n\n"
                             "(No es necesario responder este mensaje)"
                         ),
                     },
