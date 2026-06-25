@@ -1,107 +1,187 @@
 {% extends "base/layout.html" %}
+{% load security_score_tags %}
 {% block title %}{{ client.company_name }} — Panel{% endblock %}
 {% block page_title %}{{ client.company_name }}{% endblock %}
 {% block page_subtitle %}<div class="mono" style="font-size:10px;color:var(--text-3);margin-top:1px;">Panel de monitoreo · {{ client.get_plan_display|lower }}</div>{% endblock %}
 
 {% block header_actions %}
-<a href="{% url 'dashboard:realtime' client.id %}" class="btn-primary" style="background:rgba(16,185,129,0.12);color:var(--green);border:1px solid rgba(16,185,129,0.2);">
+<a href="{% url 'dashboard:realtime' client.id %}" class="btn-primary" style="display:flex;align-items:center;gap:5px;background:rgba(16,185,129,0.12);color:var(--green);border:1px solid rgba(16,185,129,0.2);">
   <span class="dot dot-on dot-pulse" style="width:6px;height:6px;flex-shrink:0;"></span>
-  Monitor en vivo
+  <span class="btn-txt">Monitor en vivo</span>
 </a>
 {% endblock %}
 
 {% block content %}
+{% security_score client as sc %}
+<style>
+  .pf-hero{position:relative;border-radius:18px;overflow:hidden;padding:26px 28px;margin-bottom:16px;
+    display:flex;align-items:center;gap:28px;flex-wrap:wrap;
+    border:1px solid var(--hero-line);
+    background:radial-gradient(120% 140% at 0% 0%, var(--hero-glow), transparent 55%),linear-gradient(160deg,#0e1828,#0b1220);}
+  .pf-hero-left{flex:1;min-width:260px;}
+  .pf-eye{display:inline-flex;align-items:center;gap:7px;font-family:var(--font-mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--hero-acc);margin-bottom:12px;}
+  .pf-eye .d{width:6px;height:6px;border-radius:50%;background:var(--hero-acc);box-shadow:0 0 8px var(--hero-acc);}
+  .pf-hero h1{font-size:28px;font-weight:700;letter-spacing:-0.02em;margin-bottom:8px;color:var(--text-1,#f1f5f9);}
+  .pf-hero p{font-size:14px;color:var(--text-2,#9fb0c8);line-height:1.55;max-width:540px;margin-bottom:16px;}
+  .pf-chips{display:flex;gap:9px;flex-wrap:wrap;}
+  .pf-chip{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--text-2,#9fb0c8);background:rgba(255,255,255,0.04);border:1px solid var(--border);padding:6px 12px;border-radius:20px;}
+  .pf-chip svg{flex-shrink:0;}
+  .pf-ring{position:relative;width:148px;height:148px;flex-shrink:0;}
+  .pf-ring .ctr{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;}
+  .pf-ring .sc{font-family:var(--font-mono);font-size:38px;font-weight:800;line-height:1;}
+  .pf-ring .gr{font-size:11px;color:var(--text-3);margin-top:3px;letter-spacing:.1em;}
+  .pf-ring .lb{font-size:9px;color:var(--text-4);text-transform:uppercase;letter-spacing:.1em;margin-top:7px;text-align:center;}
 
-<!-- KPIs -->
-<div class="kpi-grid-3" style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:18px;">
-  <div class="kpi-card {% if uptime_percent and uptime_percent >= 99 %}kpi-accent{% endif %} fu"
-       style="{% if uptime_percent and uptime_percent >= 99 %}border-color:rgba(16,185,129,0.25);{% elif uptime_percent and uptime_percent < 99 %}border-color:rgba(245,158,11,0.2);{% endif %}">
-    {% if uptime_percent and uptime_percent >= 99 %}
-    <div style="position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(16,185,129,0.5),transparent);"></div>
+  .pf-strip{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px;}
+  .pf-it{background:linear-gradient(160deg,#0e1626,#0c1320);border:1px solid var(--border);border-radius:14px;padding:15px 17px;display:flex;gap:13px;align-items:flex-start;}
+  .pf-ic{width:34px;height:34px;border-radius:10px;background:rgba(34,230,255,0.08);border:1px solid rgba(34,230,255,0.18);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+  .pf-ic svg{stroke:var(--cyan,#22e6ff);}
+  .pf-it .t{font-size:9px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--text-4);margin-bottom:3px;}
+  .pf-it .v{font-size:13px;color:var(--text-1,#e6ecf5);font-weight:600;}
+  .pf-it .s{font-size:11px;color:var(--text-3);margin-top:2px;line-height:1.4;}
+
+  @media(max-width:820px){.pf-strip{grid-template-columns:1fr;}.pf-hero{flex-direction:column-reverse;align-items:flex-start;}}
+</style>
+
+<!-- ── HERO de estado ─────────────────────────────────────────────────────── -->
+<div class="pf-hero" style="
+  {% if hero_state == 'good' %}--hero-acc:var(--green);--hero-line:rgba(16,185,129,0.18);--hero-glow:rgba(16,185,129,0.10);
+  {% elif hero_state == 'critical' %}--hero-acc:var(--red);--hero-line:rgba(239,68,68,0.20);--hero-glow:rgba(239,68,68,0.10);
+  {% else %}--hero-acc:var(--amber);--hero-line:rgba(224,147,11,0.20);--hero-glow:rgba(224,147,11,0.10);{% endif %}">
+  <div class="pf-hero-left">
+    <span class="pf-eye"><span class="d"></span>Monitoreado 24/7 por {{ SENTINEL_COMPANY_NAME }}</span>
+    {% if hero_state == 'good' %}
+      <h1>Todo bajo control</h1>
+      <p>Tus {{ devices_total }} equipo{{ devices_total|pluralize:"s" }} están operativos y bajo monitoreo permanente. No hay incidentes que requieran tu atención.</p>
+      <div class="pf-chips">
+        <span class="pf-chip"><svg width="13" height="13" fill="none" stroke="var(--green)" stroke-width="2.4" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>Sin incidentes abiertos</span>
+        <span class="pf-chip"><svg width="13" height="13" fill="none" stroke="var(--green)" stroke-width="2.4" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>Dominios vigentes</span>
+        <span class="pf-chip"><svg width="13" height="13" fill="none" stroke="var(--green)" stroke-width="2.4" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>Seguridad sólida</span>
+      </div>
+    {% elif hero_state == 'critical' %}
+      <h1>Estamos atendiendo una incidencia</h1>
+      <p>Algunos puntos de tu infraestructura requieren atención y el equipo de {{ SENTINEL_COMPANY_NAME }} ya está trabajando en ello. No necesitas hacer nada.</p>
+      <div class="pf-chips">
+        {% if devices_online < devices_total %}<span class="pf-chip"><span class="dot dot-off"></span>{{ devices_online }}/{{ devices_total }} equipos en línea</span>{% endif %}
+        {% if incidents_open_count %}<span class="pf-chip"><span class="dot dot-warn"></span>{{ incidents_open_count }} en atención</span>{% endif %}
+        {% if domains_critical %}<span class="pf-chip"><span class="dot dot-off"></span>{{ domains_critical }} dominio{{ domains_critical|pluralize:"s" }} por vencer</span>{% endif %}
+      </div>
+    {% else %}
+      <h1>Bajo control, con puntos en seguimiento</h1>
+      <p>{{ SENTINEL_COMPANY_NAME }} está atendiendo algunos puntos de tu infraestructura. Todo está monitoreado; no necesitas hacer nada.</p>
+      <div class="pf-chips">
+        {% if incidents_open_count %}<span class="pf-chip"><span class="dot dot-warn"></span>{{ incidents_open_count }} en seguimiento</span>{% endif %}
+        {% if domains_critical %}<span class="pf-chip"><span class="dot dot-warn"></span>{{ domains_critical }} dominio{{ domains_critical|pluralize:"s" }} por vencer</span>{% endif %}
+        {% if devices_online < devices_total %}<span class="pf-chip"><span class="dot dot-warn"></span>{{ devices_online }}/{{ devices_total }} equipos en línea</span>{% endif %}
+        <span class="pf-chip"><svg width="13" height="13" fill="none" stroke="var(--green)" stroke-width="2.4" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>Resto operativo</span>
+      </div>
     {% endif %}
+  </div>
+
+  <div class="pf-ring">
+    <svg viewBox="0 0 100 100" width="148" height="148">
+      <circle cx="50" cy="50" r="42" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="8"/>
+      <circle cx="50" cy="50" r="42" fill="none" stroke="{{ sc.color }}" stroke-width="8" stroke-linecap="round"
+              stroke-dasharray="{{ sc.gauge_c }}" stroke-dashoffset="{{ sc.gauge_offset }}" transform="rotate(-90 50 50)"/>
+    </svg>
+    <div class="ctr">
+      <div class="sc" style="color:{{ sc.color }};">{{ sc.score }}</div>
+      <div class="gr">Nota {{ sc.grade }}</div>
+      <div class="lb">Índice de<br>seguridad</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Franja "Perseus trabajando para ti" ────────────────────────────────── -->
+<div class="pf-strip">
+  <div class="pf-it">
+    <div class="pf-ic"><svg width="17" height="17" fill="none" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div>
+    <div><div class="t">Monitoreo</div><div class="v">24/7 sin interrupciones</div><div class="s">Vigilamos tu infraestructura en todo momento</div></div>
+  </div>
+  <div class="pf-it">
+    <div class="pf-ic"><svg width="17" height="17" fill="none" stroke-width="1.8" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg></div>
+    <div><div class="t">Próximo reporte</div><div class="v">{{ next_report_date|date:"j \d\e F" }}</div><div class="s">Resumen mensual enviado a tu correo</div></div>
+  </div>
+  <div class="pf-it">
+    <div class="pf-ic"><svg width="17" height="17" fill="none" stroke-width="1.8" viewBox="0 0 24 24"><path d="M4 4h16v12H5.2L4 17.5V4z"/></svg></div>
+    <div><div class="t">Soporte directo</div><div class="v">{{ SENTINEL_COMPANY_NAME }}</div><div class="s">{{ SENTINEL_SUPPORT_EMAIL }}</div></div>
+  </div>
+</div>
+
+<!-- ── KPIs en lenguaje de cliente ────────────────────────────────────────── -->
+<div class="kpi-grid-3" style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:16px;">
+  <div class="kpi-card fu">
     <div class="kpi-label">Disponibilidad del mes</div>
     {% if uptime_percent is not None %}
     <div class="kpi-value" style="{% if uptime_percent >= 99 %}color:var(--green);{% elif uptime_percent >= 95 %}color:var(--amber);{% else %}color:var(--red);{% endif %}">{{ uptime_percent }}%</div>
     <div class="bar-track" style="margin-bottom:6px;"><div class="bar-fill {% if uptime_percent >= 99 %}bar-green{% elif uptime_percent >= 95 %}bar-amber{% else %}bar-red{% endif %}" style="width:{{ uptime_percent }}%;"></div></div>
+    <div style="font-size:11px;color:var(--text-4);">Tus equipos operaron sin caídas</div>
     {% else %}
     <div class="kpi-value" style="color:var(--text-4);font-size:18px;padding-top:4px;">Sin datos</div>
+    <div style="font-size:11px;color:var(--text-4);">Aún recopilando telemetría</div>
     {% endif %}
-    <div style="font-size:11px;color:var(--text-4);">Telemetría del mes actual</div>
   </div>
 
   <div class="kpi-card fu-1">
-    <div class="kpi-label">Incidentes resueltos</div>
-    <div class="kpi-value">{{ incidents_resolved_count }}</div>
-    <div style="font-size:11px;color:var(--text-4);">Últimos 30 días · automáticos</div>
+    <div class="kpi-label">Equipos operativos</div>
+    <div class="kpi-value">{{ devices_online }}<span style="font-size:18px;color:var(--text-4);"> / {{ devices_total }}</span></div>
+    <div style="font-size:11px;color:var(--text-4);">{% if devices_online == devices_total %}Todos en línea y reportando{% else %}En seguimiento por {{ SENTINEL_COMPANY_NAME }}{% endif %}</div>
   </div>
 
   <div class="kpi-card fu-2">
-    <div class="kpi-label">Equipos en red</div>
-    <div class="kpi-value">{{ devices|length }}</div>
-    <div style="display:flex;align-items:center;gap:4px;margin-top:6px;flex-wrap:wrap;">
-      {% for d in devices %}<span class="dot {% if d.is_online %}dot-on{% elif d.status == 'warning' %}dot-warn{% else %}dot-off{% endif %}" title="{{ d.display_name }}"></span>{% endfor %}
-    </div>
+    <div class="kpi-label">Resueltos por {{ SENTINEL_COMPANY_NAME }}</div>
+    <div class="kpi-value" style="color:var(--cyan,#22e6ff);">{{ incidents_resolved_count }}</div>
+    <div style="font-size:11px;color:var(--text-4);">Atenciones este mes, sin que lo notaras</div>
   </div>
 </div>
 
-<!-- Equipos + Detalle HTMX -->
-<div class="grid-2col" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
-  <div class="card fu-2" style="overflow:hidden;">
-    <div class="card-header"><span class="card-title">Equipos</span></div>
-    {% for device in devices %}
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 18px;border-bottom:1px solid rgba(255,255,255,0.03);cursor:pointer;"
-         class="row-hover"
-         hx-get="{% url 'dashboard:htmx-device-detail' device.id %}"
-         hx-target="#device-panel" hx-swap="innerHTML">
-      <div style="display:flex;align-items:center;gap:10px;">
-        <span class="dot {% if device.is_online %}dot-on{% elif device.status == 'warning' %}dot-warn{% else %}dot-off{% endif %}"></span>
-        <div>
-          <div style="font-size:13px;font-weight:500;color:#cbd5e1;">{{ device.display_name }}</div>
-          <div class="mono" style="font-size:10px;color:var(--text-4);">{{ device.os|default:"—" }}</div>
-        </div>
+<!-- ── Equipos (ancho completo) ───────────────────────────────────────────── -->
+<div class="card fu-2" style="overflow:hidden;margin-bottom:16px;">
+  <div class="card-header">
+    <span class="card-title">Tus equipos</span>
+    <span class="mono" style="font-size:10px;color:var(--text-4);">{{ devices_online }} de {{ devices_total }} en línea</span>
+  </div>
+  {% for device in devices %}
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:13px 18px;border-bottom:1px solid rgba(255,255,255,0.03);">
+    <div style="display:flex;align-items:center;gap:11px;">
+      <span class="dot {% if device.is_online %}dot-on{% elif device.status == 'warning' %}dot-warn{% else %}dot-off{% endif %}"></span>
+      <div>
+        <div style="font-size:13px;font-weight:500;color:#cbd5e1;">{{ device.display_name }}</div>
+        <div class="mono" style="font-size:10px;color:var(--text-4);">{{ device.get_device_type_display }}</div>
       </div>
-      <span class="badge {% if device.status == 'online' %}badge-ok{% elif device.status == 'warning' %}badge-warn{% elif device.status == 'offline' %}badge-crit{% else %}badge-gray{% endif %}">
-        {% if device.status == 'online' %}En línea{% elif device.status == 'warning' %}Alerta{% elif device.status == 'offline' %}Offline{% else %}Sin datos{% endif %}
-      </span>
     </div>
-    {% empty %}
-    <div style="padding:36px;text-align:center;font-size:12px;color:var(--text-4);">Sin equipos registrados.</div>
-    {% endfor %}
+    <span class="badge {% if device.status == 'online' %}badge-ok{% elif device.status == 'warning' %}badge-warn{% elif device.status == 'offline' %}badge-crit{% else %}badge-gray{% endif %}">
+      {% if device.status == 'online' %}En línea{% elif device.status == 'warning' %}En revisión{% elif device.status == 'offline' %}Sin conexión{% else %}Sin datos{% endif %}
+    </span>
   </div>
-
-  <div class="card fu-3" style="overflow:hidden;">
-    <div class="card-header"><span class="card-title">Detalle del equipo</span></div>
-    <div id="device-panel" style="padding:36px;text-align:center;font-size:12px;color:var(--text-4);">
-      Haga clic en un equipo para ver su estado.
-    </div>
-  </div>
+  {% empty %}
+  <div style="padding:36px;text-align:center;font-size:12px;color:var(--text-4);">Aún no hay equipos registrados. Perseus los configurará pronto.</div>
+  {% endfor %}
 </div>
 
-<!-- Dominios + Licencias -->
-<div class="grid-2col" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+<!-- ── Dominios (+ M365 si hay) ────────────────────────────────────────────── -->
+<div style="display:grid;grid-template-columns:{% if licenses %}1fr 1fr{% else %}1fr{% endif %};gap:14px;margin-bottom:16px;" class="grid-2col">
   <div class="card fu-3" style="overflow:hidden;">
     <div class="card-header">
-      <span class="card-title">Vencimientos de dominios</span>
-      {% if domains_critical %}<span class="badge badge-crit">{{ domains_critical }} crítico{{ domains_critical|pluralize:"s" }}</span>{% endif %}
+      <span class="card-title">Tus dominios web</span>
+      {% if domains_critical %}<span class="badge badge-crit">{{ domains_critical }} por vencer</span>{% endif %}
     </div>
     {% for domain in domains %}
     <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 18px;border-bottom:1px solid rgba(255,255,255,0.03);">
       <div>
         <div class="mono" style="font-size:12px;font-weight:500;color:#94a3b8;">{{ domain.fqdn }}</div>
-        <div style="font-size:10px;color:var(--text-4);margin-top:1px;">
-          {% if domain.expiry_date %}Vence {{ domain.expiry_date|date:"d/m/Y" }}{% else %}Sin fecha{% endif %}
-          {% if not domain.resolves_dns %} · <span style="color:var(--red);">DNS falla</span>{% endif %}
-        </div>
+        <div style="font-size:10px;color:var(--text-4);margin-top:1px;">{% if domain.expiry_date %}Vigente hasta {{ domain.expiry_date|date:"d/m/Y" }}{% else %}Sin fecha{% endif %}</div>
       </div>
       <span class="badge {% if domain.status == 'critical' or domain.status == 'expired' %}badge-crit{% elif domain.status == 'warning' %}badge-warn{% elif domain.status == 'ok' %}badge-ok{% else %}badge-gray{% endif %}">
         {% if domain.days_until_expiry is not None %}{% if domain.days_until_expiry < 0 %}Vencido{% else %}{{ domain.days_until_expiry }}d{% endif %}{% else %}—{% endif %}
       </span>
     </div>
     {% empty %}
-    <div style="padding:32px;text-align:center;font-size:12px;color:var(--text-4);">Sin dominios.</div>
+    <div style="padding:32px;text-align:center;font-size:12px;color:var(--text-4);">No administramos dominios para tu empresa todavía.</div>
     {% endfor %}
   </div>
 
+  {% if licenses %}
   <div class="card fu-4" style="overflow:hidden;">
     <div class="card-header"><span class="card-title">Licencias Microsoft 365</span></div>
     <div style="padding:16px 18px;display:flex;flex-direction:column;gap:14px;">
@@ -114,32 +194,30 @@
         <div class="bar-track">
           <div class="bar-fill {% if lic.utilization_status == 'critical' %}bar-red{% elif lic.utilization_status == 'warning' %}bar-amber{% else %}bar-blue{% endif %}" style="width:{{ lic.utilization_percent }}%;"></div>
         </div>
-        <div style="font-size:10px;color:var(--text-4);margin-top:4px;">{{ lic.available_licenses }} disponibles · {{ lic.utilization_percent }}% uso</div>
+        <div style="font-size:10px;color:var(--text-4);margin-top:4px;">{{ lic.available_licenses }} disponibles · {{ lic.utilization_percent }}% en uso</div>
       </div>
-      {% empty %}
-      <div style="text-align:center;font-size:12px;color:var(--text-4);padding:12px 0;">M365 no configurado.</div>
       {% endfor %}
     </div>
   </div>
+  {% endif %}
 </div>
 
-<!-- Actividad reciente -->
+<!-- ── Mantenimiento realizado por Perseus ────────────────────────────────── -->
 <div class="card fu-4" style="overflow:hidden;">
-  <div class="card-header"><span class="card-title">Actividad de mantenimiento</span></div>
+  <div class="card-header"><span class="card-title">Mantenimiento realizado por {{ SENTINEL_COMPANY_NAME }}</span></div>
   {% for incident in incidents_recent %}
   <div style="display:flex;align-items:flex-start;gap:12px;padding:13px 18px;border-bottom:1px solid rgba(255,255,255,0.03);">
     <span class="dot {% if incident.is_resolved %}dot-on{% elif incident.severity in 'critical,high' %}dot-off{% else %}dot-warn{% endif %}" style="margin-top:3px;flex-shrink:0;"></span>
     <div style="flex:1;min-width:0;">
-      <div style="font-size:13px;color:#cbd5e1;{% if incident.is_resolved %}opacity:0.45;text-decoration:line-through;{% endif %}">{{ incident.title }}</div>
+      <div style="font-size:13px;color:#cbd5e1;">{{ incident.title }}</div>
       <div class="mono" style="font-size:10px;color:var(--text-4);margin-top:2px;">
-        {{ incident.created_at|date:"d/m/Y H:i" }}{% if incident.device %} · {{ incident.device.display_name }}{% endif %} · {{ incident.get_severity_display }}
+        {{ incident.created_at|date:"d/m/Y" }}{% if incident.device %} · {{ incident.device.display_name }}{% endif %}
       </div>
     </div>
-    <span class="badge {% if incident.is_resolved %}badge-ok{% else %}badge-warn{% endif %}" style="flex-shrink:0;">{% if incident.is_resolved %}Resuelto{% else %}En curso{% endif %}</span>
+    <span class="badge {% if incident.is_resolved %}badge-ok{% else %}badge-warn{% endif %}" style="flex-shrink:0;">{% if incident.is_resolved %}✓ Resuelto{% else %}En curso{% endif %}</span>
   </div>
   {% empty %}
-  <div style="padding:32px;text-align:center;font-size:12px;color:var(--text-4);">Sin actividad reciente.</div>
+  <div style="padding:32px;text-align:center;font-size:12px;color:var(--text-3);">Tu infraestructura operó sin problemas este período. 👌</div>
   {% endfor %}
 </div>
-{% include "partials/security_score_badge.html" %}
 {% endblock %}

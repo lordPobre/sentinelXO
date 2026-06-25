@@ -112,7 +112,7 @@ def client_portal(request, client_id):
         client = get_object_or_404(Client, pk=client_id)
     else:
         client = get_object_or_404(request.user.client_portals, pk=client_id, is_active=True)
-
+ 
     devices = client.devices.filter(is_active=True)
     domains = client.domains.all()
     licenses = client.m365_licenses.filter(capability_status="Enabled", total_licenses__lt=10000, total_licenses__gt=0)
@@ -123,7 +123,7 @@ def client_portal(request, client_id):
         resolved_at__gte=timezone.now() - timezone.timedelta(days=30),
         is_resolved=True
     ).count()
-
+ 
     month_start = timezone.now().replace(day=1, hour=0, minute=0, second=0)
     total_snaps = TelemetrySnapshot.objects.filter(
         device__client=client, captured_at__gte=month_start
@@ -132,11 +132,30 @@ def client_portal(request, client_id):
         device__client=client, captured_at__gte=month_start, uptime_seconds__gt=0
     ).count()
     uptime_percent = round((online_snaps / total_snaps * 100), 1) if total_snaps > 0 else None
-
+ 
     domains_critical = domains.filter(status__in=["critical", "expired"]).count()
     domains_warning = domains.filter(status="warning").count()
     licenses_full = licenses.filter(consumed_licenses__gte=models_gte_total()).count() if licenses.exists() else 0
+ 
+    devices_list = list(devices)
+    devices_total = len(devices_list)
+    devices_online = sum(1 for d in devices_list if d.is_online)
+    incidents_open_count = client.incidents.filter(is_resolved=False).count()
+    health = client.get_health_status()
+ 
+    now = timezone.now()
+    if now.month == 12:
+        next_report_date = now.replace(year=now.year + 1, month=1, day=1)
+    else:
+        next_report_date = now.replace(month=now.month + 1, day=1)
 
+    if health == "ok" and incidents_open_count == 0 and domains_critical == 0:
+        hero_state = "good"
+    elif health == "critical" or domains.filter(status="expired").exists():
+        hero_state = "critical"
+    else:
+        hero_state = "attention"
+ 
     context = {
         "client": client,
         "devices": devices,
@@ -144,9 +163,15 @@ def client_portal(request, client_id):
         "licenses": licenses,
         "incidents_recent": incidents_recent,
         "incidents_resolved_count": incidents_resolved_count,
+        "incidents_open_count": incidents_open_count,   # ← nuevo
         "uptime_percent": uptime_percent,
         "domains_critical": domains_critical,
         "domains_warning": domains_warning,
+        "devices_total": devices_total,                 # ← nuevo
+        "devices_online": devices_online,               # ← nuevo
+        "next_report_date": next_report_date,           # ← nuevo
+        "health": health,                               # ← nuevo
+        "hero_state": hero_state,                        # ← nuevo
         "section": "portal",
     }
     return render(request, "dashboard/client_portal.html", context)
