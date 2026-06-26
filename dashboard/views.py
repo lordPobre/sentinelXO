@@ -296,12 +296,10 @@ def htmx_incident_resolve(request, incident_id):
 
 @login_required
 def realtime_dashboard(request, client_id):
-    """Dashboard de monitoreo en tiempo real con polling cada 5 segundos."""
-    if _is_admin(request.user):
-        client = get_object_or_404(Client, pk=client_id)
-    else:
-        client = get_object_or_404(request.user.client_portals, pk=client_id, is_active=True)
-
+    """Dashboard de monitoreo en tiempo real (solo admin)."""
+    if not _is_admin(request.user):
+        return redirect("dashboard:home")   # el cliente vuelve a su portal
+    client = get_object_or_404(Client, pk=client_id)
     devices = client.devices.filter(is_active=True)
     return render(request, "dashboard/realtime.html", {
         "client": client,
@@ -312,25 +310,21 @@ def realtime_dashboard(request, client_id):
 
 @login_required
 def device_detail_live(request, device_id):
-    """Vista de detalle en tiempo real de un dispositivo específico."""
-    device = get_object_or_404(HardwareDevice, pk=device_id, is_active=True)
-
+    """Detalle en tiempo real de un dispositivo (solo admin)."""
     if not _is_admin(request.user):
-        if not request.user.client_portals.filter(pk=device.client_id).exists():
-            from django.http import HttpResponseForbidden
-            return HttpResponseForbidden()
-
+        return redirect("dashboard:home")   # el cliente vuelve a su portal
+    device = get_object_or_404(HardwareDevice, pk=device_id, is_active=True)
+ 
     snapshots = list(device.snapshots.order_by("captured_at")[::-1][:60][::-1])
-
     network = getattr(device, "network_snapshot", None)
-    forecast = forecast_device(device)              
-
+    forecast = forecast_device(device)
+ 
     return render(request, "dashboard/device_live.html", {
         "device": device,
         "client": device.client,
         "snapshots": snapshots,
         "network": network,
-        "forecast": forecast,                       
+        "forecast": forecast,
         "section": "realtime",
     })
 

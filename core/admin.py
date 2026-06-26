@@ -1,8 +1,73 @@
+from django.contrib.admin.widgets import FilteredSelectMultiple
 from django.contrib import admin
+from django import forms
 from django.utils.html import format_html, mark_safe
 from .models import (Client, HardwareDevice, TelemetrySnapshot, Domain,
                      M365Tenant, M365License, MaintenanceIncident, MonthlyReport)
 from .models import AlertRule, AlertEvent
+from core.models import PortalUser
+
+class PortalUserForm(forms.ModelForm):
+    password = forms.CharField(
+        label="Contraseña", required=False, widget=forms.PasswordInput,
+        help_text="Al crear es obligatoria. Al editar, déjala en blanco para no cambiarla.",
+    )
+    clients = forms.ModelMultipleChoiceField(
+        label="Clientes que puede ver",
+        queryset=Client.objects.filter(is_active=True),
+        widget=FilteredSelectMultiple("clientes", is_stacked=False),
+        required=True,
+        help_text="Normalmente uno. El cliente solo verá el portal de los clientes seleccionados.",
+    )
+ 
+    class Meta:
+        model = PortalUser
+        fields = ("username", "email", "first_name", "last_name", "is_active")
+ 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance and self.instance.pk:
+            self.fields["clients"].initial = self.instance.client_portals.all()
+ 
+    def clean_password(self):
+        pw = self.cleaned_data.get("password")
+        if not self.instance.pk and not pw:
+            raise forms.ValidationError("Define una contraseña para el nuevo usuario cliente.")
+        return pw
+ 
+ 
+@admin.register(PortalUser)
+class PortalUserAdmin(admin.ModelAdmin):
+    form = PortalUserForm
+    list_display = ("username", "email", "clientes_list", "is_active")
+    list_filter = ("is_active",)
+    search_fields = ("username", "email", "first_name", "last_name")
+ 
+    def get_queryset(self, request):
+        # Solo usuarios cliente (oculta admins/superusers de esta vista)
+        qs = super().get_queryset(request)
+        return qs.filter(is_staff=False, is_superuser=False)
+ 
+    def clientes_list(self, obj):
+        names = [c.company_name for c in obj.client_portals.all()[:3]]
+        return ", ".join(names) if names else "— (sin cliente asociado)"
+    clientes_list.short_description = "Clientes"
+ 
+    def save_model(self, request, obj, form, change):
+        # Garantiza que NUNCA sea staff/superuser
+        obj.is_staff = False
+        obj.is_superuser = False
+        pw = form.cleaned_data.get("password")
+        if pw:
+            obj.set_password(pw)
+        super().save_model(request, obj, form, change)
+        # Sincroniza la relación con los clientes seleccionados
+        selected = set(form.cleaned_data.get("clients", []))
+        current = set(obj.client_portals.all())
+        for c in selected - current:
+            c.portal_users.add(obj)
+        for c in current - selected:
+            c.portal_users.remove(obj)
 
 @admin.register(Client)
 class ClientAdmin(admin.ModelAdmin):

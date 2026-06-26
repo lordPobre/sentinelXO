@@ -864,3 +864,9 @@ class SecurityScoreSnapshot(models.Model):
  
     def __str__(self):
         return f"Score {self.score} ({self.grade}) — {self.client} @ {self.computed_at:%d/%m}"
+
+class PortalUser(User):
+    class Meta:
+        proxy = True
+        verbose_name = "Usuario cliente"
+        verbose_name_plural = "Usuarios cliente"
