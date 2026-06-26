@@ -118,8 +118,6 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # --- Django REST Framework ---
 REST_FRAMEWORK = {
-    # La API navegable (HTML) de DRF delata "Django REST framework" + versión.
-    # En producción servimos solo JSON; en desarrollo mantenemos el explorador.
     "DEFAULT_RENDERER_CLASSES": (
         ["rest_framework.renderers.JSONRenderer"]
         + (["rest_framework.renderers.BrowsableAPIRenderer"] if DEBUG else [])
@@ -181,10 +179,6 @@ CELERY_BROKER_TRANSPORT_OPTIONS = {
 
 CELERY_WORKER_CANCEL_LONG_RUNNING_TASKS_ON_CONNECTION_LOSS = True
 
-# Schedule estático: el DatabaseScheduler lo sincroniza a la BD al arrancar beat
-# (aparecerá en Admin → Periodic Tasks). Cada corrida de run_m365_checks ejecuta
-# el chequeo completo M365 — que incluye un envío de verificación (sendMail) por
-# tenant —, por eso la cadencia es horaria y no cada pocos minutos.
 CELERY_BEAT_SCHEDULE = {
     "m365-health-checks": {
         "task": "emailmon.run_m365_checks",

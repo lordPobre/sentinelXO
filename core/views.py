@@ -5,18 +5,15 @@ from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse
 from django.db.models import Count, Q
 from django.utils import timezone
-from core.models import (Client, HardwareDevice, TelemetrySnapshot,
-                          Domain, M365License, MaintenanceIncident)
+from core.models import (Client, HardwareDevice, TelemetrySnapshot, Domain, M365License, MaintenanceIncident)
 from django.db.models import F
 from core.notifications import notify_incident_resolved
 from django.http import HttpResponseForbidden
 
 logger = logging.getLogger("perseus")
 
-
 def _is_admin(user):
     return user.is_staff or user.is_superuser
-
 
 @login_required
 def home(request):
@@ -27,7 +24,6 @@ def home(request):
     if clients.count() == 1:
         return redirect("dashboard:client-portal", client_id=clients.first().id)
     return redirect("dashboard:client-select")
-
 
 # ─── PANEL ADMINISTRADOR (Sentinel XO) ───────────────────────────────────────────
 

@@ -39,7 +39,7 @@ def security_dashboard(request):
         anomalies_open = SecurityAnomalyEvent.objects.filter(
             device__client=client, status="open"
         ).count()
-        from core.models import SignInAnomalyEvent
+        
         signin_anomalies_open = SignInAnomalyEvent.objects.filter(
             client=client, status="open"
         ).count()

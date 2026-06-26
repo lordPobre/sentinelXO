@@ -22,12 +22,11 @@ from django.utils import timezone
 from django.contrib.auth.decorators import login_required
 from django.views.decorators.http import require_POST
 from django.http import JsonResponse
-
 from core.models import (
     Client, HardwareDevice, NetworkSnapshot, SoftwareSnapshot,
     SecurityAnomalyEvent, SecurityCheck, Domain, MaintenanceIncident,
 )
-from .views_ai import _extract_cpu_temp  # reutiliza extractor de temperatura CPU
+from .views_ai import _extract_cpu_temp  
 
 logger = logging.getLogger("sentinel.ai")
 
@@ -149,7 +148,7 @@ def tool_devices_by_resource(user, **kw):
 
 
 def tool_network_posture(user, **kw):
-    flt = kw.get("filter")  # open_wifi | firewall_off | risk_critical | risk_warning
+    flt = kw.get("filter") 
     client = (kw.get("client") or "").strip()
 
     snaps = (NetworkSnapshot.objects
@@ -187,7 +186,7 @@ def tool_network_posture(user, **kw):
 
 
 def tool_cve_findings(user, **kw):
-    severity = kw.get("severity")  # critical | warning | info
+    severity = kw.get("severity")  
     client = (kw.get("client") or "").strip()
 
     snaps = (SoftwareSnapshot.objects
@@ -217,7 +216,7 @@ def tool_cve_findings(user, **kw):
 
 
 def tool_security_anomalies(user, **kw):
-    status   = kw.get("status", "open")   # open | acknowledged
+    status   = kw.get("status", "open")   
     severity = kw.get("severity")
     client   = (kw.get("client") or "").strip()
 
@@ -250,7 +249,7 @@ def tool_m365_security(user, **kw):
 
     out = []
     for c in clients:
-        sc = c.security_checks.first()  # ordenado por -checked_at
+        sc = c.security_checks.first()  
         signins = c.signin_anomalies.filter(status="open").count()
         out.append({
             "cliente": c.company_name,
@@ -292,7 +291,7 @@ def tool_domains_expiring(user, **kw):
 
 
 def tool_incidents(user, **kw):
-    status   = kw.get("status", "open")  # open | resolved | all
+    status   = kw.get("status", "open")  
     client   = (kw.get("client") or "").strip()
     severity = kw.get("severity")
 

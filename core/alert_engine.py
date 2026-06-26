@@ -5,6 +5,7 @@ También se usa para alertas SMTP desde emailmon.
 """
 import logging
 import threading
+from django.db.models import Q
 from django.utils import timezone
 from django.conf import settings
 from core.models import AlertEvent, MaintenanceIncident, AlertRule
@@ -311,12 +312,10 @@ Saludos,
 """
 
     try:
-        from emailmon.services import send_tracked_email
         send_tracked_email(subject=subject, body=body, to=recipients,
                            category="incident", client=client)
     except Exception:
         try:
-            from django.core.mail import send_mail
             send_mail(subject, body, settings.DEFAULT_FROM_EMAIL,
                       recipients, fail_silently=True)
         except Exception as e:
@@ -338,5 +337,5 @@ Saludos,
 
 
 def models_Q(**kwargs):
-    from django.db.models import Q
+    
     return Q(**kwargs)

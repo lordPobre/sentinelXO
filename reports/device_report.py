@@ -15,6 +15,7 @@ from reportlab.lib.enums import TA_LEFT, TA_RIGHT, TA_CENTER
 from reportlab.platypus import SimpleDocTemplate, Spacer
 
 from reports import pdf_theme as T
+from reports.cover import render_with_cover
 
 
 # ── Helpers de datos (puros) ─────────────────────────────────────────────────
@@ -100,12 +101,6 @@ def compose_device_story(d: dict) -> list:
     per_col = "Día" if daily else "Semana"
     story = []
 
-    story += T.header_band(
-        company=d["company"],
-        kicker=f"Reporte {per_word} de Rendimiento",
-        title=f'{d["month_name"]} {d["year"]}',
-    )
-
     story.append(T.info_strip([
         ("Dispositivo", d["device_name"], True),
         ("Tipo",        d["device_type"]),
@@ -187,14 +182,16 @@ def compose_device_story(d: dict) -> list:
 
 
 def _render(data: dict) -> bytes:
-    buf = io.BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=T.ML, rightMargin=T.MR,
-                            topMargin=T.MT, bottomMargin=T.MB)
-    footer = T.make_footer(data["company"], data["support"])
-    doc.build(compose_device_story(data), onFirstPage=footer, onLaterPages=footer)
-    pdf = buf.getvalue()
-    buf.close()
-    return pdf
+    per_word = "Diario" if data["granularity"] == "daily" else "Semanal"
+    return render_with_cover(
+        company=data["company"], support=data["support"],
+        product=data.get("product", "Sentinel XO"),
+        kicker=f"Reporte {per_word} de Rendimiento",
+        title=data["client_name"],
+        subtitle=f'{data["device_name"]} \u00b7 {data["month_name"]} {data["year"]}',
+        generated_at=data["generated_at"],
+        content_story=compose_device_story(data),
+    )
 
 
 # ════════════════════════════════════════════════════════════════════════════

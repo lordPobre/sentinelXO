@@ -3,7 +3,9 @@ Sentinel XO — Postura de Seguridad M365
 Consulta Secure Score y estado de MFA vía Microsoft Graph API.
 """
 import logging
+import re
 import requests as req_lib
+from core.notifications_telegram import notify_telegram
 from collections import defaultdict
 from core.models import SecurityCheck, SecuritySnapshot, SecurityAnomalyEvent, SignInAnomalyEvent, SoftwareSnapshot, NetworkSnapshot
 from monitoring.services import get_graph_token
@@ -197,7 +199,6 @@ def check_m365_security_posture(client) -> dict:
 
 def _startup_key(item):
     """Clave normalizada (source sin sufijo de bits + nombre) para un item de inicio."""
-    import re
     source = re.sub(r"\s*\((64|32)bit\)", "", item.get("source", ""))
     return f"{source}::{item.get('name','')}"
 
@@ -302,7 +303,6 @@ def notify_security_anomalies(device, anomalies: list):
     """Envía un email consolidado por las anomalías de seguridad detectadas."""
     if not anomalies:
         return
-
     client = device.client
     company = getattr(settings, "SENTINEL_COMPANY_NAME", "Sentinel XO")
     recipients = client.get_alert_recipients()
@@ -343,7 +343,6 @@ def notify_security_anomalies(device, anomalies: list):
 
     critical = [a for a in anomalies if a.severity == "critical"]
     if critical:
-        from core.notifications_telegram import notify_telegram
         tg_lines = [f"🔴 {a.get_anomaly_type_display()}: {a.detail}" for a in critical]
         notify_telegram(
             client,
@@ -547,7 +546,6 @@ def notify_signin_anomalies(client, anomalies: list):
 
     critical = [a for a in anomalies if a.severity == "critical"]
     if critical:
-        from core.notifications_telegram import notify_telegram
         tg_lines = [f"🔴 {a.get_anomaly_type_display()}: {a.detail}" for a in critical]
         notify_telegram(
             client,

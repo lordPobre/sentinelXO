@@ -92,8 +92,6 @@ def _build_notification_log(user):
     Devuelve una lista de grupos: cada uno con su etiqueta, ícono, y los
     últimos envíos de esa categoría (con su estado de entrega).
     """
-    
-
     try:
         from django.db import connection
         if "emailmon_emaillog" not in connection.introspection.table_names():

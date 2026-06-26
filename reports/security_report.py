@@ -11,7 +11,7 @@ import io
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.enums import TA_LEFT, TA_RIGHT, TA_CENTER
 from reportlab.platypus import SimpleDocTemplate, Spacer, PageBreak, Table, TableStyle
-
+from reports.cover import render_with_cover
 from reports import pdf_theme as T
 
 
@@ -49,7 +49,7 @@ def compose_security_story(d: dict) -> list:
     story = []
     ai = d.get("ai")
 
-    story += T.header_band(d["company"], "Reporte de Postura de Seguridad", d["generated_date"])
+    
 
     story.append(T.info_strip([
         ("Cliente",         d["client_name"], True),
@@ -295,14 +295,15 @@ def compose_security_story(d: dict) -> list:
 
 
 def _render(data: dict) -> bytes:
-    buf = io.BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=T.ML, rightMargin=T.MR,
-                            topMargin=T.MT, bottomMargin=T.MB)
-    footer = T.make_footer(data["company"], data["support"])
-    doc.build(compose_security_story(data), onFirstPage=footer, onLaterPages=footer)
-    pdf = buf.getvalue()
-    buf.close()
-    return pdf
+    return render_with_cover(
+        company=data["company"], support=data["support"],
+        product=data.get("product", "Sentinel XO"),
+        kicker="Reporte de Seguridad",
+        title=data["client_name"],
+        subtitle=f'Postura de seguridad · {data["generated_date"]}',
+        generated_at=data["generated_at"],
+        content_story=compose_security_story(data),
+    )
 
 
 # ════════════════════════════════════════════════════════════════════════════

@@ -11,10 +11,7 @@ Pesos (sobre 100):
 """
 import logging
 from django.utils import timezone
-
-from core.models import (
-    Client, SecurityAnomalyEvent, SecurityScoreSnapshot,
-)
+from core.models import (Client, SecurityAnomalyEvent, SecurityScoreSnapshot)
 
 logger = logging.getLogger("perseus")
 
@@ -46,9 +43,8 @@ def compute_security_score(client) -> dict:
     dims = []
     findings = []
 
-    sc = client.security_checks.first()  # última verificación M365 (ordenada -checked_at)
+    sc = client.security_checks.first()  
 
-    # 1. MFA (20)
     if sc and sc.mfa_percent is not None:
         pct = sc.mfa_percent
         if pct < 90:
@@ -57,7 +53,6 @@ def compute_security_score(client) -> dict:
     else:
         dims.append(_dim("mfa", "Cobertura MFA", 20, 0, False, "Sin datos M365"))
 
-    # 2. Secure Score (15)
     if sc and sc.secure_score_percent is not None:
         pct = sc.secure_score_percent
         if pct < 60:
@@ -66,7 +61,6 @@ def compute_security_score(client) -> dict:
     else:
         dims.append(_dim("secure", "Secure Score M365", 15, 0, False, "Sin datos M365"))
 
-    # 3. Anomalías de seguridad abiertas (20)
     anoms = SecurityAnomalyEvent.objects.filter(device__client=client, status="open")
     crit = anoms.filter(severity="critical").count()
     warn = anoms.filter(severity="warning").count()
@@ -79,7 +73,6 @@ def compute_security_score(client) -> dict:
     detail = "Sin anomalías abiertas" if (crit + warn + info) == 0 else f"{crit} crít · {warn} adv · {info} info"
     dims.append(_dim("anomalies", "Anomalías de seguridad", 20, 20 - pen, True, detail))
 
-    # 4. Postura de red (15)
     nets = [getattr(d, "network_snapshot", None) for d in devices]
     nets = [n for n in nets if n]
     if nets:
@@ -100,7 +93,6 @@ def compute_security_score(client) -> dict:
     else:
         dims.append(_dim("network", "Postura de red", 15, 0, False, "Sin datos de red"))
 
-    # 5. Vulnerabilidades CVE (15)
     sws = [getattr(d, "software_snapshot", None) for d in devices]
     sws = [s for s in sws if s and s.cve_analysis]
     if sws:
@@ -118,7 +110,6 @@ def compute_security_score(client) -> dict:
     else:
         dims.append(_dim("cve", "Vulnerabilidades (CVE)", 15, 0, False, "Sin análisis CVE"))
 
-    # 6. Equipos reportando (10)
     if total_dev:
         online = sum(1 for d in devices if d.is_online)
         if online < total_dev:
@@ -128,7 +119,6 @@ def compute_security_score(client) -> dict:
     else:
         dims.append(_dim("reporting", "Equipos reportando", 10, 0, False, "Sin equipos"))
 
-    # 7. Dominios y SSL (5)
     domains = list(client.domains.all())
     if domains:
         pen = 0
@@ -147,7 +137,6 @@ def compute_security_score(client) -> dict:
     else:
         dims.append(_dim("domains", "Dominios y SSL", 5, 0, False, "Sin dominios"))
 
-    # Normalización sobre dimensiones aplicables
     applicable = [d for d in dims if d["applicable"]]
     max_sum    = sum(d["max"] for d in applicable) or 1
     earned_sum = sum(d["earned"] for d in applicable)

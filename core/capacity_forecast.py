@@ -19,13 +19,13 @@ from django.utils import timezone
 
 logger = logging.getLogger("perseus")
 
-MIN_SAMPLES    = 6        # mínimo de puntos para confiar en la tendencia
-WINDOW_DAYS    = 14       # ventana de histórico a considerar
-SPARK_POINTS   = 24       # puntos del mini-sparkline
-FLAT_SLOPE     = 0.05     # %/día — por debajo de esto se considera "estable"
+MIN_SAMPLES    = 6       
+WINDOW_DAYS    = 14      
+SPARK_POINTS   = 24       
+FLAT_SLOPE     = 0.05     
 WARN_THRESHOLD = 90.0
 FULL_THRESHOLD = 100.0
-SAFETY_CAP     = 5000     # tope de filas a traer (protección ante cadencia alta)
+SAFETY_CAP     = 5000     
 
 
 def _linreg(xs, ys):
@@ -66,14 +66,14 @@ def _project(series, last_pct):
     """
     xs = [p[0] for p in series]
     ys = [p[1] for p in series]
-    slope, intercept = _linreg(xs, ys)      # pct por día
+    slope, intercept = _linreg(xs, ys)      
     last_x = xs[-1]
 
     def days_to(threshold):
         if last_pct >= threshold:
-            return 0          # ya alcanzado
+            return 0         
         if slope <= FLAT_SLOPE:
-            return None       # no crece (o baja) → nunca, a este ritmo
+            return None       
         x_hit = (threshold - intercept) / slope
         days = x_hit - last_x
         return max(0, round(days)) if days >= 0 else None
@@ -126,8 +126,6 @@ def forecast_device(device, snapshots=None, window_days=WINDOW_DAYS):
     cutoff = now - timedelta(days=window_days)
 
     if snapshots is None:
-        # Consulta propia acotada a la ventana: liviana (solo 4 campos) y
-        # con tope de seguridad. Una sola query al cargar el equipo.
         snapshots = list(
             device.snapshots
             .filter(captured_at__gte=cutoff)

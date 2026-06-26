@@ -1,22 +1,17 @@
 """
 Sentinel XO — Generador de Reporte Mensual de Mantenimiento (PDF)
 =================================================================
-Reconstruido sobre `reports.pdf_theme` (sistema de diseño compartido).
-
 - `build_report_pdf(client, year, month)` → recopila datos del ORM y arma el PDF.
-- `compose_monthly_story(data)` → capa de presentación PURA (sin Django); recibe
-  un dict de primitivos. Esto permite previsualizar el diseño con datos ficticios.
-"""
-import io
+- `compose_monthly_story(data)` → capa de presentación PURA (sin Django).
 
-from reportlab.lib.pagesizes import A4
+Usa la portada premium compartida (`reports.cover`), abre el Resumen Ejecutivo
+con el Índice de Seguridad y cierra con la sección de valor + próximo reporte.
+"""
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
-from reportlab.platypus import SimpleDocTemplate, Spacer, PageBreak
 
 from reports import pdf_theme as T
+from reports.cover import render_with_cover
 
-
-# ── Mapas de presentación ────────────────────────────────────────────────────
 _SEV_PILL = {"low": "slate", "medium": "blue", "high": "amber", "critical": "red"}
 _DEV_PILL = {"online": "green", "warning": "amber", "offline": "red", "never": "slate"}
 _DEV_LBL  = {"online": "En línea", "warning": "Alerta", "offline": "Offline", "never": "Sin datos"}
@@ -24,21 +19,12 @@ _DOM_PILL = {"ok": "green", "warning": "amber", "critical": "red", "expired": "r
 _DOM_LBL  = {"ok": "OK", "warning": "Por vencer", "critical": "Crítico", "expired": "Vencido", "unknown": "—"}
 
 
-# ════════════════════════════════════════════════════════════════════════════
-#  COMPOSICIÓN (pura — sin Django)
-# ════════════════════════════════════════════════════════════════════════════
+def _grade_color(g):
+    return {"A": T.GREEN, "B": T.CYAN, "C": T.AMBER, "D": T.RED, "F": T.RED}.get(g, T.MUTED)
+
+
 def compose_monthly_story(d: dict) -> list:
     story = []
-
-    # ── Header ───────────────────────────────────────────────────────────────
-    story += T.header_band(
-        company=d["company"],
-        kicker="Reporte de Mantenimiento Preventivo",
-        title=f'{d["month_name"]} {d["year"]}',
-        meta=None,
-    )
-
-    # ── Info cliente ─────────────────────────────────────────────────────────
     story.append(T.info_strip([
         ("Cliente",  d["client_name"], True),
         ("Contacto", d["client_email"]),
@@ -47,29 +33,28 @@ def compose_monthly_story(d: dict) -> list:
     ]))
     story.append(T.gap(20))
 
-    # ── Resumen ejecutivo (KPIs) ─────────────────────────────────────────────
     k = d["kpis"]
     up = k["uptime"]
-    up_col  = T.GREEN if (up or 0) >= 99 else (T.AMBER if (up or 0) >= 95 else T.RED)
-    op_col  = T.RED if k["inc_open"] > 0 else T.TEXT
-    dom_col = T.RED if k["domains_critical"] > 0 else T.GREEN
+    up_col = T.GREEN if (up or 0) >= 99 else (T.AMBER if (up or 0) >= 95 else T.RED)
+    sec = d.get("security")
 
-    story += T.section("Resumen Ejecutivo", "Métricas clave del período de facturación")
-    story.append(T.kpi_cards([
-        ("Disponibilidad", f"{up:g}%" if up is not None else "—", "promedio del período", up_col),
-        ("Equipos",        str(k["devices"]),         "monitorizados", T.BRAND),
-        ("Incidentes res.",str(k["inc_resolved"]),    "resueltos este mes", T.GREEN),
-        ("Pendientes",     str(k["inc_open"]),        "requieren atención", op_col),
-        ("Dom. críticos",  str(k["domains_critical"]),"por vencer", dom_col),
-    ]))
+    story += T.section("Resumen Ejecutivo", "Las métricas clave de tu infraestructura este mes")
+    cards = []
+    if sec:
+        cards.append(("Índice de seguridad", f'{sec["score"]}',
+                      f'Nota {sec["grade"]} · sobre 100', _grade_color(sec["grade"])))
+    cards += [
+        ("Disponibilidad",       f"{up:g}%" if up is not None else "—", "operación sin caídas", up_col),
+        ("Equipos monitoreados", str(k["devices"]),       "bajo vigilancia 24/7", T.BRAND),
+        ("Incidentes resueltos", str(k["inc_resolved"]),  "atendidos por el equipo", T.GREEN),
+    ]
+    story.append(T.kpi_cards(cards))
     story.append(T.gap(18))
 
-    # ── Resumen narrativo IA ─────────────────────────────────────────────────
     if d.get("narrative"):
         story.append(T.callout("Resumen del período · IA", d["narrative"]))
         story.append(T.gap(18))
 
-    # ── Dispositivos ─────────────────────────────────────────────────────────
     devs = d["devices"]
     story += T.section("Estado de Dispositivos",
                        f"{len(devs)} equipo{'s' if len(devs) != 1 else ''} monitorizado{'s' if len(devs) != 1 else ''}")
@@ -96,10 +81,8 @@ def compose_monthly_story(d: dict) -> list:
         story.append(T.empty("Sin dispositivos registrados en este período."))
     story.append(T.gap(18))
 
-    # ── Incidentes ───────────────────────────────────────────────────────────
     incs = d["incidents"]
-    story += T.section("Incidentes Resueltos",
-                       f"Atenciones cerradas durante {d['month_name']}")
+    story += T.section("Incidentes Resueltos", f"Atenciones cerradas durante {d['month_name']}")
     if incs:
         rows = [[T.th("Fecha"), T.th("Título / Descripción"),
                  T.th("Severidad", TA_CENTER), T.th("Equipo afectado")]]
@@ -119,7 +102,6 @@ def compose_monthly_story(d: dict) -> list:
         story.append(T.empty("No hubo incidentes resueltos en este período."))
     story.append(T.gap(18))
 
-    # ── Dominios ─────────────────────────────────────────────────────────────
     doms = d["domains"]
     if doms:
         story += T.section("Estado de Dominios",
@@ -147,10 +129,8 @@ def compose_monthly_story(d: dict) -> list:
         ))
         story.append(T.gap(18))
 
-    # ── Licencias M365 ───────────────────────────────────────────────────────
     lics = d["licenses"]
     if lics:
-        story.append(PageBreak())
         story += T.section("Licencias Microsoft 365", "Estado de asignación en el tenant corporativo")
         rows = [[T.th("Producto"), T.th("Total", TA_CENTER), T.th("Usadas", TA_CENTER),
                  T.th("Disponibles", TA_CENTER), T.th("Utilización")]]
@@ -170,25 +150,37 @@ def compose_monthly_story(d: dict) -> list:
             col_widths=[T.CW*0.34, T.CW*0.12, T.CW*0.12, T.CW*0.16, T.CW*0.26],
             aligns={1: "C", 2: "C", 3: "C"},
         ))
+        story.append(T.gap(20))
 
+    story += T.section(f"El trabajo de {d['company']} este mes",
+                       "Resumen de lo realizado y próximos pasos")
+    recap = (f"Durante {d['month_name']}, {d['company']} mantuvo tu infraestructura bajo monitoreo "
+             f"permanente, resolviendo {k['inc_resolved']} incidente(s) y supervisando "
+             f"{k['devices']} equipo(s) las 24 horas. Seguimos atentos a cada punto que requiera "
+             f"atención, para que tu operación nunca se detenga.")
+    story.append(T.callout(f"Compromiso {d['company']}", recap, accent=T.GREEN))
+    story.append(T.gap(14))
+    story.append(T.info_strip([
+        ("Próximo reporte", d.get("next_report", "—"), True),
+        ("Monitoreo",       "24/7 continuo"),
+        ("Soporte directo", d["support"]),
+    ], accent=T.GREEN))
     return story
 
 
 def _render(data: dict) -> bytes:
-    buf = io.BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=A4,
-                            leftMargin=T.ML, rightMargin=T.MR,
-                            topMargin=T.MT, bottomMargin=T.MB)
-    footer = T.make_footer(data["company"], data["support"])
-    doc.build(compose_monthly_story(data), onFirstPage=footer, onLaterPages=footer)
-    pdf = buf.getvalue()
-    buf.close()
-    return pdf
+    return render_with_cover(
+        company=data["company"], support=data["support"],
+        product=data.get("product", "Sentinel XO"),
+        product_tag=data.get("product_tag", "XO CONTROL"),
+        kicker="Reporte de Mantenimiento",
+        title=data["client_name"],
+        subtitle=f'Reporte de {data["month_name"]} {data["year"]}',
+        generated_at=data["generated_at"],
+        content_story=compose_monthly_story(data),
+    )
 
 
-# ════════════════════════════════════════════════════════════════════════════
-#  ENTRADA CON DATOS REALES (Django)
-# ════════════════════════════════════════════════════════════════════════════
 def build_report_pdf(client, year: int, month: int) -> tuple[bytes, dict]:
     from datetime import datetime
     from django.utils import timezone
@@ -202,6 +194,7 @@ def build_report_pdf(client, year: int, month: int) -> tuple[bytes, dict]:
 
     company = getattr(settings, "SENTINEL_COMPANY_NAME", "Sentinel XO")
     support = getattr(settings, "SENTINEL_SUPPORT_EMAIL", "soporte@perseustechnology.dev")
+    product = getattr(settings, "SENTINEL_PRODUCT_NAME", "Sentinel XO")
 
     devices_qs     = client.devices.filter(is_active=True).prefetch_related("snapshots")
     incidents_res  = client.incidents.filter(resolved_at__range=(period_start, period_end), is_resolved=True)
@@ -221,7 +214,16 @@ def build_report_pdf(client, year: int, month: int) -> tuple[bytes, dict]:
     avg_uptime = round(online_snaps / total_snaps * 100, 1) if total_snaps else 0.0
     domains_critical = domains_qs.filter(status__in=["critical", "expired"]).count()
 
-    # Narrativa IA (best-effort)
+    security = None
+    try:
+        from core.security_score import compute_security_score
+        sec = compute_security_score(client)
+        security = {"score": sec["score"], "grade": sec["grade"]}
+    except Exception:
+        security = None
+
+    next_report = (period_start + relativedelta(months=2)).strftime("%d/%m/%Y")
+
     narrative = None
     try:
         from core.views_ai import generate_narrative_summary
@@ -238,70 +240,40 @@ def build_report_pdf(client, year: int, month: int) -> tuple[bytes, dict]:
 
     def dev_dict(dev):
         snap = dev.snapshots.first()
-        return {
-            "name": dev.display_name,
-            "type": dev.get_device_type_display(),
-            "os": dev.os or "",
-            "cpu": round(snap.cpu_percent, 1) if snap else None,
-            "ram": round(snap.ram_used_percent, 1) if snap else None,
-            "status": dev.status,
-        }
+        return {"name": dev.display_name, "type": dev.get_device_type_display(), "os": dev.os or "",
+                "cpu": round(snap.cpu_percent, 1) if snap else None,
+                "ram": round(snap.ram_used_percent, 1) if snap else None, "status": dev.status}
 
     def inc_dict(inc):
-        return {
-            "date": timezone.localtime(inc.resolved_at).strftime("%d/%m/%y") if inc.resolved_at else "—",
-            "title": inc.title,
-            "severity": inc.severity,
-            "sev_label": inc.get_severity_display(),
-            "device": inc.device.display_name if inc.device else "",
-        }
+        return {"date": timezone.localtime(inc.resolved_at).strftime("%d/%m/%y") if inc.resolved_at else "—",
+                "title": inc.title, "severity": inc.severity, "sev_label": inc.get_severity_display(),
+                "device": inc.device.display_name if inc.device else ""}
 
     def dom_dict(dm):
-        return {
-            "fqdn": dm.fqdn,
-            "registrar": dm.registrar or "",
-            "expiry": dm.expiry_date.strftime("%d/%m/%Y") if dm.expiry_date else "",
-            "days": dm.days_until_expiry,
-            "status": dm.status,
-        }
+        return {"fqdn": dm.fqdn, "registrar": dm.registrar or "",
+                "expiry": dm.expiry_date.strftime("%d/%m/%Y") if dm.expiry_date else "",
+                "days": dm.days_until_expiry, "status": dm.status}
 
     def lic_dict(l):
-        return {
-            "name": l.friendly_name or l.sku_part_number,
-            "total": l.total_licenses,
-            "consumed": l.consumed_licenses,
-            "available": l.available_licenses,
-            "pct": l.utilization_percent,
-        }
+        return {"name": l.friendly_name or l.sku_part_number, "total": l.total_licenses,
+                "consumed": l.consumed_licenses, "available": l.available_licenses, "pct": l.utilization_percent}
 
     data = {
-        "company": company, "support": support,
-        "client_name": client.company_name,
-        "client_email": client.contact_email,
+        "company": company, "support": support, "product": product, "product_tag": "XO CONTROL",
+        "client_name": client.company_name, "client_email": client.contact_email,
         "plan": client.get_plan_display(),
         "generated_at": timezone.localtime(timezone.now()).strftime("%d/%m/%Y %H:%M"),
         "month_name": month_name, "year": year, "month": month,
-        "kpis": {
-            "uptime": avg_uptime,
-            "devices": devices_qs.count(),
-            "inc_resolved": incidents_res.count(),
-            "inc_open": incidents_open.count(),
-            "domains_critical": domains_critical,
-            "total_snaps": total_snaps,
-        },
-        "narrative": narrative,
+        "kpis": {"uptime": avg_uptime, "devices": devices_qs.count(),
+                 "inc_resolved": incidents_res.count(), "inc_open": incidents_open.count(),
+                 "domains_critical": domains_critical, "total_snaps": total_snaps},
+        "security": security, "next_report": next_report, "narrative": narrative,
         "devices": [dev_dict(x) for x in devices_qs],
         "incidents": [inc_dict(x) for x in incidents_res[:20]],
         "domains": [dom_dict(x) for x in domains_qs],
         "licenses": [lic_dict(x) for x in licenses],
     }
-
-    summary = {
-        "period": f"{year}/{month:02d}",
-        "devices_count": data["kpis"]["devices"],
-        "incidents_resolved": data["kpis"]["inc_resolved"],
-        "incidents_open": data["kpis"]["inc_open"],
-        "avg_uptime_percent": avg_uptime,
-        "domains_critical": domains_critical,
-    }
+    summary = {"period": f"{year}/{month:02d}", "devices_count": data["kpis"]["devices"],
+               "incidents_resolved": data["kpis"]["inc_resolved"], "incidents_open": data["kpis"]["inc_open"],
+               "avg_uptime_percent": avg_uptime, "domains_critical": domains_critical}
     return _render(data), summary
