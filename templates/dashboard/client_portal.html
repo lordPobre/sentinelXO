@@ -5,12 +5,10 @@
 {% block page_subtitle %}<div class="mono" style="font-size:10px;color:var(--text-3);margin-top:1px;">Panel de monitoreo · {{ client.get_plan_display|lower }}</div>{% endblock %}
 
 {% block header_actions %}
-{% if request.user.is_staff %}
 <a href="{% url 'dashboard:realtime' client.id %}" class="btn-primary" style="display:flex;align-items:center;gap:5px;background:rgba(16,185,129,0.12);color:var(--green);border:1px solid rgba(16,185,129,0.2);">
   <span class="dot dot-on dot-pulse" style="width:6px;height:6px;flex-shrink:0;"></span>
   <span class="btn-txt">Monitor en vivo</span>
 </a>
-{% endif %}
 {% endblock %}
 
 {% block content %}
@@ -143,7 +141,7 @@
     <span class="card-title">Tus equipos</span>
     <span class="mono" style="font-size:10px;color:var(--text-4);">{{ devices_online }} de {{ devices_total }} en línea</span>
   </div>
-  {% for device in devices %}
+  {% for device in computers %}
   <div style="display:flex;align-items:center;justify-content:space-between;padding:13px 18px;border-bottom:1px solid rgba(255,255,255,0.03);">
     <div style="display:flex;align-items:center;gap:11px;">
       <span class="dot {% if device.is_online %}dot-on{% elif device.status == 'warning' %}dot-warn{% else %}dot-off{% endif %}"></span>
@@ -160,6 +158,8 @@
   <div style="padding:36px;text-align:center;font-size:12px;color:var(--text-4);">Aún no hay equipos registrados. Perseus los configurará pronto.</div>
   {% endfor %}
 </div>
+
+{% include "dashboard/partials/printers_card.html" %}
 
 <!-- ── Dominios (+ M365 si hay) ────────────────────────────────────────────── -->
 <div style="display:grid;grid-template-columns:{% if licenses %}1fr 1fr{% else %}1fr{% endif %};gap:14px;margin-bottom:16px;" class="grid-2col">

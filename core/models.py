@@ -870,3 +870,35 @@ class PortalUser(User):
         proxy = True
         verbose_name = "Usuario cliente"
         verbose_name_plural = "Usuarios cliente"
+
+class PrinterSnapshot(models.Model):
+    device = models.OneToOneField(
+        HardwareDevice, on_delete=models.CASCADE, related_name="printer_snapshot"
+    )
+    source        = models.CharField(max_length=8, default="snmp")     # snmp | wmi  ← NUEVO
+    model_description = models.CharField(max_length=255, blank=True)
+    device_status = models.CharField(max_length=32, blank=True)
+    status_label  = models.CharField(max_length=120, blank=True)
+    error_states  = models.JSONField(default=list, blank=True)
+    supplies      = models.JSONField(default=list, blank=True)
+    page_count    = models.IntegerField(null=True, blank=True)
+    risk_level    = models.CharField(max_length=16, default="unknown")
+    risk_reasons  = models.JSONField(default=list, blank=True)
+    checked_at    = models.DateTimeField(auto_now=True)
+ 
+    class Meta:
+        verbose_name = "Snapshot de impresora"
+        verbose_name_plural = "Snapshots de impresora"
+ 
+    def __str__(self):
+        return f"PrinterSnapshot<{self.device_id}>"
+ 
+    @property
+    def lowest_supply_percent(self):
+        levels = [s.get("level_percent") for s in (self.supplies or [])
+                  if s.get("level_percent") is not None]
+        return min(levels) if levels else None
+ 
+    @property
+    def is_local(self):
+        return self.source == "wmi"

@@ -1,0 +1,50 @@
+{# dashboard/partials/printers_card.html — impresoras red (SNMP) + locales (WMI) #}
+{# Requiere 'printers' en el contexto (HardwareDevice device_type=printer). #}
+{% if printers %}
+<div class="card fu-2" style="overflow:hidden;margin-bottom:16px;">
+  <div class="card-header">
+    <span class="card-title">Impresoras</span>
+    <span class="mono" style="font-size:10px;color:var(--text-4);">{{ printers|length }} monitoreada{{ printers|length|pluralize:"s" }}</span>
+  </div>
+  {% for p in printers %}
+  {% with snap=p.printer_snapshot %}
+  <div style="padding:13px 18px;border-bottom:1px solid rgba(255,255,255,0.03);">
+    <div style="display:flex;align-items:center;justify-content:space-between;">
+      <div style="display:flex;align-items:center;gap:11px;">
+        <span class="dot {% if p.is_online %}dot-on{% else %}dot-off{% endif %}"></span>
+        <div>
+          <div style="font-size:13px;font-weight:500;color:#cbd5e1;">{{ p.display_name }}</div>
+          <div class="mono" style="font-size:10px;color:var(--text-4);">
+            {% if snap and snap.is_local %}Local / USB{% elif p.ip_address %}Red · {{ p.ip_address }}{% else %}Impresora{% endif %}
+            {% if snap and snap.status_label %} · {{ snap.status_label }}{% endif %}
+          </div>
+        </div>
+      </div>
+      <span class="badge {% if p.is_online %}badge-ok{% else %}badge-crit{% endif %}">{% if p.is_online %}En línea{% else %}Sin conexión{% endif %}</span>
+    </div>
+
+    {% if snap and snap.supplies %}
+    <div style="margin-top:12px;display:flex;flex-direction:column;gap:9px;">
+      {% for s in snap.supplies %}
+      <div>
+        <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:4px;">
+          <span style="color:var(--text-2,#9fb0c8);">{{ s.name|default:"Consumible" }}</span>
+          <span class="mono" style="{% if s.level_percent is not None and s.level_percent < 5 %}color:var(--red);font-weight:600;{% elif s.level_percent is not None and s.level_percent < 15 %}color:var(--amber);{% else %}color:var(--text-3);{% endif %}">{% if s.level_percent is not None %}{{ s.level_percent }}%{% else %}—{% endif %}</span>
+        </div>
+        <div class="bar-track">
+          <div class="bar-fill" style="width:{{ s.level_percent|default:0 }}%;{% if s.color == 'black' %}background:#5b6470;{% elif s.color == 'cyan' %}background:#22b8cf;{% elif s.color == 'magenta' %}background:#e64980;{% elif s.color == 'yellow' %}background:#eab308;{% elif s.level_percent is not None and s.level_percent < 5 %}background:var(--red);{% elif s.level_percent is not None and s.level_percent < 15 %}background:var(--amber);{% else %}background:var(--green);{% endif %}"></div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% if snap.page_count %}<div class="mono" style="font-size:10px;color:var(--text-4);margin-top:10px;">{{ snap.page_count }} páginas impresas</div>{% endif %}
+    {% elif snap and snap.is_local %}
+    <div style="margin-top:8px;font-size:11px;color:var(--text-4);">Estado reportado por el equipo (sin nivel de tóner disponible).</div>
+    {% elif p.is_online %}
+    <div style="margin-top:8px;font-size:11px;color:var(--text-4);">Recopilando estado…</div>
+    {% endif %}
+  </div>
+  {% endwith %}
+  {% endfor %}
+</div>
+{% endif %}

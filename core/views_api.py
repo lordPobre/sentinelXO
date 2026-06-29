@@ -23,6 +23,32 @@ class CsrfExemptSessionAuthentication(SessionAuthentication):
 
 logger = logging.getLogger("perseus")
 
+def _process_printer_probes(client, probes):
+    """
+    Actualiza last_seen de las impresoras del cliente que respondieron al sondeo.
+    'probes' = lista de {ip, online}. Una impresora online → last_seen=ahora,
+    lo que la marca 'en línea' (igual que cualquier equipo, vía is_online).
+    Las offline simplemente no se tocan: su last_seen envejece y caen a offline.
+    """
+    from django.utils import timezone
+    online_ips = {
+        p.get("ip") for p in probes
+        if isinstance(p, dict) and p.get("online") and p.get("ip")
+    }
+    if not online_ips:
+        return 0
+    now = timezone.now()
+    printers = HardwareDevice.objects.filter(
+        client=client, device_type="printer", is_active=True,
+        ip_address__in=online_ips,
+    )
+    updated = 0
+    for pr in printers:
+        pr.last_seen = now
+        pr.save(update_fields=["last_seen"])
+        updated += 1
+    return updated
+
 class TelemetryIngestView(APIView):
     """
     POST /api/v1/telemetry/
@@ -165,6 +191,16 @@ class TelemetryIngestView(APIView):
                     )
         except Exception as e:
             logger.error(f"Error procesando inventario de software: {e}")
+        
+        try:
+            printer_probes = request.data.get("printer_probes")
+            if printer_probes:
+                from core.printers import process_printer_status
+                n = process_printer_status(device.client, printer_probes)
+                if n:
+                    logger.info(f"Impresoras: {n} en línea para {device.client}")
+        except Exception as e:
+            logger.warning(f"Error procesando impresoras: {e}")
 
         return Response({"status": "ok", "device": device.display_name}, status=status.HTTP_201_CREATED)
 

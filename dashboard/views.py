@@ -138,8 +138,10 @@ def client_portal(request, client_id):
     licenses_full = licenses.filter(consumed_licenses__gte=models_gte_total()).count() if licenses.exists() else 0
  
     devices_list = list(devices)
-    devices_total = len(devices_list)
-    devices_online = sum(1 for d in devices_list if d.is_online)
+    computers = [d for d in devices_list if d.device_type != "printer"]
+    printers  = [d for d in devices_list if d.device_type == "printer"]
+    devices_total = len(computers)
+    devices_online = sum(1 for d in computers if d.is_online)
     incidents_open_count = client.incidents.filter(is_resolved=False).count()
     health = client.get_health_status()
  
